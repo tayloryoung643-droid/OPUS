@@ -46,7 +46,13 @@ The application uses PostgreSQL as the primary database with Drizzle ORM:
 The database schema supports the core entities: companies (prospect organizations), contacts (stakeholders), calls (scheduled meetings), and call preparations (AI-generated research).
 
 ### Authentication and Authorization
-Currently, the application has a minimal user system with basic user entities in the schema, but no active authentication flow is implemented. The architecture supports future authentication integration through the existing users table and session management patterns.
+The application now features a complete Google Sign-in authentication system powered by Replit Auth integration:
+
+- **Google OAuth**: Single-click sign-in using Google accounts via OIDC protocol
+- **Session Management**: Secure session handling with PostgreSQL session store
+- **User Management**: Automatic user profile creation and updates from OAuth claims
+- **Route Protection**: Authenticated routes show home dashboard vs landing page for guests
+- **Profile Integration**: User profiles include name, email, and profile images from Google
 
 ### External Service Integrations
 The platform integrates with external services for enhanced functionality:

@@ -123,6 +123,31 @@ export type InsertCall = z.infer<typeof insertCallSchema>;
 export type CallPrep = typeof callPreps.$inferSelect;
 export type InsertCallPrep = z.infer<typeof insertCallPrepSchema>;
 
+// Integration tables for external services
+export const integrations = pgTable("integrations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // 'salesforce', 'hubspot', 'google_calendar', etc.
+  type: text("type").notNull(), // 'crm', 'calendar', 'email', 'conversation'
+  status: text("status").notNull().default("inactive"), // 'active', 'inactive', 'error'
+  config: jsonb("config").$type<Record<string, any>>().default({}),
+  credentials: jsonb("credentials").$type<Record<string, any>>().default({}),
+  lastSyncAt: timestamp("last_sync_at"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const integrationData = pgTable("integration_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  integrationId: varchar("integration_id").references(() => integrations.id),
+  externalId: text("external_id").notNull(), // ID from external system
+  dataType: text("data_type").notNull(), // 'company', 'contact', 'call', 'email'
+  data: jsonb("data").$type<Record<string, any>>().notNull(),
+  localId: varchar("local_id"), // Reference to local entity ID
+  lastSyncAt: timestamp("last_sync_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Legacy user schema for compatibility
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -130,10 +155,29 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
 });
 
+// Integration schemas
+export const insertIntegrationSchema = createInsertSchema(integrations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertIntegrationDataSchema = createInsertSchema(integrationData).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
 });
+
+// Integration types
+export type Integration = typeof integrations.$inferSelect;
+export type InsertIntegration = z.infer<typeof insertIntegrationSchema>;
+
+export type IntegrationData = typeof integrationData.$inferSelect;
+export type InsertIntegrationData = z.infer<typeof insertIntegrationDataSchema>;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;

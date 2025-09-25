@@ -2,7 +2,8 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
-import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema } from "@shared/schema";
+import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema } from "@shared/schema";
+import { integrationManager } from "./services/integrations/manager";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -188,6 +189,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Failed to generate call prep:', error);
       res.status(500).json({ message: "Failed to generate AI call prep: " + (error as Error).message });
+    }
+  });
+
+  // Integration management routes
+  
+  // Get all integrations
+  app.get("/api/integrations", async (req, res) => {
+    try {
+      const integrations = await integrationManager.getAllIntegrations();
+      // Remove sensitive credential data from response
+      const sanitizedIntegrations = integrations.map(integration => ({
+        ...integration,
+        credentials: integration.credentials ? { hasCredentials: true } : { hasCredentials: false }
+      }));
+      res.json(sanitizedIntegrations);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch integrations" });
+    }
+  });
+
+  // Create new integration
+  app.post("/api/integrations", async (req, res) => {
+    try {
+      const data = insertIntegrationSchema.parse(req.body);
+      const integration = await integrationManager.createIntegration(data.name, data.type, data.config as any);
+      res.json(integration);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to create integration" });
+    }
+  });
+
+  // Initiate OAuth flow for integration
+  app.post("/api/integrations/:id/oauth", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { authUrl } = await integrationManager.initiateOAuthFlow(id);
+      res.json({ authUrl });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to initiate OAuth flow: " + (error as Error).message });
+    }
+  });
+
+  // OAuth callback endpoint
+  app.get("/api/integrations/oauth/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+      
+      if (!code || !state) {
+        return res.status(400).json({ message: "Missing code or state parameter" });
+      }
+      
+      const integration = await integrationManager.completeOAuthFlow(code as string, state as string);
+      
+      // Redirect to integration management page with success
+      res.redirect(`/dashboard?integration_connected=${integration.id}`);
+    } catch (error) {
+      console.error('OAuth callback error:', error);
+      res.redirect(`/dashboard?integration_error=${encodeURIComponent((error as Error).message)}`);
+    }
+  });
+
+  // Sync integration data
+  app.post("/api/integrations/:id/sync", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await integrationManager.syncIntegration(id);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to sync integration: " + (error as Error).message });
+    }
+  });
+
+  // Delete integration
+  app.delete("/api/integrations/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await integrationManager.deleteIntegration(id);
+      res.json({ message: "Integration deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete integration" });
     }
   });
 

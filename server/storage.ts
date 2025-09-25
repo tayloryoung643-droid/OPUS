@@ -1,10 +1,12 @@
 import { 
-  companies, contacts, calls, callPreps, users,
+  companies, contacts, calls, callPreps, users, integrations, integrationData,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
   type CallPrep, type InsertCallPrep,
-  type User, type InsertUser
+  type User, type InsertUser,
+  type Integration, type InsertIntegration,
+  type IntegrationData, type InsertIntegrationData
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -37,6 +39,20 @@ export interface IStorage {
   createCallPrep(callPrep: InsertCallPrep): Promise<CallPrep>;
   getCallPrep(callId: string): Promise<CallPrep | undefined>;
   updateCallPrep(callId: string, updates: Partial<InsertCallPrep>): Promise<CallPrep>;
+
+  // Integration methods
+  createIntegration(integration: InsertIntegration): Promise<Integration>;
+  getIntegration(id: string): Promise<Integration | undefined>;
+  getIntegrationByName(name: string): Promise<Integration | undefined>;
+  updateIntegration(id: string, updates: Partial<InsertIntegration>): Promise<Integration>;
+  deleteIntegration(id: string): Promise<void>;
+  getAllIntegrations(): Promise<Integration[]>;
+
+  // Integration data methods
+  createIntegrationData(data: InsertIntegrationData): Promise<IntegrationData>;
+  getIntegrationData(integrationId: string, dataType: string): Promise<IntegrationData[]>;
+  updateIntegrationData(id: string, updates: Partial<InsertIntegrationData>): Promise<IntegrationData>;
+  deleteIntegrationData(integrationId: string, externalId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -58,7 +74,7 @@ export class DatabaseStorage implements IStorage {
 
   // Company methods
   async createCompany(insertCompany: InsertCompany): Promise<Company> {
-    const [company] = await db.insert(companies).values([insertCompany]).returning();
+    const [company] = await db.insert(companies).values(insertCompany).returning();
     return company;
   }
 
@@ -75,7 +91,7 @@ export class DatabaseStorage implements IStorage {
   async updateCompany(id: string, updates: Partial<InsertCompany>): Promise<Company> {
     const [company] = await db
       .update(companies)
-      .set(updates as any)
+      .set(updates)
       .where(eq(companies.id, id))
       .returning();
     return company;
@@ -149,7 +165,7 @@ export class DatabaseStorage implements IStorage {
 
   // Call prep methods
   async createCallPrep(insertCallPrep: InsertCallPrep): Promise<CallPrep> {
-    const [callPrep] = await db.insert(callPreps).values([insertCallPrep]).returning();
+    const [callPrep] = await db.insert(callPreps).values(insertCallPrep).returning();
     return callPrep;
   }
 
@@ -161,10 +177,77 @@ export class DatabaseStorage implements IStorage {
   async updateCallPrep(callId: string, updates: Partial<InsertCallPrep>): Promise<CallPrep> {
     const [callPrep] = await db
       .update(callPreps)
-      .set(updates as any)
+      .set(updates)
       .where(eq(callPreps.callId, callId))
       .returning();
     return callPrep;
+  }
+
+  // Integration methods
+  async createIntegration(insertIntegration: InsertIntegration): Promise<Integration> {
+    const [integration] = await db.insert(integrations).values(insertIntegration).returning();
+    return integration;
+  }
+
+  async getIntegration(id: string): Promise<Integration | undefined> {
+    const [integration] = await db.select().from(integrations).where(eq(integrations.id, id));
+    return integration || undefined;
+  }
+
+  async getIntegrationByName(name: string): Promise<Integration | undefined> {
+    const [integration] = await db.select().from(integrations).where(eq(integrations.name, name));
+    return integration || undefined;
+  }
+
+  async updateIntegration(id: string, updates: Partial<InsertIntegration>): Promise<Integration> {
+    const [integration] = await db
+      .update(integrations)
+      .set({ ...updates, updatedAt: new Date() } as any)
+      .where(eq(integrations.id, id))
+      .returning();
+    return integration;
+  }
+
+  async deleteIntegration(id: string): Promise<void> {
+    await db.delete(integrations).where(eq(integrations.id, id));
+  }
+
+  async getAllIntegrations(): Promise<Integration[]> {
+    return await db.select().from(integrations);
+  }
+
+  // Integration data methods
+  async createIntegrationData(insertData: InsertIntegrationData): Promise<IntegrationData> {
+    const [data] = await db.insert(integrationData).values(insertData).returning();
+    return data;
+  }
+
+  async getIntegrationData(integrationId: string, dataType: string): Promise<IntegrationData[]> {
+    return await db
+      .select()
+      .from(integrationData)
+      .where(and(
+        eq(integrationData.integrationId, integrationId),
+        eq(integrationData.dataType, dataType)
+      ));
+  }
+
+  async updateIntegrationData(id: string, updates: Partial<InsertIntegrationData>): Promise<IntegrationData> {
+    const [data] = await db
+      .update(integrationData)
+      .set(updates as any)
+      .where(eq(integrationData.id, id))
+      .returning();
+    return data;
+  }
+
+  async deleteIntegrationData(integrationId: string, externalId: string): Promise<void> {
+    await db
+      .delete(integrationData)
+      .where(and(
+        eq(integrationData.integrationId, integrationId),
+        eq(integrationData.externalId, externalId)
+      ));
   }
 }
 

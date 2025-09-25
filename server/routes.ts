@@ -1,0 +1,300 @@
+import type { Express } from "express";
+import { createServer, type Server } from "http";
+import { storage } from "./storage";
+import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
+import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema } from "@shared/schema";
+import { z } from "zod";
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  // Get all calls with company data
+  app.get("/api/calls", async (req, res) => {
+    try {
+      const calls = await storage.getCallsWithCompany();
+      res.json(calls);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch calls" });
+    }
+  });
+
+  // Get upcoming calls
+  app.get("/api/calls/upcoming", async (req, res) => {
+    try {
+      const calls = await storage.getUpcomingCalls();
+      res.json(calls);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch upcoming calls" });
+    }
+  });
+
+  // Get previous calls
+  app.get("/api/calls/previous", async (req, res) => {
+    try {
+      const calls = await storage.getPreviousCalls();
+      res.json(calls);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch previous calls" });
+    }
+  });
+
+  // Get specific call with full details
+  app.get("/api/calls/:id", async (req, res) => {
+    try {
+      const call = await storage.getCall(req.params.id);
+      if (!call) {
+        return res.status(404).json({ message: "Call not found" });
+      }
+
+      const company = call.companyId ? await storage.getCompany(call.companyId) : null;
+      const contacts = call.companyId ? await storage.getContactsByCompany(call.companyId) : [];
+      const callPrep = await storage.getCallPrep(call.id);
+
+      res.json({
+        call,
+        company,
+        contacts,
+        callPrep
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch call details" });
+    }
+  });
+
+  // Create new company
+  app.post("/api/companies", async (req, res) => {
+    try {
+      const data = insertCompanySchema.parse(req.body);
+      
+      // Check if company already exists by domain
+      if (data.domain) {
+        const existing = await storage.getCompanyByDomain(data.domain);
+        if (existing) {
+          return res.json(existing);
+        }
+      }
+
+      // Enhance company data with AI
+      const enhancedData = await enhanceCompanyData(data.name, data.domain || undefined);
+      
+      const company = await storage.createCompany({
+        ...data,
+        industry: data.industry || enhancedData.industry,
+        size: data.size || enhancedData.size,
+        description: data.description || enhancedData.description,
+        recentNews: enhancedData.recentNews
+      });
+
+      res.json(company);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid company data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create company" });
+    }
+  });
+
+  // Create new contact
+  app.post("/api/contacts", async (req, res) => {
+    try {
+      const data = insertContactSchema.parse(req.body);
+      const contact = await storage.createContact(data);
+      res.json(contact);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid contact data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create contact" });
+    }
+  });
+
+  // Create new call
+  app.post("/api/calls", async (req, res) => {
+    try {
+      const data = insertCallSchema.parse(req.body);
+      const call = await storage.createCall(data);
+      res.json(call);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid call data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create call" });
+    }
+  });
+
+  // Generate AI call prep
+  app.post("/api/calls/:id/generate-prep", async (req, res) => {
+    try {
+      const call = await storage.getCall(req.params.id);
+      if (!call) {
+        return res.status(404).json({ message: "Call not found" });
+      }
+
+      const company = call.companyId ? await storage.getCompany(call.companyId) : null;
+      const contacts = call.companyId ? await storage.getContactsByCompany(call.companyId) : [];
+
+      if (!company) {
+        return res.status(400).json({ message: "Cannot generate prep without company data" });
+      }
+
+      // Generate AI-powered research
+      const research = await generateProspectResearch({
+        companyName: company.name,
+        companyDomain: company.domain || undefined,
+        industry: company.industry || undefined,
+        contactEmails: contacts.map(c => c.email)
+      });
+
+      // Create or update call prep
+      const existingPrep = await storage.getCallPrep(call.id);
+      
+      let callPrep;
+      if (existingPrep) {
+        callPrep = await storage.updateCallPrep(call.id, {
+          executiveSummary: research.executiveSummary,
+          crmHistory: research.crmHistory,
+          competitiveLandscape: research.competitiveLandscape,
+          conversationStrategy: research.conversationStrategy,
+          dealRisks: research.dealRisks,
+          immediateOpportunities: research.immediateOpportunities,
+          strategicExpansion: research.strategicExpansion,
+          isGenerated: true
+        });
+      } else {
+        callPrep = await storage.createCallPrep({
+          callId: call.id,
+          executiveSummary: research.executiveSummary,
+          crmHistory: research.crmHistory,
+          competitiveLandscape: research.competitiveLandscape,
+          conversationStrategy: research.conversationStrategy,
+          dealRisks: research.dealRisks,
+          immediateOpportunities: research.immediateOpportunities,
+          strategicExpansion: research.strategicExpansion,
+          isGenerated: true
+        });
+      }
+
+      // Update company with recent news
+      if (company.id && research.recentNews.length > 0) {
+        await storage.createCompany({
+          ...company,
+          recentNews: research.recentNews
+        });
+      }
+
+      res.json({
+        call,
+        company: { ...company, recentNews: research.recentNews },
+        contacts,
+        callPrep
+      });
+    } catch (error) {
+      console.error('Failed to generate call prep:', error);
+      res.status(500).json({ message: "Failed to generate AI call prep: " + (error as Error).message });
+    }
+  });
+
+  // Create sample data endpoint for demo
+  app.post("/api/demo/setup", async (req, res) => {
+    try {
+      // Create DataFlow Systems company
+      const company = await storage.createCompany({
+        name: "DataFlow Systems",
+        domain: "dataflow.com",
+        industry: "Technology",
+        size: "Mid-market",
+        description: "Data automation and workflow solutions provider",
+        recentNews: [
+          "DataFlow Systems continues to expand their market presence",
+          "Industry focus on AI and automation solutions",
+          "Quarterly results show strong performance"
+        ]
+      });
+
+      // Create contacts
+      const contacts = await Promise.all([
+        storage.createContact({
+          companyId: company.id,
+          email: "jennifer.white@dataflow.com",
+          firstName: "Jennifer",
+          lastName: "White",
+          title: "VP of Operations",
+          role: "Stakeholder"
+        }),
+        storage.createContact({
+          companyId: company.id,
+          email: "robert.kim@dataflow.com", 
+          firstName: "Robert",
+          lastName: "Kim",
+          title: "CTO",
+          role: "Stakeholder"
+        }),
+        storage.createContact({
+          companyId: company.id,
+          email: "lisa.thompson@dataflow.com",
+          firstName: "Lisa", 
+          lastName: "Thompson",
+          title: "Director of Technology",
+          role: "Stakeholder"
+        })
+      ]);
+
+      // Create upcoming call
+      const upcomingCall = await storage.createCall({
+        companyId: company.id,
+        title: "Product Demo: DataFlow Systems",
+        scheduledAt: new Date("2025-08-10T19:26:00Z"),
+        status: "upcoming",
+        callType: "demo",
+        stage: "initial_discovery"
+      });
+
+      // Create some previous calls
+      await Promise.all([
+        storage.createCall({
+          companyId: company.id,
+          title: "Discovery Call: DataFlow Systems",
+          scheduledAt: new Date("2025-08-04T15:15:00Z"),
+          status: "completed",
+          callType: "discovery",
+          stage: "initial_discovery"
+        }),
+        // Add more sample companies for previous calls
+        storage.createCompany({
+          name: "TechCorp Solutions",
+          domain: "techcorp.com",
+          industry: "Software",
+          size: "Enterprise"
+        }).then(async (techCorpCompany) => {
+          return storage.createCall({
+            companyId: techCorpCompany.id,
+            title: "Q4 Strategy Review: TechCorp",
+            scheduledAt: new Date("2025-08-07T19:26:00Z"),
+            status: "completed",
+            callType: "follow-up"
+          });
+        }),
+        storage.createCompany({
+          name: "InnovateLabs Inc",
+          domain: "innovatelabs.com", 
+          industry: "Technology",
+          size: "Startup"
+        }).then(async (innovateCompany) => {
+          return storage.createCall({
+            companyId: innovateCompany.id,
+            title: "Discovery Call: InnovateLabs",
+            scheduledAt: new Date("2025-08-06T14:30:00Z"),
+            status: "completed",
+            callType: "discovery"
+          });
+        })
+      ]);
+
+      res.json({ message: "Demo data created successfully", companyId: company.id, callId: upcomingCall.id });
+    } catch (error) {
+      console.error('Failed to setup demo data:', error);
+      res.status(500).json({ message: "Failed to setup demo data" });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}

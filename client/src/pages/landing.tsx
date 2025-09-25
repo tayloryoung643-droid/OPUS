@@ -4,9 +4,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Search, MessageSquare, Users, TrendingUp, Lightbulb, RefreshCw, Play } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Landing() {
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const { toast } = useToast();
   
   // Get the first available Salesforce integration
   const { data: integrations } = useQuery({
@@ -35,7 +37,31 @@ export default function Landing() {
       );
       
       if (!salesforceIntegration) {
-        console.error('No Salesforce integration found');
+        toast({
+          title: "No Salesforce Integration Found",
+          description: "Please set up a Salesforce integration first.",
+          variant: "destructive"
+        });
+        setIsSigningIn(false);
+        return;
+      }
+
+      // Check if integration has test/placeholder credentials
+      const config = salesforceIntegration.config || {};
+      const isTestCredentials = 
+        !config.clientId || 
+        config.clientId.includes('test') || 
+        config.clientId.includes('client') ||
+        config.clientId.includes('my_') ||
+        config.clientId.includes('prod_') ||
+        config.clientId.length < 10; // Real Salesforce client IDs are longer
+
+      if (isTestCredentials) {
+        toast({
+          title: "Development Mode",
+          description: "This integration uses test credentials. Please configure real Salesforce credentials for OAuth to work properly.",
+          variant: "destructive"
+        });
         setIsSigningIn(false);
         return;
       }
@@ -46,15 +72,32 @@ export default function Landing() {
       });
       
       if (!response.ok) {
-        throw new Error('Failed to initiate OAuth');
+        const errorText = await response.text();
+        toast({
+          title: "OAuth Setup Failed",
+          description: `Failed to initiate OAuth flow: ${errorText}`,
+          variant: "destructive"
+        });
+        setIsSigningIn(false);
+        return;
       }
       
       const { authUrl } = await response.json();
       
+      // Show success message before redirect
+      toast({
+        title: "Redirecting to Salesforce",
+        description: "You'll be redirected to Salesforce for authentication.",
+      });
+      
       // Redirect to Salesforce OAuth
       window.location.href = authUrl;
     } catch (error) {
-      console.error('Sign-in failed:', error);
+      toast({
+        title: "Sign-in Error",
+        description: error instanceof Error ? error.message : "An unexpected error occurred during sign-in.",
+        variant: "destructive"
+      });
       setIsSigningIn(false);
     }
   };

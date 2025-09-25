@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, jsonb, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, jsonb, boolean, numeric, integer, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -58,10 +58,26 @@ export const callPreps = pgTable("call_preps", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Opportunities schema (for CRM sync)
+export const crmOpportunities = pgTable("crm_opportunities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  name: varchar("name").notNull(),
+  stage: varchar("stage").notNull(),
+  amount: numeric("amount"),
+  probability: integer("probability"), // 0-100
+  closeDate: date("close_date"),
+  description: text("description"),
+  nextStep: text("next_step"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+});
+
 // Relations
 export const companiesRelations = relations(companies, ({ many }) => ({
   contacts: many(contacts),
   calls: many(calls),
+  opportunities: many(crmOpportunities),
 }));
 
 export const contactsRelations = relations(contacts, ({ one }) => ({
@@ -89,6 +105,13 @@ export const callPrepsRelations = relations(callPreps, ({ one }) => ({
   }),
 }));
 
+export const crmOpportunitiesRelations = relations(crmOpportunities, ({ one }) => ({
+  company: one(companies, {
+    fields: [crmOpportunities.companyId],
+    references: [companies.id],
+  }),
+}));
+
 // Insert schemas
 export const insertCompanySchema = createInsertSchema(companies).omit({
   id: true,
@@ -110,6 +133,12 @@ export const insertCallPrepSchema = createInsertSchema(callPreps).omit({
   createdAt: true,
 });
 
+export const insertCrmOpportunitySchema = createInsertSchema(crmOpportunities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type Company = typeof companies.$inferSelect;
 export type InsertCompany = z.infer<typeof insertCompanySchema>;
@@ -122,6 +151,9 @@ export type InsertCall = z.infer<typeof insertCallSchema>;
 
 export type CallPrep = typeof callPreps.$inferSelect;
 export type InsertCallPrep = z.infer<typeof insertCallPrepSchema>;
+
+export type CrmOpportunity = typeof crmOpportunities.$inferSelect;
+export type InsertCrmOpportunity = z.infer<typeof insertCrmOpportunitySchema>;
 
 // Integration tables for external services
 export const integrations = pgTable("integrations", {

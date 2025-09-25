@@ -3,6 +3,7 @@ import { OAuthHandler, OAuthConfig } from "./oauth";
 import { storage } from "../../storage";
 import { Integration, InsertIntegration } from "@shared/schema";
 import { CryptoService } from "../crypto";
+import { SalesforceService } from "./salesforce";
 
 export class IntegrationManager {
   private services: Map<string, BaseIntegrationService> = new Map();
@@ -168,10 +169,19 @@ export class IntegrationManager {
   }
 
   private async syncCrmData(service: BaseIntegrationService): Promise<SyncResult> {
-    const results = await Promise.all([
-      service.syncCompanies(),
-      service.syncContacts()
-    ]);
+    const results: SyncResult[] = [];
+    
+    // Sync companies and contacts first
+    results.push(await service.syncCompanies());
+    results.push(await service.syncContacts());
+    
+    // Sync opportunities if available (for Salesforce)
+    if ((service as any).syncOpportunities) {
+      results.push(await (service as any).syncOpportunities());
+    }
+    
+    // Sync meetings last (depends on companies and opportunities)
+    results.push(await service.syncMeetings());
 
     return {
       success: results.every(r => r.success),
@@ -219,18 +229,31 @@ export class IntegrationManager {
   }
 
   private createServiceForIntegration(integration: Integration): BaseIntegrationService | undefined {
-    // Create stub services for now - will be replaced with real implementations
-    switch (integration.name) {
-      case 'salesforce':
-      case 'hubspot':
+    // Match by type and provider pattern, not exact name
+    if (integration.type === 'crm') {
+      if (integration.name.toLowerCase().includes('salesforce') || 
+          integration.config?.provider === 'salesforce') {
+        return new SalesforceService(integration.config as IntegrationConfig);
+      }
+      if (integration.name.toLowerCase().includes('hubspot') || 
+          integration.config?.provider === 'hubspot') {
         return new StubCrmService(integration.config as IntegrationConfig);
-      case 'google_calendar':
-      case 'outlook':
-        return new StubCalendarService(integration.config as IntegrationConfig);
-      default:
-        console.warn(`No service implementation for integration: ${integration.name}`);
-        return undefined;
+      }
     }
+    
+    if (integration.type === 'calendar') {
+      if (integration.name.toLowerCase().includes('google') || 
+          integration.config?.provider === 'google') {
+        return new StubCalendarService(integration.config as IntegrationConfig);
+      }
+      if (integration.name.toLowerCase().includes('outlook') || 
+          integration.config?.provider === 'outlook') {
+        return new StubCalendarService(integration.config as IntegrationConfig);
+      }
+    }
+    
+    console.warn(`No service implementation for integration: ${integration.name} (type: ${integration.type})`);
+    return undefined;
   }
 
   private buildOAuthConfig(integration: Integration): OAuthConfig {

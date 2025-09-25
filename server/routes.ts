@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
 import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema } from "@shared/schema";
 import { integrationManager } from "./services/integrations/manager";
+import { CryptoService } from "./services/crypto";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -199,13 +200,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const integrations = await integrationManager.getAllIntegrations();
       // Remove sensitive credential data from response
-      const sanitizedIntegrations = integrations.map(integration => ({
-        ...integration,
-        credentials: integration.credentials ? { hasCredentials: true } : { hasCredentials: false }
-      }));
+      const sanitizedIntegrations = integrations.map(integration => {
+        let hasCredentials = false;
+        
+        if (integration.credentials && Object.keys(integration.credentials).length > 0) {
+          try {
+            // Try to decrypt credentials to check if they contain valid tokens
+            const decryptedCredentials = CryptoService.decryptCredentials(integration.credentials);
+            hasCredentials = !!(decryptedCredentials && decryptedCredentials.accessToken);
+          } catch (error) {
+            // If decryption fails, check if credentials object has any meaningful data
+            hasCredentials = !!(integration.credentials as any).accessToken;
+          }
+        }
+        
+        return {
+          ...integration,
+          credentials: { hasCredentials }
+        };
+      });
       res.json(sanitizedIntegrations);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch integrations" });
+    }
+  });
+
+  // Get single integration
+  app.get("/api/integrations/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const integration = await integrationManager.getIntegration(id);
+      
+      if (!integration) {
+        return res.status(404).json({ message: "Integration not found" });
+      }
+
+      // Remove sensitive credential data from response
+      let hasCredentials = false;
+      
+      if (integration.credentials && Object.keys(integration.credentials).length > 0) {
+        try {
+          const decryptedCredentials = CryptoService.decryptCredentials(integration.credentials);
+          hasCredentials = !!(decryptedCredentials && decryptedCredentials.accessToken);
+        } catch (error) {
+          hasCredentials = !!(integration.credentials as any).accessToken;
+        }
+      }
+
+      const sanitizedIntegration = {
+        ...integration,
+        credentials: { hasCredentials }
+      };
+
+      res.json(sanitizedIntegration);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch integration" });
     }
   });
 
@@ -228,6 +277,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ authUrl });
     } catch (error) {
       res.status(500).json({ message: "Failed to initiate OAuth flow: " + (error as Error).message });
+    }
+  });
+
+  // Trigger sync for integration
+  app.get("/api/integrations/:id/sync", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = await integrationManager.syncIntegration(id);
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to sync integration: " + (error as Error).message });
     }
   });
 

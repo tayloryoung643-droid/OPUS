@@ -1,12 +1,13 @@
 import { 
-  companies, contacts, calls, callPreps, users, integrations, integrationData,
+  companies, contacts, calls, callPreps, users, integrations, integrationData, crmOpportunities,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
   type CallPrep, type InsertCallPrep,
   type User, type InsertUser,
   type Integration, type InsertIntegration,
-  type IntegrationData, type InsertIntegrationData
+  type IntegrationData, type InsertIntegrationData,
+  type CrmOpportunity, type InsertCrmOpportunity
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -26,6 +27,7 @@ export interface IStorage {
   // Contact methods
   createContact(contact: InsertContact): Promise<Contact>;
   getContactsByCompany(companyId: string): Promise<Contact[]>;
+  updateContact(id: string, updates: Partial<InsertContact>): Promise<Contact>;
 
   // Call methods
   createCall(call: InsertCall): Promise<Call>;
@@ -34,6 +36,12 @@ export interface IStorage {
   getUpcomingCalls(): Promise<Array<Call & { company: Company }>>;
   getPreviousCalls(): Promise<Array<Call & { company: Company }>>;
   updateCallStatus(id: string, status: string): Promise<void>;
+  updateCall(id: string, updates: Partial<InsertCall>): Promise<Call>;
+
+  // Opportunity methods
+  createOpportunity(opportunity: InsertCrmOpportunity): Promise<CrmOpportunity>;
+  getOpportunitiesByCompany(companyId: string): Promise<CrmOpportunity[]>;
+  updateOpportunity(id: string, updates: Partial<InsertCrmOpportunity>): Promise<CrmOpportunity>;
 
   // Call prep methods
   createCallPrep(callPrep: InsertCallPrep): Promise<CallPrep>;
@@ -107,6 +115,15 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(contacts).where(eq(contacts.companyId, companyId));
   }
 
+  async updateContact(id: string, updates: Partial<InsertContact>): Promise<Contact> {
+    const [contact] = await db
+      .update(contacts)
+      .set(updates)
+      .where(eq(contacts.id, id))
+      .returning();
+    return contact;
+  }
+
   // Call methods
   async createCall(insertCall: InsertCall): Promise<Call> {
     const [call] = await db.insert(calls).values(insertCall).returning();
@@ -161,6 +178,34 @@ export class DatabaseStorage implements IStorage {
 
   async updateCallStatus(id: string, status: string): Promise<void> {
     await db.update(calls).set({ status }).where(eq(calls.id, id));
+  }
+
+  async updateCall(id: string, updates: Partial<InsertCall>): Promise<Call> {
+    const [call] = await db
+      .update(calls)
+      .set(updates)
+      .where(eq(calls.id, id))
+      .returning();
+    return call;
+  }
+
+  // Opportunity methods
+  async createOpportunity(insertOpportunity: InsertCrmOpportunity): Promise<CrmOpportunity> {
+    const [opportunity] = await db.insert(crmOpportunities).values(insertOpportunity).returning();
+    return opportunity;
+  }
+
+  async getOpportunitiesByCompany(companyId: string): Promise<CrmOpportunity[]> {
+    return await db.select().from(crmOpportunities).where(eq(crmOpportunities.companyId, companyId));
+  }
+
+  async updateOpportunity(id: string, updates: Partial<InsertCrmOpportunity>): Promise<CrmOpportunity> {
+    const [opportunity] = await db
+      .update(crmOpportunities)
+      .set(updates)
+      .where(eq(crmOpportunities.id, id))
+      .returning();
+    return opportunity;
   }
 
   // Call prep methods

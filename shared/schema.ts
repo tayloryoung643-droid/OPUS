@@ -180,11 +180,31 @@ export const integrationData = pgTable("integration_data", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Legacy user schema for compatibility
+// Session storage table.
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: jsonb("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [
+    // Add index for session expiration
+    sql`CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON ${table} (${table.expire})`
+  ]
+);
+
+// User storage table for Replit Auth.
+// (IMPORTANT) This table is mandatory for Replit Auth, don't drop it.
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Integration schemas
@@ -199,9 +219,10 @@ export const insertIntegrationDataSchema = createInsertSchema(integrationData).o
   createdAt: true,
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+// User schemas for Replit Auth
+export const insertUserSchema = createInsertSchema(users).omit({
+  createdAt: true,
+  updatedAt: true,
 });
 
 // Integration types
@@ -211,5 +232,6 @@ export type InsertIntegration = z.infer<typeof insertIntegrationSchema>;
 export type IntegrationData = typeof integrationData.$inferSelect;
 export type InsertIntegrationData = z.infer<typeof insertIntegrationDataSchema>;
 
-export type InsertUser = z.infer<typeof insertUserSchema>;
+// User types for Replit Auth
+export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;

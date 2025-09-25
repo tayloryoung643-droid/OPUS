@@ -4,7 +4,7 @@ import {
   type Contact, type InsertContact,
   type Call, type InsertCall,
   type CallPrep, type InsertCallPrep,
-  type User, type InsertUser,
+  type User, type UpsertUser,
   type Integration, type InsertIntegration,
   type IntegrationData, type InsertIntegrationData,
   type CrmOpportunity, type InsertCrmOpportunity
@@ -13,10 +13,13 @@ import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
 
 export interface IStorage {
-  // Legacy user methods
+  // User methods for Replit Auth
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  upsertUser(user: UpsertUser): Promise<User>;
+  
+  // Legacy user methods (keeping for compatibility)
+  getUserByUsername?(username: string): Promise<User | undefined>;
+  createUser?(user: UpsertUser): Promise<User>;
 
   // Company methods
   createCompany(company: InsertCompany): Promise<Company>;
@@ -64,18 +67,34 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  // Legacy user methods
+  // User methods for Replit Auth
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user || undefined;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
-    return user || undefined;
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  // Legacy user methods (kept for compatibility)
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    // Note: username field may not exist in new schema
+    return undefined;
+  }
+
+  async createUser(insertUser: UpsertUser): Promise<User> {
     const [user] = await db.insert(users).values(insertUser).returning();
     return user;
   }

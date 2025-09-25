@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
 import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema } from "@shared/schema";
@@ -8,6 +9,21 @@ import { CryptoService } from "./services/crypto";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Setup Replit Auth (Google Sign-in support)
+  await setupAuth(app);
+  
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+  
   // Get all calls with company data
   app.get("/api/calls", async (req, res) => {
     try {

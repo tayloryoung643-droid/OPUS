@@ -19,6 +19,7 @@ export interface IStorage {
   createCompany(company: InsertCompany): Promise<Company>;
   getCompany(id: string): Promise<Company | undefined>;
   getCompanyByDomain(domain: string): Promise<Company | undefined>;
+  updateCompany(id: string, updates: Partial<InsertCompany>): Promise<Company>;
 
   // Contact methods
   createContact(contact: InsertContact): Promise<Contact>;
@@ -69,6 +70,15 @@ export class DatabaseStorage implements IStorage {
   async getCompanyByDomain(domain: string): Promise<Company | undefined> {
     const [company] = await db.select().from(companies).where(eq(companies.domain, domain));
     return company || undefined;
+  }
+
+  async updateCompany(id: string, updates: Partial<InsertCompany>): Promise<Company> {
+    const [company] = await db
+      .update(companies)
+      .set(updates as any)
+      .where(eq(companies.id, id))
+      .returning();
+    return company;
   }
 
   // Contact methods

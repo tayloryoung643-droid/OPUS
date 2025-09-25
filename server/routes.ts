@@ -174,8 +174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Update company with recent news
       if (company.id && research.recentNews.length > 0) {
-        await storage.createCompany({
-          ...company,
+        await storage.updateCompany(company.id, {
           recentNews: research.recentNews
         });
       }

@@ -2,8 +2,63 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Search, MessageSquare, Users, TrendingUp, Lightbulb, RefreshCw, Play } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 
 export default function Landing() {
+  const [isSigningIn, setIsSigningIn] = useState(false);
+  
+  // Get the first available Salesforce integration
+  const { data: integrations } = useQuery({
+    queryKey: ['/api/integrations'],
+    enabled: isSigningIn // Only fetch when sign-in is clicked
+  });
+
+  const handleSignIn = async () => {
+    setIsSigningIn(true);
+    
+    try {
+      // Fetch integrations if not already loaded
+      let availableIntegrations = integrations;
+      if (!availableIntegrations) {
+        const response = await fetch('/api/integrations');
+        if (!response.ok) {
+          throw new Error('Failed to fetch integrations');
+        }
+        availableIntegrations = await response.json();
+      }
+      
+      // Find a Salesforce CRM integration
+      const salesforceIntegration = (availableIntegrations as any[])?.find((integration: any) => 
+        integration.type === 'crm' && 
+        integration.name.toLowerCase().includes('salesforce')
+      );
+      
+      if (!salesforceIntegration) {
+        console.error('No Salesforce integration found');
+        setIsSigningIn(false);
+        return;
+      }
+
+      // Initiate OAuth flow
+      const response = await fetch(`/api/integrations/${salesforceIntegration.id}/oauth`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to initiate OAuth');
+      }
+      
+      const { authUrl } = await response.json();
+      
+      // Redirect to Salesforce OAuth
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('Sign-in failed:', error);
+      setIsSigningIn(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
@@ -24,7 +79,14 @@ export default function Landing() {
           </div>
           
           <div className="flex items-center space-x-4">
-            <Button variant="ghost" data-testid="button-signin">Sign-in</Button>
+            <Button 
+              variant="ghost" 
+              onClick={handleSignIn}
+              disabled={isSigningIn}
+              data-testid="button-signin"
+            >
+              {isSigningIn ? "Connecting..." : "Sign-in"}
+            </Button>
             <Link href="/dashboard">
               <Button data-testid="button-book-demo">Book Demo</Button>
             </Link>

@@ -608,29 +608,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const company = call.companyId ? await storage.getCompany(call.companyId) : null;
       const contacts = call.companyId ? await storage.getContactsByCompany(call.companyId) : [];
 
-      // If no company found, return partial sheet instead of 400 error
+          // If no company found, try to resolve using Account Resolver
       if (!company) {
-        console.info('[prepSheet] generation mode: partial, candidates:', 0);
+        const { AccountResolver } = await import('./services/accountResolver');
+        const resolver = new AccountResolver(storage);
+        
+        let candidates: any[] = [];
+        let calendarEvent = null;
+        
+        try {
+          // Try to find the original calendar event for this call
+          const integration = await storage.getIntegrationByName("google_calendar");
+          if (integration && req.user?.claims?.sub) {
+            const userId = req.user.claims.sub;
+            const externalId = `${userId}:*`; // We'll need to find the right event ID
+            
+            // Get integration data to find calendar event ID
+            const integrationDataList = await storage.getIntegrationData(integration.id, "call");
+            const callMapping = integrationDataList.find(data => data.localId === call.id);
+            
+            if (callMapping) {
+              // Extract event ID from external ID format: "userId:eventId" 
+              const eventId = callMapping.externalId.split(':')[1];
+              console.log(`[AccountResolver] Found calendar event ID: ${eventId} for call ${call.id}`);
+              
+              // Fetch original calendar event with attendees
+              const { googleCalendarService } = await import('./services/googleCalendar');
+              calendarEvent = await googleCalendarService.getEventById(userId, eventId);
+              
+              if (calendarEvent) {
+                console.log(`[AccountResolver] Found calendar event: ${calendarEvent.summary}, attendees: ${calendarEvent.attendees?.length || 0}`);
+                
+                // Use Account Resolver to find matches
+                const match = await resolver.resolve(calendarEvent);
+                
+                if (match.confidence > 0) {
+                  candidates = [{
+                    company: match.company,
+                    contacts: match.contacts,
+                    confidence: match.confidence,
+                    matchType: match.matchType,
+                    matchDetails: match.matchDetails
+                  }];
+                  console.log(`[AccountResolver] Found ${candidates.length} candidates, top confidence: ${match.confidence}%`);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('[AccountResolver] Error resolving accounts:', error);
+        }
+
+        console.info(`[prepSheet] generation mode: partial, candidates: ${candidates.length}`);
         
         return res.status(200).json({
           mode: 'partial',
           sheet: {
             notesSectionFirst: true,
-            banner: 'Limited context: no account linked yet. Link an account to enrich.',
+            banner: candidates.length > 0 
+              ? 'Account suggestions found. Link an account to enrich with full prep.' 
+              : 'Limited context: no account linked yet. Link an account to enrich.',
             eventSummary: { 
               title: call.title, 
               start: call.scheduledAt, 
               end: null, 
               location: null 
             },
-            attendees: [],
-            organizer: undefined,
-            agendaFromInvite: parseInviteToBullets(''),
+            attendees: calendarEvent?.attendees?.map(a => ({
+              email: a.email,
+              name: a.displayName,
+              status: a.responseStatus
+            })) || [],
+            organizer: calendarEvent?.organizer,
+            agendaFromInvite: parseInviteToBullets(calendarEvent?.description || ''),
             actionItems: [],
             risks: []
           },
-          needsSelection: true,
-          candidates: []
+          needsSelection: candidates.length > 0,
+          candidates: candidates
         });
       }
 

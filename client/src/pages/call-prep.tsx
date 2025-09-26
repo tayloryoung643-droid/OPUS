@@ -1,11 +1,11 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRoute, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sparkles, Calendar, Building2, Clock } from "lucide-react";
+import { Sparkles, Calendar, Building2, NotebookPen } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/ui/navigation";
@@ -15,6 +15,8 @@ import CompetitiveLandscape from "@/components/call-prep/competitive-landscape";
 import KeyStakeholders from "@/components/call-prep/key-stakeholders";
 import RecentNews from "@/components/call-prep/recent-news";
 import SuggestedOpportunities from "@/components/call-prep/suggested-opportunities";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { PrepSheetView } from "@/features/prep-sheet/PrepSheetView";
 
 interface CallDetails {
   call: {
@@ -24,6 +26,8 @@ interface CallDetails {
     status: string;
     callType?: string;
     stage?: string;
+    companyId?: string | null;
+    calendarEventId?: string | null;
   };
   company: {
     id: string;
@@ -60,10 +64,6 @@ interface CallDetails {
     strategicExpansion?: string[];
     isGenerated: boolean;
   } | null;
-}
-
-interface CalendarCallEnsureResult extends CallDetails {
-  source?: "calendar";
   calendarEvent?: {
     id: string;
     summary?: string;
@@ -78,6 +78,10 @@ interface CalendarCallEnsureResult extends CallDetails {
   };
 }
 
+interface CalendarCallEnsureResult extends CallDetails {
+  source?: "calendar";
+}
+
 export default function CallPrep() {
   const [, params] = useRoute("/call/:id");
   const [, navigate] = useLocation();
@@ -86,6 +90,8 @@ export default function CallPrep() {
 
   const isCalendarSelection = !!callId && callId.startsWith("calendar_");
   const calendarEventId = isCalendarSelection ? callId.replace(/^calendar_/, "") : null;
+  const [prepSheetEventId, setPrepSheetEventId] = useState<string | null>(calendarEventId);
+  const [isPrepSheetOpen, setIsPrepSheetOpen] = useState<boolean>(false);
 
   const {
     data: ensuredCalendarCall,
@@ -133,6 +139,20 @@ export default function CallPrep() {
     }
   }, [isCalendarSelection, ensuredCalendarCall, navigate]);
 
+  useEffect(() => {
+    if (ensuredCalendarCall?.calendarEvent?.id) {
+      setPrepSheetEventId(ensuredCalendarCall.calendarEvent.id);
+    }
+  }, [ensuredCalendarCall?.calendarEvent?.id]);
+
+  useEffect(() => {
+    if (callDetails?.calendarEvent?.id) {
+      setPrepSheetEventId(callDetails.calendarEvent.id);
+    } else if (callDetails?.call?.calendarEventId) {
+      setPrepSheetEventId(callDetails.call.calendarEventId);
+    }
+  }, [callDetails]);
+
   // Generate AI prep mutation
   const generatePrepMutation = useMutation({
     mutationFn: async (targetCallId: string) => {
@@ -158,6 +178,23 @@ export default function CallPrep() {
   const combinedError = (ensureCalendarError as Error | null) || (callDetailsError as Error | null);
   const isLoading =
     (isCalendarSelection && (ensuringCalendarCall || !resolvedCallId)) || callDetailsLoading;
+
+  const hasCompanyContext = !!callDetails?.company;
+  const isCalendarSourcedCall = !hasCompanyContext || !!prepSheetEventId;
+  const shouldRenderPrepSheet = isCalendarSourcedCall && !!prepSheetEventId;
+
+  useEffect(() => {
+    if (shouldRenderPrepSheet) {
+      setIsPrepSheetOpen(true);
+    }
+  }, [shouldRenderPrepSheet, prepSheetEventId]);
+
+  const handleGenerateLegacyPrep = (targetCallId: string | null | undefined) => {
+    if (!targetCallId || !hasCompanyContext) {
+      return;
+    }
+    generatePrepMutation.mutate(targetCallId);
+  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -245,12 +282,23 @@ export default function CallPrep() {
                   </Badge>
                 </div>
               </div>
-              
+
               <div className="flex items-center space-x-3">
-                {!callPrep?.isGenerated && (
+                {shouldRenderPrepSheet && (
                   <Button
-                    onClick={() => resolvedCallId && generatePrepMutation.mutate(resolvedCallId)}
-                    disabled={generatePrepMutation.isPending || !resolvedCallId}
+                    onClick={() => setIsPrepSheetOpen(true)}
+                    className="flex items-center space-x-2"
+                    disabled={!prepSheetEventId}
+                    data-testid="button-open-prep-sheet"
+                  >
+                    <NotebookPen className="h-4 w-4" />
+                    <span>Open Prep Sheet</span>
+                  </Button>
+                )}
+                {!shouldRenderPrepSheet && !callPrep?.isGenerated && (
+                  <Button
+                    onClick={() => handleGenerateLegacyPrep(resolvedCallId)}
+                    disabled={generatePrepMutation.isPending || !resolvedCallId || !hasCompanyContext}
                     className="flex items-center space-x-2"
                     data-testid="button-generate-prep"
                   >
@@ -258,10 +306,10 @@ export default function CallPrep() {
                     <span>{generatePrepMutation.isPending ? "Generating..." : "Generate AI Prep"}</span>
                   </Button>
                 )}
-                {callPrep?.isGenerated && (
+                {!shouldRenderPrepSheet && callPrep?.isGenerated && (
                   <Button
-                    onClick={() => resolvedCallId && generatePrepMutation.mutate(resolvedCallId)}
-                    disabled={generatePrepMutation.isPending || !resolvedCallId}
+                    onClick={() => handleGenerateLegacyPrep(resolvedCallId)}
+                    disabled={generatePrepMutation.isPending || !resolvedCallId || !hasCompanyContext}
                     variant="outline"
                     className="flex items-center space-x-2"
                     data-testid="button-regenerate-prep"
@@ -274,46 +322,85 @@ export default function CallPrep() {
             </div>
           </div>
 
-          {/* No Prep State */}
-          {!callPrep && (
-            <Card className="mb-8">
-              <CardContent className="p-8 text-center">
-                <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h2 className="text-xl font-semibold mb-2">No Preparation Available</h2>
-                <p className="text-muted-foreground mb-4">
-                  Generate AI-powered call preparation to get insights, research, and conversation strategies.
-                </p>
-                <Button
-                  onClick={() => resolvedCallId && generatePrepMutation.mutate(resolvedCallId)}
-                  disabled={generatePrepMutation.isPending || !resolvedCallId}
-                  data-testid="button-generate-initial-prep"
+          {shouldRenderPrepSheet ? (
+            <>
+              <Card className="mb-8">
+                <CardContent className="p-8 text-center space-y-4">
+                  <Calendar className="h-12 w-12 text-muted-foreground mx-auto" />
+                  <h2 className="text-xl font-semibold">Calendar prep sheet available</h2>
+                  <p className="text-muted-foreground">
+                    This meeting comes from your calendar. Use the prep sheet to capture notes and enrich the call with CRM
+                    context.
+                  </p>
+                  <Button onClick={() => setIsPrepSheetOpen(true)} disabled={!prepSheetEventId}>
+                    View prep sheet
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Sheet open={isPrepSheetOpen} onOpenChange={setIsPrepSheetOpen}>
+                <SheetContent
+                  side="right"
+                  className="w-full overflow-y-auto sm:max-w-3xl"
+                  aria-describedby={undefined}
                 >
-                  {generatePrepMutation.isPending ? "Generating..." : "Generate AI Prep"}
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+                  <SheetHeader>
+                    <SheetTitle>Prep sheet</SheetTitle>
+                  </SheetHeader>
+                  <div className="mt-6 pb-10">
+                    {prepSheetEventId ? (
+                      <PrepSheetView eventId={prepSheetEventId} />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Unable to load prep sheet without a calendar event.</p>
+                    )}
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </>
+          ) : (
+            <>
+              {/* No Prep State */}
+              {!callPrep && (
+                <Card className="mb-8">
+                  <CardContent className="p-8 text-center">
+                    <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h2 className="text-xl font-semibold mb-2">No Preparation Available</h2>
+                    <p className="text-muted-foreground mb-4">
+                      Generate AI-powered call preparation to get insights, research, and conversation strategies.
+                    </p>
+                    <Button
+                      onClick={() => handleGenerateLegacyPrep(resolvedCallId)}
+                      disabled={generatePrepMutation.isPending || !resolvedCallId || !hasCompanyContext}
+                      data-testid="button-generate-initial-prep"
+                    >
+                      {generatePrepMutation.isPending ? "Generating..." : "Generate AI Prep"}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
-          {/* Main Content Grid */}
-          {callPrep && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Left Column */}
-              <div className="lg:col-span-2 space-y-6">
-                <ExecutiveSummary summary={callPrep.executiveSummary} contacts={contacts} company={company} />
-                <CrmHistory history={callPrep.crmHistory} />
-                <CompetitiveLandscape landscape={callPrep.competitiveLandscape} />
-              </div>
+              {/* Main Content Grid */}
+              {callPrep && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                  {/* Left Column */}
+                  <div className="lg:col-span-2 space-y-6">
+                    <ExecutiveSummary summary={callPrep.executiveSummary} contacts={contacts} company={company} />
+                    <CrmHistory history={callPrep.crmHistory} />
+                    <CompetitiveLandscape landscape={callPrep.competitiveLandscape} />
+                  </div>
 
-              {/* Right Column */}
-              <div className="space-y-6">
-                <KeyStakeholders contacts={contacts} />
-                <RecentNews news={company?.recentNews || []} />
-                <SuggestedOpportunities 
-                  immediate={callPrep.immediateOpportunities || []}
-                  strategic={callPrep.strategicExpansion || []}
-                />
-              </div>
-            </div>
+                  {/* Right Column */}
+                  <div className="space-y-6">
+                    <KeyStakeholders contacts={contacts} />
+                    <RecentNews news={company?.recentNews || []} />
+                    <SuggestedOpportunities
+                      immediate={callPrep.immediateOpportunities || []}
+                      strategic={callPrep.strategicExpansion || []}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

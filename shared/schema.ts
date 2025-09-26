@@ -228,6 +228,7 @@ export const salesforceIntegrations = pgTable("salesforce_integrations", {
   refreshToken: text("refresh_token"),
   instanceUrl: text("instance_url").notNull(), // Salesforce instance URL
   tokenExpiry: timestamp("token_expiry"),
+  // scopes: jsonb("scopes").$type<string[]>().default([]), // Temporarily disabled for migration
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

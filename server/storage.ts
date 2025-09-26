@@ -501,6 +501,11 @@ export class DatabaseStorage implements IStorage {
           // Token is not encrypted or JSON, leave as is
         }
       }
+      
+      // Temporarily add empty scopes array for compatibility until schema migration
+      if (!decrypted.scopes) {
+        (decrypted as any).scopes = [];
+      }
     } catch (error) {
       console.error('Error decrypting Salesforce integration tokens:', error);
       // Return the integration without decrypting if there's an error

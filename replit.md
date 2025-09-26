@@ -65,10 +65,23 @@ Production-ready Google Calendar integration with enterprise-grade security:
 - **Error Handling**: Graceful handling of expired tokens with automatic re-authentication prompts
 - **Security Compliance**: Encrypted token storage, secure refresh flows, and proper error handling
 
+### Salesforce CRM Integration
+Enterprise-grade Salesforce CRM integration for comprehensive sales data access:
+
+- **OAuth Flow**: Complete Salesforce OAuth 2.0 flow with API and refresh token scopes
+- **Connected App Security**: Configured with proper OAuth policies (client secret required, PKCE disabled for compatibility)
+- **Token Security**: AES-256-GCM encryption for all Salesforce OAuth tokens stored in database
+- **Multi-Environment Support**: Works with production, sandbox, and My Domain Salesforce instances
+- **CRM Data Access**: Full API access for accounts, contacts, opportunities, and sales data
+- **Settings Management**: Complete integration lifecycle (connect, status checking, disconnect)
+- **Error Handling**: Robust handling of token expiration with automatic re-authentication flows
+- **Security Compliance**: Enterprise security with encrypted credential storage and SSRF protection
+
 ### External Service Integrations
 The platform integrates with external services for enhanced functionality:
 
 - **Google Calendar Integration**: Live calendar event fetching, OAuth token management, and real-time sync
+- **Salesforce CRM Integration**: Enterprise-grade CRM data access with full OAuth 2.0 security and encrypted token storage
 - **OpenAI Integration**: GPT models for generating prospect research, competitive analysis, and conversation strategies
 - **AI Research Generation**: Automated creation of executive summaries, CRM history analysis, competitive landscape mapping, and opportunity identification
 - **Secure Token Management**: Enterprise-grade encryption for all third-party API credentials

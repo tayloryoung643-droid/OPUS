@@ -236,6 +236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         connected: !!salesforceIntegration?.isActive,
         instanceUrl: salesforceIntegration?.instanceUrl,
         connectedAt: salesforceIntegration?.createdAt,
+        scopes: salesforceIntegration?.scopes || [],
         service: "salesforce"
       });
     } catch (error) {
@@ -260,7 +261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Salesforce CRM data routes
-  app.get("/api/salesforce/leads", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/leads", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');
@@ -273,7 +274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/salesforce/opportunities", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/opportunities", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');
@@ -286,7 +287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/salesforce/contacts", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/contacts", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');

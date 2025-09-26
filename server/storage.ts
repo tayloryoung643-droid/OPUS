@@ -1,5 +1,6 @@
 import { 
   companies, contacts, calls, callPreps, users, integrations, integrationData, crmOpportunities, googleIntegrations, salesforceIntegrations,
+  eventAccountLinks,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
@@ -9,7 +10,8 @@ import {
   type IntegrationData, type InsertIntegrationData,
   type CrmOpportunity, type InsertCrmOpportunity,
   type GoogleIntegration, type InsertGoogleIntegration,
-  type SalesforceIntegration, type InsertSalesforceIntegration
+  type SalesforceIntegration, type InsertSalesforceIntegration,
+  type EventAccountLink, type InsertEventAccountLink
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -84,6 +86,10 @@ export interface IStorage {
   getSalesforceIntegration(userId: string): Promise<SalesforceIntegration | undefined>;
   updateSalesforceIntegration(userId: string, updates: Partial<InsertSalesforceIntegration>): Promise<SalesforceIntegration>;
   deleteSalesforceIntegration(userId: string): Promise<void>;
+
+  // Event account linking
+  getEventAccountLink(userId: string, eventId: string): Promise<EventAccountLink | undefined>;
+  upsertEventAccountLink(link: InsertEventAccountLink): Promise<EventAccountLink>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -494,6 +500,40 @@ export class DatabaseStorage implements IStorage {
       .update(salesforceIntegrations)
       .set({ isActive: false, updatedAt: new Date() })
       .where(eq(salesforceIntegrations.userId, userId));
+  }
+
+  async getEventAccountLink(userId: string, eventId: string): Promise<EventAccountLink | undefined> {
+    const [link] = await db
+      .select()
+      .from(eventAccountLinks)
+      .where(
+        and(
+          eq(eventAccountLinks.userId, userId),
+          eq(eventAccountLinks.eventId, eventId),
+        ),
+      );
+
+    return link || undefined;
+  }
+
+  async upsertEventAccountLink(link: InsertEventAccountLink): Promise<EventAccountLink> {
+    const existing = await this.getEventAccountLink(link.userId, link.eventId);
+
+    if (existing) {
+      const [updated] = await db
+        .update(eventAccountLinks)
+        .set({
+          accountId: link.accountId,
+          updatedAt: new Date(),
+        })
+        .where(eq(eventAccountLinks.id, existing.id))
+        .returning();
+
+      return updated;
+    }
+
+    const [created] = await db.insert(eventAccountLinks).values(link).returning();
+    return created;
   }
 
   private decryptSalesforceIntegrationTokens(salesforceIntegration: SalesforceIntegration): SalesforceIntegration {

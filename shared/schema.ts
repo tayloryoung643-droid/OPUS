@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, jsonb, boolean, numeric, integer, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, jsonb, boolean, numeric, integer, date, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -234,6 +234,21 @@ export const salesforceIntegrations = pgTable("salesforce_integrations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const eventAccountLinks = pgTable(
+  "event_account_links",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+    eventId: text("event_id").notNull(),
+    accountId: text("account_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow(),
+  },
+  (table) => ({
+    userEventUnique: uniqueIndex("event_account_links_user_event_unique").on(table.userId, table.eventId),
+  })
+);
+
 // Integration schemas
 export const insertIntegrationSchema = createInsertSchema(integrations).omit({
   id: true,
@@ -258,12 +273,21 @@ export const insertSalesforceIntegrationSchema = createInsertSchema(salesforceIn
   updatedAt: true,
 });
 
+export const insertEventAccountLinkSchema = createInsertSchema(eventAccountLinks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type GoogleIntegration = typeof googleIntegrations.$inferSelect;
 export type InsertGoogleIntegration = z.infer<typeof insertGoogleIntegrationSchema>;
 
 export type SalesforceIntegration = typeof salesforceIntegrations.$inferSelect;
 export type InsertSalesforceIntegration = z.infer<typeof insertSalesforceIntegrationSchema>;
+
+export type EventAccountLink = typeof eventAccountLinks.$inferSelect;
+export type InsertEventAccountLink = z.infer<typeof insertEventAccountLinkSchema>;
 
 // User schemas for Replit Auth
 export const insertUserSchema = createInsertSchema(users).omit({

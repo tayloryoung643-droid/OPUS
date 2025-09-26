@@ -7,11 +7,14 @@ import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallP
 import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
 import { z } from "zod";
+import { prepSheetRouter } from "./routes/prepSheet";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth (Google Sign-in support)
   await setupAuth(app);
-  
+
+  app.use(prepSheetRouter);
+
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {

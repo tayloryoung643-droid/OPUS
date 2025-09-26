@@ -697,6 +697,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Prep notes API endpoints
+  app.get("/api/prep-notes", async (req: any, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const eventId = req.query.eventId as string;
+      if (!eventId) {
+        return res.status(400).json({ message: "eventId parameter required" });
+      }
+
+      const userId = req.user.claims.sub;
+      const note = await storage.getPrepNote(userId, eventId);
+      
+      res.json({
+        text: note?.text || '',
+        updatedAt: note?.updatedAt || null
+      });
+    } catch (error) {
+      console.error('Failed to get prep note:', error);
+      res.status(500).json({ message: "Failed to get prep note" });
+    }
+  });
+
+  app.put("/api/prep-notes", async (req: any, res) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      const { eventId, text } = req.body;
+      if (!eventId) {
+        return res.status(400).json({ message: "eventId is required" });
+      }
+
+      const userId = req.user.claims.sub;
+      const note = await storage.upsertPrepNote(userId, eventId, text || '');
+      
+      res.json(note);
+    } catch (error) {
+      console.error('Failed to save prep note:', error);
+      res.status(500).json({ message: "Failed to save prep note" });
+    }
+  });
+
+  console.log('[prepNotes] routes mounted at /api/prep-notes');
+
   // Integration management routes
   
   // Get all integrations

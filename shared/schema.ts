@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, jsonb, boolean, numeric, integer, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, jsonb, boolean, numeric, integer, date, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -57,6 +57,18 @@ export const callPreps = pgTable("call_preps", {
   isGenerated: boolean("is_generated").default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// User prep notes table for persistent notes
+export const prepNotes = pgTable("prep_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  eventId: varchar("event_id").notNull(), 
+  text: text("text").notNull().default(''),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  // Unique constraint for (userId, eventId) combination
+  uniqueUserEvent: unique().on(table.userId, table.eventId),
+}));
 
 // Opportunities schema (for CRM sync)
 export const crmOpportunities = pgTable("crm_opportunities", {
@@ -281,3 +293,12 @@ export type InsertIntegrationData = z.infer<typeof insertIntegrationDataSchema>;
 // User types for Replit Auth
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
+
+// Prep notes schemas and types
+export const insertPrepNoteSchema = createInsertSchema(prepNotes).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type PrepNote = typeof prepNotes.$inferSelect;
+export type InsertPrepNote = z.infer<typeof insertPrepNoteSchema>;

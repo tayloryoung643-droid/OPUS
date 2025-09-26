@@ -1,9 +1,10 @@
 import { 
-  companies, contacts, calls, callPreps, users, integrations, integrationData, crmOpportunities, googleIntegrations, salesforceIntegrations,
+  companies, contacts, calls, callPreps, prepNotes, users, integrations, integrationData, crmOpportunities, googleIntegrations, salesforceIntegrations,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
   type CallPrep, type InsertCallPrep,
+  type PrepNote, type InsertPrepNote,
   type User, type UpsertUser,
   type Integration, type InsertIntegration,
   type IntegrationData, type InsertIntegrationData,
@@ -53,6 +54,10 @@ export interface IStorage {
   createCallPrep(callPrep: InsertCallPrep): Promise<CallPrep>;
   getCallPrep(callId: string): Promise<CallPrep | undefined>;
   updateCallPrep(callId: string, updates: Partial<InsertCallPrep>): Promise<CallPrep>;
+
+  // Prep notes methods
+  getPrepNote(userId: string, eventId: string): Promise<PrepNote | undefined>;
+  upsertPrepNote(userId: string, eventId: string, text: string): Promise<PrepNote>;
 
   // Integration methods
   createIntegration(integration: InsertIntegration): Promise<Integration>;
@@ -265,6 +270,35 @@ export class DatabaseStorage implements IStorage {
       .where(eq(callPreps.callId, callId))
       .returning();
     return callPrep;
+  }
+
+  // Prep notes methods
+  async getPrepNote(userId: string, eventId: string): Promise<PrepNote | undefined> {
+    const [note] = await db
+      .select()
+      .from(prepNotes)
+      .where(and(eq(prepNotes.userId, userId), eq(prepNotes.eventId, eventId)));
+    return note || undefined;
+  }
+
+  async upsertPrepNote(userId: string, eventId: string, text: string): Promise<PrepNote> {
+    const [note] = await db
+      .insert(prepNotes)
+      .values({
+        userId,
+        eventId,
+        text,
+        updatedAt: new Date()
+      })
+      .onConflictDoUpdate({
+        target: [prepNotes.userId, prepNotes.eventId],
+        set: {
+          text,
+          updatedAt: new Date()
+        }
+      })
+      .returning();
+    return note;
   }
 
   // Integration methods

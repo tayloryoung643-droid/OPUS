@@ -383,12 +383,15 @@ describe('SalesforceService Integration Tests', () => {
       expect(storage.getIntegrationData).toHaveBeenCalledWith('test-integration-id', 'company');
       expect(storage.getIntegrationData).toHaveBeenCalledWith('test-integration-id', 'opportunity');
 
+      const firstCallStatus = new Date('2025-02-01T10:00:00Z') > new Date() ? 'upcoming' : 'completed';
+      const secondCallStatus = new Date('2025-02-02T14:00:00Z') > new Date() ? 'upcoming' : 'completed';
+
       // Verify first call created with direct company linkage
       expect(storage.createCall).toHaveBeenCalledWith({
         companyId: 'local-company-1', // Direct from SF_ACCOUNT_1
         title: 'Demo Call with Acme',
         scheduledAt: new Date('2025-02-01T10:00:00Z'),
-        status: 'upcoming',
+        status: firstCallStatus,
         callType: 'demo',
         stage: 'initial_discovery'
       });
@@ -398,7 +401,7 @@ describe('SalesforceService Integration Tests', () => {
         companyId: 'local-company-1', // Resolved through SF_OPPORTUNITY_1 -> SF_ACCOUNT_1
         title: 'Follow-up Meeting',
         scheduledAt: new Date('2025-02-02T14:00:00Z'),
-        status: 'upcoming',
+        status: secondCallStatus,
         callType: 'follow-up',
         stage: 'initial_discovery'
       });

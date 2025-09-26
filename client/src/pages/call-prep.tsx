@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute } from "wouter";
+import { useEffect } from "react";
+import { useRoute, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -61,21 +62,74 @@ interface CallDetails {
   } | null;
 }
 
+interface CalendarCallEnsureResult extends CallDetails {
+  source?: "calendar";
+  calendarEvent?: {
+    id: string;
+    summary?: string;
+    start?: {
+      dateTime?: string;
+      date?: string;
+    };
+    end?: {
+      dateTime?: string;
+      date?: string;
+    };
+  };
+}
+
 export default function CallPrep() {
   const [, params] = useRoute("/call/:id");
+  const [, navigate] = useLocation();
   const callId = params?.id;
   const { toast } = useToast();
 
-  // Fetch call details
-  const { data: callDetails, isLoading, error } = useQuery<CallDetails>({
-    queryKey: ["/api/calls", callId],
-    enabled: !!callId,
+  const isCalendarSelection = !!callId && callId.startsWith("calendar_");
+  const calendarEventId = isCalendarSelection ? callId.replace(/^calendar_/, "") : null;
+
+  const {
+    data: ensuredCalendarCall,
+    isLoading: ensuringCalendarCall,
+    error: ensureCalendarError,
+  } = useQuery<CalendarCallEnsureResult>({
+    queryKey: ["calendar-event-call", calendarEventId],
+    enabled: !!calendarEventId,
+    queryFn: async () => {
+      const response = await apiRequest("POST", `/api/calendar/events/${calendarEventId}/ensure-call`);
+      return (await response.json()) as CalendarCallEnsureResult;
+    },
+    staleTime: 30_000,
   });
+
+  const resolvedCallId = isCalendarSelection ? ensuredCalendarCall?.call?.id : callId;
+
+  const {
+    data: callDetails,
+    isLoading: callDetailsLoading,
+    error: callDetailsError,
+  } = useQuery<CallDetails>({
+    queryKey: ["/api/calls", resolvedCallId],
+    enabled: !!resolvedCallId,
+    initialData: () => {
+      if (isCalendarSelection && ensuredCalendarCall?.call?.id) {
+        return ensuredCalendarCall;
+      }
+      return undefined;
+    },
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (isCalendarSelection && ensuredCalendarCall?.call?.id) {
+      queryClient.setQueryData(["/api/calls", ensuredCalendarCall.call.id], ensuredCalendarCall);
+      navigate(`/call/${ensuredCalendarCall.call.id}`, { replace: true });
+    }
+  }, [isCalendarSelection, ensuredCalendarCall, navigate]);
 
   // Generate AI prep mutation
   const generatePrepMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", `/api/calls/${callId}/generate-prep`);
+    mutationFn: async (targetCallId: string) => {
+      const response = await apiRequest("POST", `/api/calls/${targetCallId}/generate-prep`);
       return response.json();
     },
     onSuccess: (data) => {
@@ -83,7 +137,7 @@ export default function CallPrep() {
         title: "AI prep generated",
         description: "Your call preparation sheet has been updated with AI insights.",
       });
-      queryClient.setQueryData(["/api/calls", callId], data);
+      queryClient.setQueryData(["/api/calls", data.call.id], data);
     },
     onError: (error) => {
       toast({
@@ -93,6 +147,10 @@ export default function CallPrep() {
       });
     },
   });
+
+  const combinedError = (ensureCalendarError as Error | null) || (callDetailsError as Error | null);
+  const isLoading =
+    (isCalendarSelection && (ensuringCalendarCall || !resolvedCallId)) || callDetailsLoading;
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -135,7 +193,7 @@ export default function CallPrep() {
     );
   }
 
-  if (error || !callDetails) {
+  if (combinedError || !callDetails) {
     return (
       <div className="min-h-screen bg-background">
         <Navigation />
@@ -184,8 +242,8 @@ export default function CallPrep() {
               <div className="flex items-center space-x-3">
                 {!callPrep?.isGenerated && (
                   <Button
-                    onClick={() => generatePrepMutation.mutate()}
-                    disabled={generatePrepMutation.isPending}
+                    onClick={() => resolvedCallId && generatePrepMutation.mutate(resolvedCallId)}
+                    disabled={generatePrepMutation.isPending || !resolvedCallId}
                     className="flex items-center space-x-2"
                     data-testid="button-generate-prep"
                   >
@@ -195,8 +253,8 @@ export default function CallPrep() {
                 )}
                 {callPrep?.isGenerated && (
                   <Button
-                    onClick={() => generatePrepMutation.mutate()}
-                    disabled={generatePrepMutation.isPending}
+                    onClick={() => resolvedCallId && generatePrepMutation.mutate(resolvedCallId)}
+                    disabled={generatePrepMutation.isPending || !resolvedCallId}
                     variant="outline"
                     className="flex items-center space-x-2"
                     data-testid="button-regenerate-prep"
@@ -219,8 +277,8 @@ export default function CallPrep() {
                   Generate AI-powered call preparation to get insights, research, and conversation strategies.
                 </p>
                 <Button
-                  onClick={() => generatePrepMutation.mutate()}
-                  disabled={generatePrepMutation.isPending}
+                  onClick={() => resolvedCallId && generatePrepMutation.mutate(resolvedCallId)}
+                  disabled={generatePrepMutation.isPending || !resolvedCallId}
                   data-testid="button-generate-initial-prep"
                 >
                   {generatePrepMutation.isPending ? "Generating..." : "Generate AI Prep"}

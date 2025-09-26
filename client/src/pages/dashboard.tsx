@@ -1,14 +1,15 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Settings, Clock } from "lucide-react";
+import { Search, Clock } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/ui/navigation";
+
+type CallSource = "database" | "calendar";
 
 interface CallWithCompany {
   id: string;
@@ -17,6 +18,8 @@ interface CallWithCompany {
   status: string;
   callType?: string;
   stage?: string;
+  source?: CallSource;
+  calendarEventId?: string;
   company: {
     id: string;
     name: string;
@@ -25,8 +28,23 @@ interface CallWithCompany {
   };
 }
 
+interface CalendarEvent {
+  id: string;
+  summary?: string;
+  start?: {
+    dateTime?: string;
+    date?: string;
+  };
+  end?: {
+    dateTime?: string;
+    date?: string;
+  };
+}
+
 export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [pendingCalendarEventId, setPendingCalendarEventId] = useState<string | null>(null);
+  const [, navigate] = useLocation();
   const { toast } = useToast();
 
   // Check Google Calendar connection status
@@ -36,7 +54,7 @@ export default function Dashboard() {
   });
 
   // Fetch Google Calendar events (upcoming)
-  const { data: calendarEvents, isLoading: calendarLoading } = useQuery<any[]>({
+  const { data: calendarEvents, isLoading: calendarLoading } = useQuery<CalendarEvent[]>({
     queryKey: ["/api/calendar/events"],
     enabled: !!(googleStatus as any)?.connected,
     retry: false
@@ -53,23 +71,33 @@ export default function Dashboard() {
   });
 
 
+  const upcomingDatabaseCalls = Array.isArray(upcomingCalls)
+    ? upcomingCalls.map((call) => ({ ...call, source: "database" as const }))
+    : [];
+
   // Convert Google Calendar events to call format
-  const upcomingCalendarEvents = Array.isArray(calendarEvents) ? calendarEvents.map((event: any) => ({
-    id: `calendar_${event.id}`,
-    title: event.summary || 'No Title',
-    scheduledAt: event.start?.dateTime || event.start?.date || new Date().toISOString(),
-    status: 'upcoming',
-    callType: 'meeting',
-    company: {
-      id: 'unknown',
-      name: 'Google Calendar',
-      domain: undefined,
-      industry: undefined,
-    }
-  })) : [];
+  const upcomingCalendarEvents = Array.isArray(calendarEvents)
+    ? calendarEvents.map((event) => ({
+        id: `calendar_${event.id}`,
+        calendarEventId: event.id,
+        title: event.summary || "No Title",
+        scheduledAt:
+          event.start?.dateTime ||
+          (event.start?.date ? new Date(`${event.start.date}T00:00:00Z`).toISOString() : new Date().toISOString()),
+        status: "upcoming",
+        callType: "meeting",
+        source: "calendar" as const,
+        company: {
+          id: "google-calendar",
+          name: "Google Calendar",
+          domain: undefined,
+          industry: undefined,
+        },
+      }))
+    : [];
 
   // Combine all upcoming calls (database + Google Calendar)
-  const allUpcomingCalls = [...upcomingCalls, ...upcomingCalendarEvents];
+  const allUpcomingCalls: CallWithCompany[] = [...upcomingDatabaseCalls, ...upcomingCalendarEvents];
 
   const filteredUpcomingCalls = allUpcomingCalls.filter(call =>
     call.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -80,6 +108,8 @@ export default function Dashboard() {
     call.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     call.company?.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const isUpcomingLoading = upcomingLoading || calendarLoading;
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -108,6 +138,33 @@ export default function Dashboard() {
     }
   };
 
+  const ensureCalendarCallMutation = useMutation({
+    mutationFn: async (eventId: string) => {
+      const response = await apiRequest("POST", `/api/calendar/events/${eventId}/ensure-call`);
+      const data = await response.json();
+      queryClient.setQueryData(["/api/calls", data.call.id], data);
+      return data;
+    },
+    onSuccess: (data) => {
+      setPendingCalendarEventId(null);
+      navigate(`/call/${data.call.id}`);
+    },
+    onError: (error: unknown) => {
+      setPendingCalendarEventId(null);
+      toast({
+        title: "Unable to open calendar event",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCalendarSelection = (call: CallWithCompany) => {
+    if (!call.calendarEventId) return;
+    setPendingCalendarEventId(call.calendarEventId);
+    ensureCalendarCallMutation.mutate(call.calendarEventId);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -133,7 +190,7 @@ export default function Dashboard() {
           <div className="mb-8">
             <h3 className="font-semibold text-foreground mb-4" data-testid="text-upcoming-calls">Upcoming Calls</h3>
             
-            {upcomingLoading ? (
+            {isUpcomingLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="border border-border rounded-lg p-4 animate-pulse">
@@ -147,30 +204,54 @@ export default function Dashboard() {
               <p className="text-muted-foreground text-sm" data-testid="text-no-upcoming-calls">No upcoming calls found</p>
             ) : (
               <div className="space-y-3">
-                {filteredUpcomingCalls.map((call, index) => (
-                  <Link key={call.id} href={`/call/${call.id}`}>
-                    <Card 
-                      className={`cursor-pointer transition-colors hover:bg-accent/50 ${
-                        index === 0 ? 'bg-primary text-primary-foreground' : ''
+                {filteredUpcomingCalls.map((call, index) => {
+                  const isCalendarCall = call.source === "calendar";
+                  const card = (
+                    <Card
+                      className={`transition-colors hover:bg-accent/50 ${
+                        index === 0 ? "bg-primary text-primary-foreground" : "cursor-pointer"
+                      } ${
+                        isCalendarCall && call.calendarEventId === pendingCalendarEventId
+                          ? "opacity-60 cursor-wait"
+                          : ""
                       }`}
                       data-testid={`card-upcoming-call-${call.id}`}
                     >
                       <CardContent className="p-4">
-                        <h4 className="font-semibold mb-1" data-testid={`text-call-title-${call.id}`}>
-                          {call.title}
-                        </h4>
-                        <p className={`text-sm mb-2 ${index === 0 ? 'text-primary-foreground/90' : 'text-muted-foreground'}`}>
+                        <div className="flex items-center justify-between">
+                          <h4 className="font-semibold mb-1" data-testid={`text-call-title-${call.id}`}>
+                            {call.title}
+                          </h4>
+                          {isCalendarCall && (
+                            <Badge variant={index === 0 ? "outline" : "secondary"} className="text-xs">
+                              Google Calendar
+                            </Badge>
+                          )}
+                        </div>
+                        <p
+                          className={`text-sm mb-2 ${
+                            index === 0 ? "text-primary-foreground/90" : "text-muted-foreground"
+                          }`}
+                        >
                           {call.company?.name}
                         </p>
                         <div className="flex items-center justify-between">
-                          <div className={`flex items-center text-sm ${index === 0 ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>
+                          <div
+                            className={`flex items-center text-sm ${
+                              index === 0 ? "text-primary-foreground/75" : "text-muted-foreground"
+                            }`}
+                          >
                             <Clock className="mr-2 h-3 w-3" />
                             <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt)}</span>
                           </div>
                           {call.callType && (
-                            <Badge 
-                              variant="secondary" 
-                              className={`text-xs ${index === 0 ? 'bg-primary-foreground/20 text-primary-foreground' : getCallTypeColor(call.callType)}`}
+                            <Badge
+                              variant="secondary"
+                              className={`text-xs ${
+                                index === 0
+                                  ? "bg-primary-foreground/20 text-primary-foreground"
+                                  : getCallTypeColor(call.callType)
+                              }`}
                             >
                               {call.callType}
                             </Badge>
@@ -178,8 +259,31 @@ export default function Dashboard() {
                         </div>
                       </CardContent>
                     </Card>
-                  </Link>
-                ))}
+                  );
+
+                  if (isCalendarCall) {
+                    return (
+                      <button
+                        key={call.id}
+                        type="button"
+                        onClick={() => handleCalendarSelection(call)}
+                        className="w-full text-left focus:outline-none"
+                        disabled={
+                          call.calendarEventId === pendingCalendarEventId &&
+                          ensureCalendarCallMutation.isPending
+                        }
+                      >
+                        {card}
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <Link key={call.id} href={`/call/${call.id}`}>
+                      {card}
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </div>

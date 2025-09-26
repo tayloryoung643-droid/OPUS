@@ -26,6 +26,12 @@ export default function Settings() {
     retry: false
   });
 
+  const { data: salesforceStatus, refetch: refetchSalesforce } = useQuery({
+    queryKey: ["/api/integrations/salesforce/status"],
+    enabled: true,
+    retry: false
+  });
+
   const integrations = [
     {
       id: "google_calendar",
@@ -50,8 +56,10 @@ export default function Settings() {
       name: "Salesforce",
       description: "Connect your Salesforce CRM to pull account data, opportunities, and contact information",
       icon: <Building2 className="w-8 h-8 text-blue-500" />,
-      status: "not_connected",
-      type: "crm"
+      status: (salesforceStatus as any)?.connected ? "connected" : "not_connected",
+      type: "crm",
+      scopes: (salesforceStatus as any)?.scopes || [],
+      connectedAt: (salesforceStatus as any)?.connectedAt
     },
   ];
 
@@ -88,6 +96,25 @@ export default function Settings() {
       } catch (error) {
         console.error("Error connecting Outlook:", error);
         alert("Failed to connect Outlook integration. Please try again.");
+      } finally {
+        setConnectingId(null);
+      }
+    } else if (integrationId === "salesforce") {
+      setConnectingId(integrationId);
+      try {
+        const response = await fetch("/api/integrations/salesforce/auth");
+        const data = await response.json();
+        
+        if (response.status === 501) {
+          // Not configured message
+          alert(data.message);
+        } else if (data.authUrl) {
+          // Redirect to Salesforce OAuth
+          window.location.href = data.authUrl;
+        }
+      } catch (error) {
+        console.error("Error connecting Salesforce:", error);
+        alert("Failed to connect Salesforce integration. Please try again.");
       } finally {
         setConnectingId(null);
       }
@@ -132,6 +159,24 @@ export default function Settings() {
       } catch (error) {
         console.error("Error disconnecting Outlook:", error);
         alert("Failed to disconnect Outlook integration. Please try again.");
+      } finally {
+        setConnectingId(null);
+      }
+    } else if (integrationId === "salesforce") {
+      setConnectingId(integrationId);
+      try {
+        const response = await fetch("/api/integrations/salesforce", {
+          method: "DELETE"
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+          alert("Salesforce integration disconnected successfully!");
+          refetchSalesforce();
+        }
+      } catch (error) {
+        console.error("Error disconnecting Salesforce:", error);
+        alert("Failed to disconnect Salesforce integration. Please try again.");
       } finally {
         setConnectingId(null);
       }

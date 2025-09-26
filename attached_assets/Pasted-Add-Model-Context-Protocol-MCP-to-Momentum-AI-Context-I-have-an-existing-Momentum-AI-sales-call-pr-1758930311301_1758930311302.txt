@@ -1,0 +1,136 @@
+Add Model Context Protocol (MCP) to Momentum AI
+Context
+I have an existing Momentum AI sales call preparation platform built with:
+
+Backend: Express.js + TypeScript on port 5000
+Database: PostgreSQL with Drizzle ORM (Neon serverless)
+AI: OpenAI GPT-5 integration for call prep generation
+Integrations: Google Calendar OAuth + Salesforce CRM OAuth (both with AES-256-GCM encryption)
+Frontend: React 18 + TypeScript with Tailwind CSS
+
+Goal
+Add Model Context Protocol (MCP) server and tools to enable the AI to dynamically access live data from our existing integrations during call preparation generation, instead of using static prompts.
+Specific Implementation Requirements
+1. Install MCP Dependencies
+Add to the existing package.json:
+bashnpm install @modelcontextprotocol/sdk
+2. Create MCP Server Structure
+Create a new directory structure:
+backend/src/mcp/
+├── mcp-server.ts          # Main MCP server
+├── tools/
+│   ├── salesforce-tools.ts # Salesforce lookup tools
+│   ├── calendar-tools.ts   # Google Calendar tools
+│   ├── prep-notes-tools.ts # Database query tools
+│   └── index.ts           # Export all tools
+└── types/
+    └── mcp-types.ts       # MCP-specific TypeScript types
+3. MCP Tools to Implement
+Salesforce Tools (using existing OAuth integration)
+
+salesforce_contact_lookup: Search contacts by email or company name
+salesforce_opportunity_lookup: Get opportunity details by ID or contact
+salesforce_account_lookup: Retrieve account information and history
+
+Google Calendar Tools (using existing OAuth integration)
+
+calendar_meeting_context: Get details about upcoming/recent meetings
+calendar_attendee_history: Find previous meetings with specific attendees
+
+Database Query Tools (using existing Drizzle ORM)
+
+prep_notes_search: Search previous call preparation notes
+call_history_lookup: Get historical call data for contacts/companies
+
+4. Modify Existing OpenAI Integration
+Update the current OpenAI GPT-5 integration in backend/src/services/ai-service.ts to:
+
+Accept MCP tools as function definitions
+Handle tool calling responses
+Execute MCP tool calls and return results to the AI
+Maintain the existing call preparation workflow but with dynamic data access
+
+5. Integration Points
+Connect MCP tools to existing services:
+
+Use existing salesforce-service.ts for Salesforce API calls
+Use existing google-calendar-service.ts for Calendar API calls
+Use existing Drizzle database queries for internal data
+Maintain existing error handling and token refresh logic
+
+6. API Endpoint Updates
+Modify the existing /api/preparations/generate endpoint to:
+
+Initialize MCP server with available tools
+Pass MCP tools to OpenAI function calling
+Handle tool execution during AI generation
+Return enhanced call preparation with dynamic data
+
+Technical Specifications
+MCP Server Configuration
+typescript// Expected server initialization
+const server = new Server(
+  { 
+    name: 'momentum-ai-mcp', 
+    version: '1.0.0' 
+  },
+  { 
+    capabilities: { 
+      tools: {},
+      resources: {} 
+    } 
+  }
+);
+Tool Schema Example
+typescript// Example tool definition
+{
+  name: "salesforce_contact_lookup",
+  description: "Look up contact details from Salesforce CRM using email or company name",
+  inputSchema: {
+    type: "object",
+    properties: {
+      email: { type: "string", description: "Contact email address" },
+      company: { type: "string", description: "Company name" },
+      fields: { 
+        type: "array", 
+        items: { type: "string" },
+        description: "Specific fields to retrieve" 
+      }
+    },
+    anyOf: [
+      { required: ["email"] },
+      { required: ["company"] }
+    ]
+  }
+}
+Error Handling Requirements
+
+Graceful handling of OAuth token expiration
+Fallback responses when tools fail
+Logging of MCP tool usage for debugging
+Maintain existing encryption for sensitive data
+
+Expected Outcome
+After implementation:
+
+AI call preparation generation becomes dynamic and context-aware
+Fresh data from Salesforce and Google Calendar in every prep sheet
+No changes needed to existing frontend - enhanced data flows through existing API
+Foundation ready for future live call coaching feature
+Existing authentication and security measures preserved
+
+Files to Modify
+
+package.json - Add MCP dependency
+backend/src/services/ai-service.ts - Update OpenAI integration
+backend/src/routes/preparations.ts - Modify generation endpoint
+Create new MCP-related files as specified above
+
+Testing Requirements
+
+Verify MCP tools work with existing OAuth integrations
+Test call preparation generation with dynamic data fetching
+Ensure no breaking changes to existing frontend functionality
+Validate error handling when integrations are unavailable
+
+Please implement this MCP integration while preserving all existing functionality and maintaining the current authentication, encryption, and error handling patterns.

@@ -588,6 +588,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function for parsing invite text to bullet points
+  function parseInviteToBullets(text: string): string[] {
+    return (text || '')
+      .split('\n')
+      .map(l => l.trim().replace(/^[-*•]\s*/, ''))
+      .filter(Boolean)
+      .slice(0, 10);
+  }
+
   // Generate AI call prep
   app.post("/api/calls/:id/generate-prep", async (req, res) => {
     try {
@@ -599,8 +608,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const company = call.companyId ? await storage.getCompany(call.companyId) : null;
       const contacts = call.companyId ? await storage.getContactsByCompany(call.companyId) : [];
 
+      // If no company found, return partial sheet instead of 400 error
       if (!company) {
-        return res.status(400).json({ message: "Cannot generate prep without company data" });
+        console.info('[prepSheet] generation mode: partial, candidates:', 0);
+        
+        return res.status(200).json({
+          mode: 'partial',
+          sheet: {
+            notesSectionFirst: true,
+            banner: 'Limited context: no account linked yet. Link an account to enrich.',
+            eventSummary: { 
+              title: call.title, 
+              start: call.scheduledAt, 
+              end: null, 
+              location: null 
+            },
+            attendees: [],
+            organizer: undefined,
+            agendaFromInvite: parseInviteToBullets(''),
+            actionItems: [],
+            risks: []
+          },
+          needsSelection: true,
+          candidates: []
+        });
       }
 
       // Generate AI-powered research
@@ -647,11 +678,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      console.info('[prepSheet] generation mode: full, account:', company.id);
+      
       res.json({
-        call,
-        company: { ...company, recentNews: research.recentNews },
-        contacts,
-        callPrep
+        mode: 'full',
+        sheet: {
+          call,
+          company: { ...company, recentNews: research.recentNews },
+          contacts,
+          callPrep,
+          salesforceContext: { company, contacts }
+        },
+        accountId: company.id
       });
     } catch (error) {
       console.error('Failed to generate call prep:', error);

@@ -65,6 +65,11 @@ export interface IStorage {
   // Integration data methods
   createIntegrationData(data: InsertIntegrationData): Promise<IntegrationData>;
   getIntegrationData(integrationId: string, dataType: string): Promise<IntegrationData[]>;
+  getIntegrationDataByExternalId(
+    integrationId: string,
+    dataType: string,
+    externalId: string
+  ): Promise<IntegrationData | undefined>;
   updateIntegrationData(id: string, updates: Partial<InsertIntegrationData>): Promise<IntegrationData>;
   deleteIntegrationData(integrationId: string, externalId: string): Promise<void>;
 
@@ -309,6 +314,23 @@ export class DatabaseStorage implements IStorage {
         eq(integrationData.integrationId, integrationId),
         eq(integrationData.dataType, dataType)
       ));
+  }
+
+  async getIntegrationDataByExternalId(
+    integrationId: string,
+    dataType: string,
+    externalId: string
+  ): Promise<IntegrationData | undefined> {
+    const [data] = await db
+      .select()
+      .from(integrationData)
+      .where(and(
+        eq(integrationData.integrationId, integrationId),
+        eq(integrationData.dataType, dataType),
+        eq(integrationData.externalId, externalId)
+      ));
+
+    return data || undefined;
   }
 
   async updateIntegrationData(id: string, updates: Partial<InsertIntegrationData>): Promise<IntegrationData> {

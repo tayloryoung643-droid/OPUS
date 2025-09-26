@@ -54,30 +54,9 @@ export class GoogleCalendarService {
         orderBy: 'startTime',
       });
 
-      return response.data.items?.map(event => ({
-        id: event.id!,
-        summary: event.summary || 'No Title',
-        description: event.description,
-        start: {
-          dateTime: event.start?.dateTime,
-          date: event.start?.date
-        },
-        end: {
-          dateTime: event.end?.dateTime,
-          date: event.end?.date
-        },
-        attendees: event.attendees?.map(attendee => ({
-          email: attendee.email!,
-          displayName: attendee.displayName,
-          responseStatus: attendee.responseStatus
-        })),
-        location: event.location,
-        organizer: event.organizer ? {
-          email: event.organizer.email!,
-          displayName: event.organizer.displayName
-        } : undefined,
-        htmlLink: event.htmlLink
-      })) || [];
+      return (response.data.items || [])
+        .filter(event => !!event?.id)
+        .map(event => this.mapGoogleEvent(event));
 
     } catch (error) {
       console.error('Error fetching calendar events:', error);
@@ -115,34 +94,46 @@ export class GoogleCalendarService {
         orderBy: 'startTime',
       });
 
-      return response.data.items?.map(event => ({
-        id: event.id!,
-        summary: event.summary || 'No Title',
-        description: event.description,
-        start: {
-          dateTime: event.start?.dateTime,
-          date: event.start?.date
-        },
-        end: {
-          dateTime: event.end?.dateTime,
-          date: event.end?.date
-        },
-        attendees: event.attendees?.map(attendee => ({
-          email: attendee.email!,
-          displayName: attendee.displayName,
-          responseStatus: attendee.responseStatus
-        })),
-        location: event.location,
-        organizer: event.organizer ? {
-          email: event.organizer.email!,
-          displayName: event.organizer.displayName
-        } : undefined,
-        htmlLink: event.htmlLink
-      })) || [];
+      return (response.data.items || [])
+        .filter(event => !!event?.id)
+        .map(event => this.mapGoogleEvent(event));
 
     } catch (error) {
       console.error('Error fetching today\'s calendar events:', error);
       return [];
+    }
+  }
+
+  async getEventById(userId: string, eventId: string): Promise<CalendarEvent | null> {
+    try {
+      const googleIntegration = await storage.getGoogleIntegration(userId);
+      if (!googleIntegration || !googleIntegration.isActive) {
+        return null;
+      }
+
+      if (this.isTokenExpired(googleIntegration)) {
+        await this.refreshTokenIfNeeded(userId, googleIntegration);
+      }
+
+      const calendar = googleAuth.createCalendarClient({
+        access_token: googleIntegration.accessToken,
+        refresh_token: googleIntegration.refreshToken
+      });
+
+      const response = await calendar.events.get({
+        calendarId: 'primary',
+        eventId,
+      });
+
+      const event = response.data;
+      if (!event?.id) {
+        return null;
+      }
+
+      return this.mapGoogleEvent(event);
+    } catch (error) {
+      console.error('Error fetching calendar event:', error);
+      return null;
     }
   }
 
@@ -177,6 +168,35 @@ export class GoogleCalendarService {
         updatedAt: new Date()
       });
     }
+  }
+
+  private mapGoogleEvent(event: any): CalendarEvent {
+    return {
+      id: event.id!,
+      summary: event.summary || 'No Title',
+      description: event.description ?? undefined,
+      start: {
+        dateTime: event.start?.dateTime ?? undefined,
+        date: event.start?.date ?? undefined
+      },
+      end: {
+        dateTime: event.end?.dateTime ?? undefined,
+        date: event.end?.date ?? undefined
+      },
+      attendees: event.attendees?.map((attendee: any) => ({
+        email: attendee.email!,
+        displayName: attendee.displayName ?? undefined,
+        responseStatus: attendee.responseStatus ?? undefined
+      })),
+      location: event.location ?? undefined,
+      organizer: event.organizer
+        ? {
+            email: event.organizer.email!,
+            displayName: event.organizer.displayName ?? undefined,
+          }
+        : undefined,
+      htmlLink: event.htmlLink ?? undefined,
+    };
   }
 }
 

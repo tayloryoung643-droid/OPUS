@@ -336,7 +336,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user.claims.sub;
       const { googleCalendarService } = await import('./services/googleCalendar');
-      
+
       const events = await googleCalendarService.getTodaysEvents(userId);
       res.json(events);
     } catch (error) {
@@ -344,8 +344,146 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch today's events" });
     }
   });
-  
+
+  app.post("/api/calendar/events/:eventId/ensure-call", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { eventId } = req.params;
+      if (!eventId) {
+        return res.status(400).json({ message: "Missing event ID" });
+      }
+
+      const { googleCalendarService } = await import('./services/googleCalendar');
+      const event = await googleCalendarService.getEventById(userId, eventId);
+
+      if (!event) {
+        return res.status(404).json({ message: "Calendar event not found" });
+      }
+
+      let integration = await storage.getIntegrationByName("google_calendar");
+      if (!integration) {
+        integration = await storage.createIntegration({
+          name: "google_calendar",
+          type: "calendar",
+          status: "active",
+        });
+      }
+
+      const integrationId = integration.id;
+      const externalId = `${userId}:${event.id}`;
+      const existingMapping = await storage.getIntegrationDataByExternalId(
+        integrationId,
+        "call",
+        externalId
+      );
+
+      const eventStart = event.start?.dateTime
+        ? new Date(event.start.dateTime)
+        : event.start?.date
+          ? new Date(`${event.start.date}T00:00:00Z`)
+          : new Date();
+      const eventEnd = event.end?.dateTime
+        ? new Date(event.end.dateTime)
+        : event.end?.date
+          ? new Date(`${event.end.date}T23:59:59Z`)
+          : undefined;
+      const now = new Date();
+      const status = eventEnd && eventEnd.getTime() < now.getTime() ? "completed" : "upcoming";
+
+      let call = existingMapping?.localId
+        ? await storage.getCall(existingMapping.localId)
+        : undefined;
+
+      const callPayload = {
+        title: event.summary || "No Title",
+        scheduledAt: eventStart,
+        status,
+        callType: "meeting",
+      };
+
+      if (call) {
+        const updates: Record<string, any> = {};
+        if (call.title !== callPayload.title) {
+          updates.title = callPayload.title;
+        }
+        const scheduledAtIso =
+          call.scheduledAt instanceof Date
+            ? call.scheduledAt.toISOString()
+            : new Date(call.scheduledAt as any).toISOString();
+        if (scheduledAtIso !== eventStart.toISOString()) {
+          updates.scheduledAt = eventStart;
+        }
+        if (call.status !== callPayload.status) {
+          updates.status = callPayload.status;
+        }
+        if (call.callType !== callPayload.callType) {
+          updates.callType = callPayload.callType;
+        }
+
+        if (Object.keys(updates).length > 0) {
+          call = await storage.updateCall(call.id, updates);
+        }
+
+        if (existingMapping) {
+          await storage.updateIntegrationData(existingMapping.id, {
+            localId: call.id,
+            data: event as any,
+          });
+        }
+      } else {
+        call = await storage.createCall(callPayload);
+
+        if (existingMapping) {
+          await storage.updateIntegrationData(existingMapping.id, {
+            localId: call.id,
+            data: event as any,
+          });
+        } else {
+          await storage.createIntegrationData({
+            integrationId,
+            externalId,
+            dataType: "call",
+            data: event as any,
+            localId: call.id,
+          });
+        }
+      }
+
+      const callDetails = call ? await buildCallDetails(call.id) : null;
+      if (!callDetails) {
+        return res.status(404).json({ message: "Call not found" });
+      }
+
+      res.json({
+        ...callDetails,
+        source: "calendar",
+        calendarEvent: event,
+      });
+    } catch (error) {
+      console.error("Error ensuring calendar call:", error);
+      res.status(500).json({ message: "Failed to open calendar event" });
+    }
+  });
+
   // Get all calls with company data
+  const buildCallDetails = async (callId: string) => {
+    const call = await storage.getCall(callId);
+    if (!call) {
+      return null;
+    }
+
+    const company = call.companyId ? await storage.getCompany(call.companyId) : null;
+    const contacts = call.companyId ? await storage.getContactsByCompany(call.companyId) : [];
+    const callPrep = await storage.getCallPrep(call.id);
+
+    return {
+      call,
+      company,
+      contacts,
+      callPrep,
+    };
+  };
+
   app.get("/api/calls", async (req, res) => {
     try {
       const calls = await storage.getCallsWithCompany();
@@ -378,21 +516,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get specific call with full details
   app.get("/api/calls/:id", async (req, res) => {
     try {
-      const call = await storage.getCall(req.params.id);
-      if (!call) {
+      const callDetails = await buildCallDetails(req.params.id);
+      if (!callDetails) {
         return res.status(404).json({ message: "Call not found" });
       }
 
-      const company = call.companyId ? await storage.getCompany(call.companyId) : null;
-      const contacts = call.companyId ? await storage.getContactsByCompany(call.companyId) : [];
-      const callPrep = await storage.getCallPrep(call.id);
-
-      res.json({
-        call,
-        company,
-        contacts,
-        callPrep
-      });
+      res.json(callDetails);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch call details" });
     }

@@ -1,0 +1,169 @@
+Replit Agent 3 — Implement Notes + Account Resolver + Partial Fallback (no 400)
+
+Goal
+Make “Generate Call Prep” always return a sheet. If an associated Salesforce Account/Opportunity cannot be found with confidence, return a partial sheet (Notes pinned at the top + event basics) instead of throwing 400: "Cannot generate prep without company data".
+
+Constraints
+
+Keep existing layout, OAuth, and hot-reloading intact.
+
+Text-only: do not add audio/video recording.
+
+Make small, isolated changes; don’t refactor unrelated code.
+
+0) Repo sanity + branch
+
+Tell me the current branch and default branch.
+
+Create and switch to fix/prep-notes-partial-fallback.
+
+1) Find and patch the 400
+
+Search for the exact string: Cannot generate prep without company data.
+
+Open the handler that returns res.status(400) and replace that branch with a partial success response (HTTP 200). Use this structure:
+
+// helper
+function parseInviteToBullets(text: string): string[] {
+  return (text || '')
+    .split('\n')
+    .map(l => l.trim().replace(/^[-*•]\s*/, ''))
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
+// WHEN no confident account/opportunity is found or Salesforce not connected:
+return res.status(200).json({
+  mode: 'partial',
+  sheet: {
+    notesSectionFirst: true,
+    banner: 'Limited context: no account linked yet. Link an account to enrich.',
+    eventSummary: { title, start, end, location },
+    attendees: (attendees || []).map(a => ({ name: a.displayName || a.name, email: a.email })),
+    organizer: organizer ? { name: organizer.displayName || organizer.name, email: organizer.email } : undefined,
+    agendaFromInvite: parseInviteToBullets(description || ''),
+    actionItems: [],
+    risks: []
+  },
+  needsSelection: true,
+  candidates: candidates || []
+});
+
+
+Add a one-liner log right before returning:
+
+console.info('[prepSheet] generation mode: partial, candidates:', (candidates?.length || 0));
+
+2) Add/verify a persistent Notes API
+
+If a Notes API already exists, reuse it. If not, create minimal endpoints:
+
+Data shape (Mongo/Mongoose; if not available, use an in-memory Map and leave a TODO):
+
+PrepNote { userId: string; eventId: string; text: string; updatedAt: Date } with a unique (userId,eventId) index.
+
+Routes
+
+GET /api/prep-notes?eventId=... → { text, updatedAt } for current user.
+
+PUT /api/prep-notes body { eventId, text } → upsert and return saved doc.
+
+Use existing auth/session to determine userId. Keep endpoints tiny and stable.
+
+3) Build/verify Account Resolver (lightweight but real)
+
+Create (or update) a module the generate handler can call:
+
+Inputs: event { title, description, attendees[] }
+
+Steps (stop at first confident match):
+
+Contact by attendee email → Contact with AccountId (confidence 0.95).
+
+Lead by email (confidence 0.70; still continue).
+
+Domain → Account (normalize domain; single exact match confidence 0.90).
+
+Fuzzy name from title/description tokens (0.60–0.75).
+
+Output:
+
+{ resolvedAccountId?: string; candidates: Array<{accountId?:string; accountName?:string; source:'contact'|'lead'|'domain'|'fuzzy'; confidence:number; reason:string}> }
+
+
+If Salesforce isn’t connected, return { candidates: [] } and allow the partial path.
+
+4) Full sheet path (unchanged)
+
+When a confident account is found or when the user manually links one:
+
+Pull SF context (Account, Contacts, Open Opps, Recent Activities/Cases)
+
+Return 200 with:
+
+{ mode: 'full', sheet: { ... , salesforceContext }, accountId }
+
+
+Add:
+
+console.info('[prepSheet] generation mode: full, account:', accountId);
+
+5) Frontend updates
+
+Locate the component that calls /api/prep-sheet/generate. Ensure it:
+
+Renders Notes at the very top in both modes.
+
+On mount: GET /api/prep-notes?eventId=...
+
+Autosave: debounce ~800ms and on blur → PUT /api/prep-notes.
+
+Handle partial vs full:
+
+If mode==='partial': show the banner (“Limited context…”), render Event Summary + Attendees + Agenda preview. Show a “Link account to enrich” button that opens an account picker (if the project already has one). After linking, call generate again.
+
+If mode==='full': render the enriched sheet sections.
+
+Remove any UI logic that toasts an error for “no company”; partial is a success with a banner, not an error.
+
+6) Routing sanity
+
+Confirm the backend routes for /api/prep-sheet/generate (and /api/prep-notes) are mounted in the server startup. Add:
+
+console.log('[prepSheet] routes mounted at /api/prep-sheet');
+console.log('[prepNotes] routes mounted at /api/prep-notes');
+
+7) Quick test commands (in Replit Shell)
+
+Restart the dev server so route changes load.
+
+Call the endpoint with an event that has only personal emails:
+
+curl -s -X POST http://localhost:3000/api/prep-sheet/generate \
+  -H "Content-Type: application/json" \
+  -d '{"eventId":"TEST-EVENT"}' | jq
+
+
+Expect 200 with mode:"partial".
+
+In the UI, open a call prep:
+
+Notes at top; type → “Saving…” then “Saved”; refresh → text persists.
+
+Click Generate → partial sheet with banner appears.
+
+Link an account (if available) → Generate again → full sheet.
+
+8) Commit
+
+Commit message: fix(prep): partial-sheet fallback + persistent notes; remove 400 on missing account
+
+Stay on the same branch; don’t force-push.
+
+9) Report back to me
+
+List files edited/created and the exact file where the 400 was replaced.
+
+Paste the log line showing generation mode: partial from the server console.
+
+Confirm Notes persist and partial/full flows render correctly.

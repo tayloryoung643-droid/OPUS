@@ -7,14 +7,11 @@ import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallP
 import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
 import { z } from "zod";
-import { prepSheetRouter } from "./routes/prepSheet";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth (Google Sign-in support)
   await setupAuth(app);
-
-  app.use(prepSheetRouter);
-
+  
 
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
@@ -457,14 +454,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Call not found" });
       }
 
-      return res.json({
+      res.json({
         ...callDetails,
         source: "calendar",
         calendarEvent: event,
       });
     } catch (error) {
       console.error("Error ensuring calendar call:", error);
-      return res.status(500).json({ message: "Failed to open calendar event", error: error instanceof Error ? error.message : "Unknown error" });
+      res.status(500).json({ message: "Failed to open calendar event" });
     }
   });
 

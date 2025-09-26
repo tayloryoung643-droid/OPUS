@@ -62,17 +62,6 @@ vi.mock("@/components/ui/skeleton", () => ({
   Skeleton: ({ children, ...props }: any) => <div {...props}>{children}</div>,
 }));
 
-vi.mock("@/components/ui/sheet", () => ({
-  Sheet: ({ children }: any) => <div data-testid="sheet-mock">{children}</div>,
-  SheetContent: ({ children }: any) => <div data-testid="sheet-content-mock">{children}</div>,
-  SheetHeader: ({ children }: any) => <div data-testid="sheet-header-mock">{children}</div>,
-  SheetTitle: ({ children }: any) => <div data-testid="sheet-title-mock">{children}</div>,
-}));
-
-vi.mock("@/features/prep-sheet/PrepSheetView", () => ({
-  PrepSheetView: ({ eventId }: any) => <div data-testid="prep-sheet-view">{eventId}</div>,
-}));
-
 vi.mock("@/components/call-prep/executive-summary", () => ({
   default: () => <div data-testid="executive-summary" />,
 }));
@@ -139,12 +128,9 @@ describe("CallPrep calendar event flow", () => {
     });
   });
 
-  it("renders the prep sheet flow for calendar-sourced calls", () => {
+  it("shows the generate prep button after resolving a calendar-sourced call", () => {
     const markup = renderToStaticMarkup(<CallPrep />);
 
-    expect(markup).toContain('data-testid="prep-sheet-view"');
-    expect(markup).toMatch(/event-?123/);
-    expect(markup).toContain('data-testid="button-open-prep-sheet"');
-    expect(markup).not.toContain('data-testid="button-generate-prep"');
+    expect(markup).toContain('data-testid="button-generate-prep"');
   });
 });

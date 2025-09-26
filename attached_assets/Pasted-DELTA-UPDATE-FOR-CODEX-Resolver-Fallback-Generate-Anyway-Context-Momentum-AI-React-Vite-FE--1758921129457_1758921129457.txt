@@ -1,0 +1,154 @@
+DELTA UPDATE FOR CODEX — Resolver Fallback (Generate Anyway)
+
+Context: Momentum AI (React + Vite FE, Node/Express + Mongo BE). We already have:
+
+Persistent Notes per eventId + userId.
+
+Account Resolver that tries Contacts → Leads → Domain → Fuzzy name.
+
+/api/prep-sheet/generate endpoint orchestrating the flow.
+
+New Requirement: Generate even without an Account
+
+If the resolver cannot reach a confident match and the rep doesn’t (or can’t) select an Account, the system must still generate a useful prep sheet using only basic, known context (Calendar + Notes). The Notes section must stay at the top.
+
+Backend changes
+
+Adjust POST /api/prep-sheet/generate:
+
+Fetch event (attendees, title, description, organizer, start/end).
+
+Try EventAccountLink. If present → use it.
+
+Else run resolveAccountForEvent(userId, event):
+
+If confidence ≥ 0.9 → resolved path (as before).
+
+If candidates exist but none ≥ 0.9:
+
+Return 200 with a partial prep sheet (see below) AND include { needsSelection: true, candidates } in the payload so the UI can offer a one-click “Link account & Regenerate” path.
+
+If no candidates:
+
+Return 200 with the same partial prep sheet and needsSelection: true but candidates: [].
+
+Partial prep sheet content (no Salesforce context):
+
+{
+  mode: 'partial',               // indicates limited context
+  banner: 'Limited context: no account linked yet. You can link an account to enrich this sheet.',
+  eventSummary: { title, start, end, location },
+  attendees: [{ name, email }],  // from calendar only
+  organizer: { name, email },
+  agendaFromInvite: parsedBulletsFromDescription, // optional extraction
+  actionItems: [],               // empty array (AI may propose basic items)
+  risks: [],                     // empty or generic
+  notesSectionFirst: true        // flag for FE to pin Notes at the top
+  // no salesforceContext block
+}
+
+
+Resolved/full sheet path (unchanged):
+
+When an account is found or manually linked, generate the full sheet with Salesforce data (salesforceContext) and return { mode: 'full', ... }.
+
+Response shape (both paths):
+
+{
+  sheet,                         // partial or full
+  accountId?: string,            // only when resolved
+  needsSelection?: boolean,      // true when not resolved
+  candidates?: AccountCandidate[] // optional; 0–3 ranked items
+}
+
+Frontend changes
+
+PrepSheetView:
+
+Always render Notes at the top (existing component).
+
+On Generate:
+
+If response mode === 'partial':
+
+Show a banner: “Limited context — no account linked.”
+
+Render partial sections (Event Summary, Attendees, Agenda/Description preview, Notes at top).
+
+If needsSelection === true:
+
+Show “Link account to enrich” button.
+
+Button opens the AccountSelectModal (seed with candidates if present, else provide search input to query SF Accounts by name).
+
+After linking (POST /api/prep-sheet/link-account), automatically re-call generate to replace partial with full.
+
+If response mode === 'full': render the full enriched prep sheet as before.
+
+UX rules:
+
+Never block the rep from taking notes or viewing a skeleton prep.
+
+If Google attendees are missing, still return a partial with an empty attendees array and a banner: “No attendees found on the invite.”
+
+Telemetry / Logging
+
+Add generationMode to logs: partial vs full.
+
+Log resolver outcome: resolved | candidates | none, and candidate count.
+
+Tests / Acceptance
+
+No match, partial sheet
+
+Event has attendees with personal emails (e.g., gmail.com).
+
+Resolver returns 0 candidates.
+
+POST /api/prep-sheet/generate returns 200 with mode='partial', needsSelection=true, candidates=[].
+
+UI shows Notes on top + Limited Context banner; sheet renders Event + Attendees.
+
+Ambiguous match, partial + candidates
+
+Resolver returns 2 candidates (<0.9 confidence).
+
+API returns 200 partial + needsSelection=true + candidates:[...].
+
+UI shows Account picker; after selecting and linking, re-generate returns mode='full'.
+
+Happy path (unchanged)
+
+Contact→Account found at step 1.
+
+Returns full sheet; Notes on top; no banner.
+
+Missing attendees
+
+Calendar event has no attendees.
+
+Partial sheet still generated; attendees array empty; banner instructs to add invitees or link account manually.
+
+Notes persistence
+
+Type in Notes, autosave, refresh page: text intact (partial and full modes).
+
+Files to modify (incremental to previous prompt)
+
+server/routes/prepSheet.ts (adjust response logic + partial construction)
+
+server/services/accountResolver.ts (no change to algorithm; just return candidates/confidence as before)
+
+Front End/.../PrepSheetView.tsx (handle mode, banner, and regeneration flow)
+
+components/AccountSelectModal.tsx (already planned; ensure it can be opened from partial mode)
+
+Guardrails (carry over):
+
+Don’t change existing OAuth, HMR, or unrelated UI.
+
+No audio/video capture; text-only.
+
+Backward-compatible; never throw hard errors to the user.
+
+Deliverable: Implement the above fallback so “Generate” always returns a useful sheet—partial when account is unknown, full once linked.

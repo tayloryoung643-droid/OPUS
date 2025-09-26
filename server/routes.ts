@@ -12,6 +12,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth (Google Sign-in support)
   await setupAuth(app);
   
+
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {

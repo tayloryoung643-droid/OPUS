@@ -1,9 +1,16 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, Users, TrendingUp, LogOut } from "lucide-react";
+import { Calendar, Users, TrendingUp, LogOut, Settings, Plus } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import type { User } from "@shared/schema";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 export default function Home() {
   const { user } = useAuth();
@@ -42,14 +49,37 @@ export default function Home() {
                     : typedUser.email
                   }
                 </span>
-                <Button
-                  variant="ghost"
-                  onClick={handleLogout}
-                  data-testid="button-logout"
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
-                  Logout
-                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid="button-settings"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <Link href="/settings">
+                      <DropdownMenuItem data-testid="menu-settings">
+                        <Settings className="w-4 h-4 mr-2" />
+                        Settings & Integrations
+                      </DropdownMenuItem>
+                    </Link>
+                    <Link href="/profile">
+                      <DropdownMenuItem data-testid="menu-profile">
+                        <Users className="w-4 h-4 mr-2" />
+                        Profile
+                      </DropdownMenuItem>
+                    </Link>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleLogout} data-testid="menu-logout">
+                      <LogOut className="w-4 h-4 mr-2" />
+                      Logout
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             )}
           </div>
@@ -63,122 +93,43 @@ export default function Home() {
             Welcome back{typedUser?.firstName ? `, ${typedUser.firstName}` : ""}!
           </h1>
           <p className="text-muted-foreground">
-            Get ready for your upcoming calls with AI-powered preparation.
+            Connect your integrations to start generating AI-powered call preparation sheets.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {/* Upcoming Calls Card */}
-          <Card className="hover:shadow-md transition-shadow">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center text-lg">
-                <Calendar className="w-5 h-5 mr-2 text-blue-600" />
-                Upcoming Calls
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-foreground mb-1" data-testid="text-upcoming-calls">
-                3
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                In the next 7 days
-              </p>
-              <Link href="/dashboard">
-                <Button size="sm" className="w-full" data-testid="button-view-calls">
-                  View Calls
+        {/* Empty State - No Integrations Connected */}
+        <div className="flex flex-col items-center justify-center py-16 px-4">
+          <div className="max-w-md text-center">
+            <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Settings className="w-8 h-8 text-primary" />
+            </div>
+            
+            <h2 className="text-2xl font-semibold text-foreground mb-3">
+              No Integrations Connected
+            </h2>
+            
+            <p className="text-muted-foreground mb-8 leading-relaxed">
+              To start generating personalized call preparation sheets, connect your calendar, 
+              CRM, and email accounts. Our AI will analyze your data to provide valuable insights 
+              for every sales call.
+            </p>
+            
+            <div className="space-y-3">
+              <Link href="/settings">
+                <Button size="lg" className="w-full" data-testid="button-connect-integrations">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Connect Your First Integration
                 </Button>
               </Link>
-            </CardContent>
-          </Card>
-
-          {/* Prospects Card */}
-          <Card className="hover:shadow-md transition-shadow">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center text-lg">
-                <Users className="w-5 h-5 mr-2 text-green-600" />
-                Active Prospects
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-foreground mb-1" data-testid="text-prospects">
-                12
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Companies in pipeline
-              </p>
-              <Link href="/dashboard">
-                <Button size="sm" variant="outline" className="w-full" data-testid="button-view-prospects">
-                  View Prospects
+              
+              <Link href="/settings">
+                <Button variant="outline" size="lg" className="w-full" data-testid="button-view-settings">
+                  <Settings className="w-4 h-4 mr-2" />
+                  View All Settings
                 </Button>
               </Link>
-            </CardContent>
-          </Card>
-
-          {/* Performance Card */}
-          <Card className="hover:shadow-md transition-shadow">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center text-lg">
-                <TrendingUp className="w-5 h-5 mr-2 text-purple-600" />
-                This Month
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-foreground mb-1" data-testid="text-conversion">
-                65%
-              </div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Call-to-close rate
-              </p>
-              <Button size="sm" variant="outline" className="w-full" data-testid="button-view-analytics">
-                View Analytics
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Quick Actions</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Link href="/dashboard">
-                <Button className="w-full justify-start" data-testid="button-prepare-call">
-                  <Calendar className="w-4 h-4 mr-2" />
-                  Prepare for Next Call
-                </Button>
-              </Link>
-              <Link href="/dashboard">
-                <Button variant="outline" className="w-full justify-start" data-testid="button-add-prospect">
-                  <Users className="w-4 h-4 mr-2" />
-                  Add New Prospect
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 text-sm text-muted-foreground">
-                <div className="flex justify-between">
-                  <span>Call prep generated for TechCorp</span>
-                  <span>2h ago</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>New prospect: DataFlow Solutions</span>
-                  <span>1d ago</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Meeting completed with InnovateAI</span>
-                  <span>2d ago</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
       </div>
     </div>

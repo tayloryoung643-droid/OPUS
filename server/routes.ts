@@ -23,6 +23,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to fetch user" });
     }
   });
+
+  // Integration routes for Outlook
+  app.get("/api/integrations/outlook/setup", isAuthenticated, async (req, res) => {
+    try {
+      // For now, we'll show a coming soon message for Outlook
+      // This would normally redirect to the Outlook OAuth flow
+      res.status(501).json({ 
+        message: "Outlook integration coming soon! We're working on adding support for Outlook calendar and email sync.",
+        status: "coming_soon"
+      });
+    } catch (error) {
+      console.error("Error setting up Outlook integration:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/integrations/outlook/status", isAuthenticated, async (req, res) => {
+    try {
+      // For now, always return not connected
+      res.json({ 
+        connected: false,
+        service: "outlook"
+      });
+    } catch (error) {
+      console.error("Error checking Outlook integration status:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/integrations/outlook", isAuthenticated, async (req, res) => {
+    try {
+      // For now, just return success
+      res.json({ 
+        message: "Outlook integration disconnected",
+        status: "disconnected"
+      });
+    } catch (error) {
+      console.error("Error disconnecting Outlook integration:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
   
   // Get all calls with company data
   app.get("/api/calls", async (req, res) => {

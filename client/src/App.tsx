@@ -8,6 +8,7 @@ import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import CallPrep from "@/pages/call-prep";
 import Home from "@/pages/home";
+import Settings from "@/pages/settings";
 import { useAuth } from "@/hooks/useAuth";
 
 function Router() {
@@ -22,6 +23,7 @@ function Router() {
           <Route path="/" component={Home} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/call/:id" component={CallPrep} />
+          <Route path="/settings" component={Settings} />
         </>
       )}
       <Route component={NotFound} />

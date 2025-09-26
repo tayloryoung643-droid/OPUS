@@ -1,0 +1,276 @@
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import type { User } from "@shared/schema";
+
+export default function Settings() {
+  const { user } = useAuth();
+  const typedUser = user as User | undefined;
+  const [connectingId, setConnectingId] = useState<string | null>(null);
+
+  // Fetch Outlook integration status
+  const { data: outlookStatus, refetch: refetchOutlook } = useQuery({
+    queryKey: ["/api/integrations/outlook/status"],
+    enabled: true,
+    retry: false
+  });
+
+  const integrations = [
+    {
+      id: "outlook",
+      name: "Outlook Calendar & Email",
+      description: "Connect your Outlook calendar and email to automatically sync meetings and conversations",
+      icon: <Calendar className="w-8 h-8 text-blue-600" />,
+      status: (outlookStatus as any)?.connected ? "connected" : "not_connected",
+      type: "calendar_email"
+    },
+    {
+      id: "google_calendar",
+      name: "Google Calendar",
+      description: "Sync your Google Calendar to see upcoming meetings and automatically generate call prep",
+      icon: <Calendar className="w-8 h-8 text-green-600" />,
+      status: "not_connected",
+      type: "calendar"
+    },
+    {
+      id: "gmail",
+      name: "Gmail",
+      description: "Connect Gmail to analyze email conversations and extract context for call preparation",
+      icon: <Mail className="w-8 h-8 text-red-600" />,
+      status: "not_connected",
+      type: "email"
+    },
+    {
+      id: "salesforce",
+      name: "Salesforce",
+      description: "Connect your Salesforce CRM to pull account data, opportunities, and contact information",
+      icon: <Building2 className="w-8 h-8 text-blue-500" />,
+      status: "not_connected",
+      type: "crm"
+    },
+  ];
+
+  const handleConnectIntegration = async (integrationId: string) => {
+    if (integrationId === "outlook") {
+      setConnectingId(integrationId);
+      try {
+        const response = await fetch("/api/integrations/outlook/setup");
+        const data = await response.json();
+        
+        if (response.status === 501) {
+          // Coming soon message
+          alert(data.message);
+        } else {
+          // Would normally redirect to OAuth flow
+          // For now, just show the message
+          console.log("Outlook setup:", data);
+        }
+      } catch (error) {
+        console.error("Error connecting Outlook:", error);
+        alert("Failed to connect Outlook integration. Please try again.");
+      } finally {
+        setConnectingId(null);
+      }
+    } else {
+      // For other integrations, show coming soon
+      const integration = integrations.find(i => i.id === integrationId);
+      alert(`${integration?.name} integration coming soon! We're working on adding support for this platform.`);
+    }
+  };
+
+  const handleDisconnectIntegration = async (integrationId: string) => {
+    if (integrationId === "outlook") {
+      setConnectingId(integrationId);
+      try {
+        const response = await fetch(`/api/integrations/${integrationId}`, {
+          method: "DELETE"
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+          alert("Outlook integration disconnected successfully!");
+          refetchOutlook();
+        }
+      } catch (error) {
+        console.error("Error disconnecting Outlook:", error);
+        alert("Failed to disconnect Outlook integration. Please try again.");
+      } finally {
+        setConnectingId(null);
+      }
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Navigation */}
+      <nav className="bg-card border-b border-border px-6 py-4" data-testid="navigation">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Link href="/">
+              <Button variant="ghost" size="sm" data-testid="button-back">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Home
+              </Button>
+            </Link>
+            
+            <div className="flex items-center space-x-2">
+              <SettingsIcon className="w-6 h-6 text-primary" />
+              <span className="text-xl font-semibold text-foreground">Settings</span>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3">
+            {typedUser?.profileImageUrl && (
+              <img
+                src={typedUser.profileImageUrl}
+                alt="Profile"
+                className="w-8 h-8 rounded-full object-cover"
+                data-testid="img-profile"
+              />
+            )}
+            <span className="text-sm text-muted-foreground">
+              {typedUser?.firstName && typedUser?.lastName 
+                ? `${typedUser.firstName} ${typedUser.lastName}`
+                : typedUser?.email
+              }
+            </span>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-foreground mb-2">
+            Integrations & Settings
+          </h1>
+          <p className="text-muted-foreground">
+            Connect your tools to unlock AI-powered call preparation. The more data you connect, 
+            the better insights Momentum AI can provide for your sales calls.
+          </p>
+        </div>
+
+        {/* Integration Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {integrations.map((integration) => (
+            <Card key={integration.id} className="hover:shadow-md transition-shadow">
+              <CardHeader className="pb-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center space-x-3">
+                    {integration.icon}
+                    <div>
+                      <CardTitle className="text-lg">{integration.name}</CardTitle>
+                      <div className="mt-1">
+                        <Badge variant={integration.status === "connected" ? "default" : "secondary"}>
+                          {integration.status === "connected" ? "Connected" : "Not Connected"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
+                  {integration.description}
+                </p>
+                
+                <div className="flex space-x-2">
+                  {integration.status === "connected" ? (
+                    <>
+                      <Button variant="outline" size="sm" className="flex-1">
+                        <SettingsIcon className="w-4 h-4 mr-2" />
+                        Configure
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="flex-1"
+                        onClick={() => handleDisconnectIntegration(integration.id)}
+                        disabled={connectingId === integration.id}
+                      >
+                        {connectingId === integration.id ? "Disconnecting..." : "Disconnect"}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button 
+                      size="sm" 
+                      className="flex-1"
+                      onClick={() => handleConnectIntegration(integration.id)}
+                      disabled={connectingId === integration.id}
+                      data-testid={`button-connect-${integration.id}`}
+                    >
+                      <ExternalLink className="w-4 h-4 mr-2" />
+                      {connectingId === integration.id ? "Connecting..." : `Connect ${integration.name}`}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {/* Settings Sections */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Account Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex justify-between items-center py-2">
+                <div>
+                  <p className="font-medium">Profile Information</p>
+                  <p className="text-sm text-muted-foreground">Update your name and profile picture</p>
+                </div>
+                <Button variant="outline" size="sm" data-testid="button-edit-profile">
+                  Edit
+                </Button>
+              </div>
+              
+              <div className="flex justify-between items-center py-2">
+                <div>
+                  <p className="font-medium">Email Preferences</p>
+                  <p className="text-sm text-muted-foreground">Manage notification settings</p>
+                </div>
+                <Button variant="outline" size="sm" data-testid="button-email-preferences">
+                  Manage
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>AI Preferences</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex justify-between items-center py-2">
+                <div>
+                  <p className="font-medium">Research Depth</p>
+                  <p className="text-sm text-muted-foreground">Configure how detailed AI insights should be</p>
+                </div>
+                <Button variant="outline" size="sm" data-testid="button-ai-settings">
+                  Configure
+                </Button>
+              </div>
+              
+              <div className="flex justify-between items-center py-2">
+                <div>
+                  <p className="font-medium">Data Usage</p>
+                  <p className="text-sm text-muted-foreground">Control what data is used for AI generation</p>
+                </div>
+                <Button variant="outline" size="sm" data-testid="button-data-usage">
+                  Manage
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}

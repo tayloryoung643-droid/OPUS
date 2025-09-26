@@ -1,11 +1,13 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRoute, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sparkles, Calendar, Building2, Clock } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/ui/navigation";
@@ -62,6 +64,69 @@ interface CallDetails {
   } | null;
 }
 
+// Extended interface for partial mode responses from Account Resolver
+interface PartialPrepResponse {
+  mode: 'partial';
+  sheet: {
+    notesSectionFirst: boolean;
+    banner: string;
+    eventSummary: {
+      title: string;
+      start: string;
+      end?: string | null;
+      location?: string | null;
+    };
+    attendees: Array<{
+      email: string;
+      name?: string;
+      status?: string;
+    }>;
+    organizer?: {
+      email: string;
+      displayName?: string;
+    };
+    agendaFromInvite: string[];
+    actionItems: string[];
+    risks: string[];
+  };
+  needsSelection: boolean;
+  candidates: Array<{
+    company?: {
+      id: string;
+      name: string;
+      domain?: string;
+      industry?: string;
+    };
+    contacts: Array<{
+      id: string;
+      email: string;
+      firstName?: string;
+      lastName?: string;
+    }>;
+    confidence: number;
+    matchType: string;
+    matchDetails: string;
+  }>;
+}
+
+// Union type for API responses
+type GeneratePrepResponse = CallDetails | PartialPrepResponse;
+
+// Interface for user notes
+interface UserNote {
+  text: string;
+  updatedAt: string | null;
+}
+
+// Simple debounce utility
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return ((...args: any[]) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func.apply(null, args), wait);
+  }) as T;
+}
+
 interface CalendarCallEnsureResult extends CallDetails {
   source?: "calendar";
   calendarEvent?: {
@@ -83,6 +148,11 @@ export default function CallPrep() {
   const [, navigate] = useLocation();
   const callId = params?.id;
   const { toast } = useToast();
+  
+  // State for partial mode and notes
+  const [partialPrepData, setPartialPrepData] = useState<PartialPrepResponse | null>(null);
+  const [notesText, setNotesText] = useState("");
+  const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null);
 
   const isCalendarSelection = !!callId && callId.startsWith("calendar_");
   const calendarEventId = isCalendarSelection ? callId.replace(/^calendar_/, "") : null;
@@ -126,18 +196,79 @@ export default function CallPrep() {
     }
   }, [isCalendarSelection, ensuredCalendarCall, navigate]);
 
-  // Generate AI prep mutation
+  // User notes query and mutation
+  const { data: userNote } = useQuery<UserNote>({
+    queryKey: ["/api/prep-notes", resolvedCallId],
+    queryFn: async () => {
+      if (!resolvedCallId) return { text: "", updatedAt: null };
+      const response = await apiRequest("GET", `/api/prep-notes?eventId=${resolvedCallId}`);
+      return response.json();
+    },
+    enabled: !!resolvedCallId,
+  });
+
+  const saveNotesMutation = useMutation({
+    mutationFn: async ({ eventId, text }: { eventId: string; text: string }) => {
+      const response = await apiRequest("PUT", "/api/prep-notes", { eventId, text });
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/prep-notes", resolvedCallId] });
+    },
+  });
+
+  // Debounced notes save
+  const debouncedSaveNotes = useCallback(
+    debounce((text: string) => {
+      if (resolvedCallId) {
+        saveNotesMutation.mutate({ eventId: resolvedCallId, text });
+      }
+    }, 1000),
+    [resolvedCallId]
+  );
+
+  // Sync notes text with fetched data
+  useEffect(() => {
+    if (userNote?.text && notesText !== userNote.text) {
+      setNotesText(userNote.text);
+    }
+  }, [userNote?.text]);
+
+  // Auto-save notes on text change
+  useEffect(() => {
+    if (notesText !== (userNote?.text || "")) {
+      debouncedSaveNotes(notesText);
+    }
+  }, [notesText, userNote?.text, debouncedSaveNotes]);
+
+  // Generate AI prep mutation (updated to handle partial responses)
   const generatePrepMutation = useMutation({
     mutationFn: async (targetCallId: string) => {
       const response = await apiRequest("POST", `/api/calls/${targetCallId}/generate-prep`);
-      return response.json();
+      return response.json() as Promise<GeneratePrepResponse>;
     },
     onSuccess: (data) => {
-      toast({
-        title: "AI prep generated",
-        description: "Your call preparation sheet has been updated with AI insights.",
-      });
-      queryClient.setQueryData(["/api/calls", data.call.id], data);
+      if ('mode' in data && data.mode === 'partial') {
+        // Handle partial response
+        setPartialPrepData(data);
+        toast({
+          title: "Prep sheet ready",
+          description: data.candidates.length > 0 
+            ? `Found ${data.candidates.length} account suggestion(s). Link an account for full AI insights.`
+            : "Basic prep sheet ready. Link an account for AI insights.",
+        });
+      } else {
+        // Handle full response
+        setPartialPrepData(null);
+        toast({
+          title: "AI prep generated",
+          description: "Your call preparation sheet has been updated with AI insights.",
+        });
+        // Only update query data for full responses that have call.id
+        if ('call' in data && data.call?.id) {
+          queryClient.setQueryData(["/api/calls", data.call.id], data);
+        }
+      }
     },
     onError: (error) => {
       toast({
@@ -209,6 +340,24 @@ export default function CallPrep() {
 
   const { call, company, contacts, callPrep } = callDetails;
 
+  // Handle account candidate selection
+  const selectCandidateMutation = useMutation({
+    mutationFn: async ({ callId, companyId }: { callId: string; companyId: string }) => {
+      // In a real app, this would link the call to the company
+      // For now, we'll simulate this by updating the call
+      const response = await apiRequest("PATCH", `/api/calls/${callId}`, { companyId });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Account linked",
+        description: "Company has been linked to this call. Generate AI prep for full insights.",
+      });
+      setPartialPrepData(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/calls", resolvedCallId] });
+    },
+  });
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -267,8 +416,118 @@ export default function CallPrep() {
             </div>
           </div>
 
+          {/* Partial Prep Mode */}
+          {partialPrepData && (
+            <>
+              {/* Banner Alert */}
+              <Alert className="mb-6">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>{partialPrepData.sheet.banner}</AlertDescription>
+              </Alert>
+
+              {/* Account Candidates */}
+              {partialPrepData.candidates.length > 0 && (
+                <Card className="mb-6">
+                  <CardContent className="p-6">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center">
+                      <Building2 className="h-5 w-5 mr-2" />
+                      Account Suggestions
+                    </h3>
+                    <div className="space-y-3">
+                      {partialPrepData.candidates.map((candidate, index) => (
+                        <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+                          <div>
+                            <div className="font-medium">{candidate.company?.name || 'Unknown Company'}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {candidate.matchDetails} ({candidate.confidence}% confidence)
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {candidate.contacts.length} contact(s) • {candidate.matchType.replace('_', ' ')}
+                            </div>
+                          </div>
+                          <Button 
+                            size="sm"
+                            onClick={() => candidate.company && selectCandidateMutation.mutate({ 
+                              callId: resolvedCallId!, 
+                              companyId: candidate.company.id 
+                            })}
+                            disabled={selectCandidateMutation.isPending}
+                            data-testid={`button-select-candidate-${index}`}
+                          >
+                            Link Account
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Notes Section (appears first in partial mode) */}
+              <Card className="mb-6">
+                <CardContent className="p-6">
+                  <h3 className="text-lg font-semibold mb-4 flex items-center">
+                    <FileText className="h-5 w-5 mr-2" />
+                    Your Notes
+                  </h3>
+                  <Textarea
+                    placeholder="Add your notes for this call..."
+                    value={notesText}
+                    onChange={(e) => setNotesText(e.target.value)}
+                    className="min-h-[120px]"
+                    data-testid="textarea-prep-notes"
+                  />
+                  {saveNotesMutation.isPending && (
+                    <div className="text-xs text-muted-foreground mt-2">Saving...</div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Event Details */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center">
+                      <Users className="h-5 w-5 mr-2" />
+                      Attendees
+                    </h3>
+                    <div className="space-y-2">
+                      {partialPrepData.sheet.attendees.map((attendee, index) => (
+                        <div key={index} className="flex items-center space-x-3">
+                          <div className="text-sm">
+                            <div className="font-medium">{attendee.name || attendee.email}</div>
+                            {attendee.name && (
+                              <div className="text-muted-foreground">{attendee.email}</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {partialPrepData.sheet.attendees.length === 0 && (
+                        <div className="text-sm text-muted-foreground">No attendees found</div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="text-lg font-semibold mb-4">Meeting Agenda</h3>
+                    <div className="space-y-2">
+                      {partialPrepData.sheet.agendaFromInvite.map((item, index) => (
+                        <div key={index} className="text-sm">• {item}</div>
+                      ))}
+                      {partialPrepData.sheet.agendaFromInvite.length === 0 && (
+                        <div className="text-sm text-muted-foreground">No agenda items found</div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+
           {/* No Prep State */}
-          {!callPrep && (
+          {!callPrep && !partialPrepData && (
             <Card className="mb-8">
               <CardContent className="p-8 text-center">
                 <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -299,6 +558,26 @@ export default function CallPrep() {
 
               {/* Right Column */}
               <div className="space-y-6">
+                {/* User Notes */}
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center">
+                      <FileText className="h-5 w-5 mr-2" />
+                      Your Notes
+                    </h3>
+                    <Textarea
+                      placeholder="Add your notes for this call..."
+                      value={notesText}
+                      onChange={(e) => setNotesText(e.target.value)}
+                      className="min-h-[100px] mb-2"
+                      data-testid="textarea-prep-notes-full"
+                    />
+                    {saveNotesMutation.isPending && (
+                      <div className="text-xs text-muted-foreground">Saving...</div>
+                    )}
+                  </CardContent>
+                </Card>
+                
                 <KeyStakeholders contacts={contacts} />
                 <RecentNews news={company?.recentNews || []} />
                 <SuggestedOpportunities 

@@ -46,22 +46,35 @@ The application uses PostgreSQL as the primary database with Drizzle ORM:
 The database schema supports the core entities: companies (prospect organizations), contacts (stakeholders), calls (scheduled meetings), and call preparations (AI-generated research).
 
 ### Authentication and Authorization
-The application now features a complete Google Sign-in authentication system powered by Replit Auth integration:
+The application features comprehensive authentication and integration management:
 
-- **Google OAuth**: Single-click sign-in using Google accounts via OIDC protocol
+- **User Authentication**: Google Sign-in via Replit Auth integration using OIDC protocol
 - **Session Management**: Secure session handling with PostgreSQL session store
 - **User Management**: Automatic user profile creation and updates from OAuth claims
 - **Route Protection**: Authenticated routes show home dashboard vs landing page for guests
 - **Profile Integration**: User profiles include name, email, and profile images from Google
 
+### Google Calendar Integration
+Production-ready Google Calendar integration with enterprise-grade security:
+
+- **OAuth Flow**: Complete Google OAuth 2.0 flow with Calendar and Gmail scopes
+- **Token Security**: AES-256-GCM encryption for all OAuth tokens stored in database
+- **Real-time Sync**: Fetches actual calendar events and displays them on the dashboard
+- **Conditional UI**: Home page dynamically shows calendar data when connected or empty state when not
+- **Settings Management**: Full integration lifecycle (connect, status checking, disconnect)
+- **Error Handling**: Graceful handling of expired tokens with automatic re-authentication prompts
+- **Security Compliance**: Encrypted token storage, secure refresh flows, and proper error handling
+
 ### External Service Integrations
 The platform integrates with external services for enhanced functionality:
 
+- **Google Calendar Integration**: Live calendar event fetching, OAuth token management, and real-time sync
 - **OpenAI Integration**: GPT models for generating prospect research, competitive analysis, and conversation strategies
 - **AI Research Generation**: Automated creation of executive summaries, CRM history analysis, competitive landscape mapping, and opportunity identification
+- **Secure Token Management**: Enterprise-grade encryption for all third-party API credentials
 - **Error Handling**: Robust error handling for external API failures with fallback strategies
 
-The OpenAI service layer abstracts the complexity of prompt engineering and response parsing, providing structured outputs for different research components.
+The integration layer provides secure, encrypted storage of API credentials and implements proper token refresh flows with automatic re-authentication when needed.
 
 ## External Dependencies
 

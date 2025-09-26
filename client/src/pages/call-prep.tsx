@@ -241,6 +241,24 @@ export default function CallPrep() {
     }
   }, [notesText, userNote?.text, debouncedSaveNotes]);
 
+  // Handle account candidate selection (MUST be before conditional returns)
+  const selectCandidateMutation = useMutation({
+    mutationFn: async ({ callId, companyId }: { callId: string; companyId: string }) => {
+      // In a real app, this would link the call to the company
+      // For now, we'll simulate this by updating the call
+      const response = await apiRequest("PATCH", `/api/calls/${callId}`, { companyId });
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Account linked",
+        description: "Company has been linked to this call. Generate AI prep for full insights.",
+      });
+      setPartialPrepData(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/calls", resolvedCallId] });
+    },
+  });
+
   // Generate AI prep mutation (updated to handle partial responses)
   const generatePrepMutation = useMutation({
     mutationFn: async (targetCallId: string) => {
@@ -339,24 +357,6 @@ export default function CallPrep() {
   }
 
   const { call, company, contacts, callPrep } = callDetails;
-
-  // Handle account candidate selection
-  const selectCandidateMutation = useMutation({
-    mutationFn: async ({ callId, companyId }: { callId: string; companyId: string }) => {
-      // In a real app, this would link the call to the company
-      // For now, we'll simulate this by updating the call
-      const response = await apiRequest("PATCH", `/api/calls/${callId}`, { companyId });
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Account linked",
-        description: "Company has been linked to this call. Generate AI prep for full insights.",
-      });
-      setPartialPrepData(null);
-      queryClient.invalidateQueries({ queryKey: ["/api/calls", resolvedCallId] });
-    },
-  });
 
   return (
     <div className="min-h-screen bg-background">

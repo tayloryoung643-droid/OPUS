@@ -96,6 +96,13 @@ export default function CallPrep() {
     enabled: !!calendarEventId,
     queryFn: async () => {
       const response = await apiRequest("POST", `/api/calendar/events/${calendarEventId}/ensure-call`);
+      const contentType = response.headers.get("content-type");
+      
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(`Expected JSON response but got ${contentType}. Response: ${text.substring(0, 200)}`);
+      }
+      
       return (await response.json()) as CalendarCallEnsureResult;
     },
     staleTime: 30_000,

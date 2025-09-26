@@ -457,14 +457,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Call not found" });
       }
 
-      res.json({
+      return res.json({
         ...callDetails,
         source: "calendar",
         calendarEvent: event,
       });
     } catch (error) {
       console.error("Error ensuring calendar call:", error);
-      res.status(500).json({ message: "Failed to open calendar event" });
+      return res.status(500).json({ message: "Failed to open calendar event", error: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 

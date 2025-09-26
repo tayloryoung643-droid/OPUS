@@ -141,6 +141,13 @@ export default function Dashboard() {
   const ensureCalendarCallMutation = useMutation({
     mutationFn: async (eventId: string) => {
       const response = await apiRequest("POST", `/api/calendar/events/${eventId}/ensure-call`);
+      const contentType = response.headers.get("content-type");
+      
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        throw new Error(`Expected JSON response but got ${contentType}. Response: ${text.substring(0, 200)}`);
+      }
+      
       const data = await response.json();
       queryClient.setQueryData(["/api/calls", data.call.id], data);
       return data;

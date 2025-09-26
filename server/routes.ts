@@ -165,9 +165,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { salesforceAuth } = await import('./services/salesforceAuth');
+      const crypto = await import('crypto');
       
       // Generate CSRF state token for security
-      const state = require('crypto').randomBytes(16).toString('hex');
+      const state = crypto.randomBytes(16).toString('hex');
       
       // Store state in session for validation
       (req as any).session.salesforceState = state;

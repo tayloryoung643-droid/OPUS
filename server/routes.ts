@@ -154,6 +154,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Salesforce CRM integration routes
+  app.get("/api/integrations/salesforce/auth", isAuthenticated, async (req, res) => {
+    try {
+      if (!process.env.SALESFORCE_CLIENT_ID || !process.env.SALESFORCE_CLIENT_SECRET) {
+        return res.status(501).json({
+          message: "Salesforce integration not configured. Please set SALESFORCE_CLIENT_ID and SALESFORCE_CLIENT_SECRET environment variables.",
+          status: "not_configured"
+        });
+      }
+
+      const { salesforceAuth } = await import('./services/salesforceAuth');
+      
+      // Generate CSRF state token for security
+      const state = require('crypto').randomBytes(16).toString('hex');
+      
+      // Store state in session for validation
+      (req as any).session.salesforceState = state;
+      
+      const authUrl = salesforceAuth.getAuthUrl(state);
+      res.json({ authUrl });
+    } catch (error) {
+      console.error("Error generating Salesforce auth URL:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/integrations/salesforce/callback", isAuthenticated, async (req: any, res) => {
+    try {
+      const { code, state } = req.query;
+      
+      if (!code) {
+        return res.status(400).json({ message: "Missing authorization code" });
+      }
+
+      // Validate CSRF state
+      if (!state || state !== req.session.salesforceState) {
+        return res.status(400).json({ message: "Invalid state parameter" });
+      }
+
+      // Clear state from session
+      delete req.session.salesforceState;
+
+      const { salesforceAuth } = await import('./services/salesforceAuth');
+      const tokens = await salesforceAuth.getTokens(code);
+      
+      const userId = req.user.claims.sub;
+      
+      // Check if user already has a Salesforce integration
+      const existingIntegration = await storage.getSalesforceIntegration(userId);
+      
+      const salesforceIntegrationData = {
+        userId,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token || null,
+        instanceUrl: tokens.instance_url,
+        tokenExpiry: tokens.token_expiry || null,
+        isActive: true
+      };
+
+      if (existingIntegration) {
+        await storage.updateSalesforceIntegration(userId, salesforceIntegrationData);
+      } else {
+        await storage.createSalesforceIntegration(salesforceIntegrationData);
+      }
+
+      // Redirect back to settings page with success
+      res.redirect('/?salesforce_connected=true');
+    } catch (error) {
+      console.error("Error handling Salesforce OAuth callback:", error);
+      res.redirect('/?salesforce_error=true');
+    }
+  });
+
+  app.get("/api/integrations/salesforce/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const salesforceIntegration = await storage.getSalesforceIntegration(userId);
+      
+      res.json({
+        connected: !!salesforceIntegration?.isActive,
+        instanceUrl: salesforceIntegration?.instanceUrl,
+        connectedAt: salesforceIntegration?.createdAt,
+        service: "salesforce"
+      });
+    } catch (error) {
+      console.error("Error checking Salesforce integration status:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/integrations/salesforce", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      await storage.deleteSalesforceIntegration(userId);
+      
+      res.json({
+        message: "Salesforce integration disconnected successfully",
+        status: "disconnected"
+      });
+    } catch (error) {
+      console.error("Error disconnecting Salesforce integration:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Salesforce CRM data routes
+  app.get("/api/salesforce/leads", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { salesforceCrmService } = await import('./services/salesforceCrm');
+      
+      const leads = await salesforceCrmService.getLeads(userId, 50);
+      res.json(leads);
+    } catch (error) {
+      console.error("Error fetching Salesforce leads:", error);
+      res.status(500).json({ message: "Failed to fetch leads" });
+    }
+  });
+
+  app.get("/api/salesforce/opportunities", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { salesforceCrmService } = await import('./services/salesforceCrm');
+      
+      const opportunities = await salesforceCrmService.getOpportunities(userId, 50);
+      res.json(opportunities);
+    } catch (error) {
+      console.error("Error fetching Salesforce opportunities:", error);
+      res.status(500).json({ message: "Failed to fetch opportunities" });
+    }
+  });
+
+  app.get("/api/salesforce/contacts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { salesforceCrmService } = await import('./services/salesforceCrm');
+      
+      const contacts = await salesforceCrmService.getContacts(userId, 50);
+      res.json(contacts);
+    } catch (error) {
+      console.error("Error fetching Salesforce contacts:", error);
+      res.status(500).json({ message: "Failed to fetch contacts" });
+    }
+  });
+
   // Google Calendar data routes
   app.get("/api/calendar/events", isAuthenticated, async (req: any, res) => {
     try {

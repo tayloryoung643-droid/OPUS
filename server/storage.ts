@@ -1,5 +1,5 @@
 import { 
-  companies, contacts, calls, callPreps, users, integrations, integrationData, crmOpportunities, googleIntegrations,
+  companies, contacts, calls, callPreps, users, integrations, integrationData, crmOpportunities, googleIntegrations, salesforceIntegrations,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
@@ -8,7 +8,8 @@ import {
   type Integration, type InsertIntegration,
   type IntegrationData, type InsertIntegrationData,
   type CrmOpportunity, type InsertCrmOpportunity,
-  type GoogleIntegration, type InsertGoogleIntegration
+  type GoogleIntegration, type InsertGoogleIntegration,
+  type SalesforceIntegration, type InsertSalesforceIntegration
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -72,6 +73,12 @@ export interface IStorage {
   getGoogleIntegration(userId: string): Promise<GoogleIntegration | undefined>;
   updateGoogleIntegration(userId: string, updates: Partial<InsertGoogleIntegration>): Promise<GoogleIntegration>;
   deleteGoogleIntegration(userId: string): Promise<void>;
+
+  // Salesforce integration methods
+  createSalesforceIntegration(salesforceIntegration: InsertSalesforceIntegration): Promise<SalesforceIntegration>;
+  getSalesforceIntegration(userId: string): Promise<SalesforceIntegration | undefined>;
+  updateSalesforceIntegration(userId: string, updates: Partial<InsertSalesforceIntegration>): Promise<SalesforceIntegration>;
+  deleteSalesforceIntegration(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -411,6 +418,96 @@ export class DatabaseStorage implements IStorage {
       .update(googleIntegrations)
       .set({ isActive: false, updatedAt: new Date() })
       .where(eq(googleIntegrations.userId, userId));
+  }
+
+  // Salesforce integration methods
+  async createSalesforceIntegration(insertSalesforceIntegration: InsertSalesforceIntegration): Promise<SalesforceIntegration> {
+    // Encrypt tokens before storing
+    const encryptedData = { ...insertSalesforceIntegration };
+    if (encryptedData.accessToken) {
+      encryptedData.accessToken = JSON.stringify(CryptoService.encrypt(encryptedData.accessToken));
+    }
+    if (encryptedData.refreshToken) {
+      encryptedData.refreshToken = JSON.stringify(CryptoService.encrypt(encryptedData.refreshToken));
+    }
+    
+    const [salesforceIntegration] = await db.insert(salesforceIntegrations).values(encryptedData).returning();
+    return this.decryptSalesforceIntegrationTokens(salesforceIntegration);
+  }
+
+  async getSalesforceIntegration(userId: string): Promise<SalesforceIntegration | undefined> {
+    const [salesforceIntegration] = await db
+      .select()
+      .from(salesforceIntegrations)
+      .where(and(
+        eq(salesforceIntegrations.userId, userId),
+        eq(salesforceIntegrations.isActive, true)
+      ));
+    
+    if (!salesforceIntegration) return undefined;
+    
+    return this.decryptSalesforceIntegrationTokens(salesforceIntegration);
+  }
+
+  async updateSalesforceIntegration(userId: string, updates: Partial<InsertSalesforceIntegration>): Promise<SalesforceIntegration> {
+    // Encrypt tokens before updating
+    const encryptedUpdates = { ...updates };
+    if (encryptedUpdates.accessToken) {
+      encryptedUpdates.accessToken = JSON.stringify(CryptoService.encrypt(encryptedUpdates.accessToken));
+    }
+    if (encryptedUpdates.refreshToken) {
+      encryptedUpdates.refreshToken = JSON.stringify(CryptoService.encrypt(encryptedUpdates.refreshToken));
+    }
+    
+    const [salesforceIntegration] = await db
+      .update(salesforceIntegrations)
+      .set({ ...encryptedUpdates, updatedAt: new Date() } as any)
+      .where(eq(salesforceIntegrations.userId, userId))
+      .returning();
+    return this.decryptSalesforceIntegrationTokens(salesforceIntegration);
+  }
+
+  async deleteSalesforceIntegration(userId: string): Promise<void> {
+    await db
+      .update(salesforceIntegrations)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(salesforceIntegrations.userId, userId));
+  }
+
+  private decryptSalesforceIntegrationTokens(salesforceIntegration: SalesforceIntegration): SalesforceIntegration {
+    const decrypted = { ...salesforceIntegration };
+    
+    try {
+      if (decrypted.accessToken) {
+        // Check if it's already encrypted
+        try {
+          const encryptedData = JSON.parse(decrypted.accessToken);
+          if (CryptoService.isEncrypted(encryptedData)) {
+            decrypted.accessToken = CryptoService.decrypt(encryptedData);
+          }
+        } catch (e) {
+          // Token is not encrypted or JSON, leave as is
+        }
+      }
+      
+      if (decrypted.refreshToken) {
+        // Check if it's already encrypted
+        try {
+          const encryptedData = JSON.parse(decrypted.refreshToken);
+          if (CryptoService.isEncrypted(encryptedData)) {
+            decrypted.refreshToken = CryptoService.decrypt(encryptedData);
+          }
+        } catch (e) {
+          // Token is not encrypted or JSON, leave as is
+        }
+      }
+    } catch (error) {
+      console.error('Error decrypting Salesforce integration tokens:', error);
+      // Return the integration without decrypting if there's an error
+      // This allows for graceful handling of legacy data
+    }
+    
+    return decrypted;
   }
 }
 

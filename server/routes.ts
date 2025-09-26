@@ -75,6 +75,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Store user ID in session for callback
+      (req as any).session.googleUserId = req.user.claims.sub;
+
       const { googleAuth } = await import('./services/googleAuth');
       const authUrl = googleAuth.getAuthUrl();
       res.json({ authUrl });
@@ -84,7 +87,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/google/callback", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/google/callback", async (req: any, res) => {
     try {
       const { code } = req.query;
       if (!code) {
@@ -92,9 +95,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { googleAuth } = await import('./services/googleAuth');
+      // Get user ID from session
+      const userId = (req as any).session.googleUserId;
+      if (!userId) {
+        return res.status(400).json({ message: "Missing user session" });
+      }
+
+      // Clear user ID from session
+      delete (req as any).session.googleUserId;
+
       const tokens = await googleAuth.getTokens(code);
-      
-      const userId = req.user.claims.sub;
       
       // Check if user already has a Google integration
       const existingIntegration = await storage.getGoogleIntegration(userId);
@@ -170,7 +180,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Generate CSRF state token for security
       const state = crypto.randomBytes(16).toString('hex');
       
-      // Store state in session for validation
+      // Store user ID and state in session for callback
+      (req as any).session.salesforceUserId = req.user.claims.sub;
       (req as any).session.salesforceState = state;
       
       const authUrl = salesforceAuth.getAuthUrl(state);
@@ -181,7 +192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/salesforce/callback", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/callback", async (req: any, res) => {
     try {
       const { code, state } = req.query;
       
@@ -194,13 +205,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Invalid state parameter" });
       }
 
-      // Clear state from session
+      // Get user ID from session
+      const userId = (req as any).session.salesforceUserId;
+      if (!userId) {
+        return res.status(400).json({ message: "Missing user session" });
+      }
+
+      // Clear state and user ID from session
       delete req.session.salesforceState;
+      delete (req as any).session.salesforceUserId;
 
       const { salesforceAuth } = await import('./services/salesforceAuth');
       const tokens = await salesforceAuth.getTokens(code);
-      
-      const userId = req.user.claims.sub;
       
       // Check if user already has a Salesforce integration
       const existingIntegration = await storage.getSalesforceIntegration(userId);

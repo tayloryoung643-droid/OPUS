@@ -13,14 +13,30 @@ export default function Settings() {
   const typedUser = user as User | undefined;
   const [connectingId, setConnectingId] = useState<string | null>(null);
 
-  // Fetch Outlook integration status
+  // Fetch integration statuses
   const { data: outlookStatus, refetch: refetchOutlook } = useQuery({
     queryKey: ["/api/integrations/outlook/status"],
     enabled: true,
     retry: false
   });
 
+  const { data: googleStatus, refetch: refetchGoogle } = useQuery({
+    queryKey: ["/api/integrations/google/status"],
+    enabled: true,
+    retry: false
+  });
+
   const integrations = [
+    {
+      id: "google_calendar",
+      name: "Google Calendar & Gmail",
+      description: "Connect your Google account to sync calendar events, analyze email conversations, and generate AI call prep",
+      icon: <Calendar className="w-8 h-8 text-green-600" />,
+      status: (googleStatus as any)?.connected ? "connected" : "not_connected",
+      type: "calendar_email",
+      scopes: (googleStatus as any)?.scopes || [],
+      connectedAt: (googleStatus as any)?.connectedAt
+    },
     {
       id: "outlook",
       name: "Outlook Calendar & Email",
@@ -28,22 +44,6 @@ export default function Settings() {
       icon: <Calendar className="w-8 h-8 text-blue-600" />,
       status: (outlookStatus as any)?.connected ? "connected" : "not_connected",
       type: "calendar_email"
-    },
-    {
-      id: "google_calendar",
-      name: "Google Calendar",
-      description: "Sync your Google Calendar to see upcoming meetings and automatically generate call prep",
-      icon: <Calendar className="w-8 h-8 text-green-600" />,
-      status: "not_connected",
-      type: "calendar"
-    },
-    {
-      id: "gmail",
-      name: "Gmail",
-      description: "Connect Gmail to analyze email conversations and extract context for call preparation",
-      icon: <Mail className="w-8 h-8 text-red-600" />,
-      status: "not_connected",
-      type: "email"
     },
     {
       id: "salesforce",
@@ -56,7 +56,26 @@ export default function Settings() {
   ];
 
   const handleConnectIntegration = async (integrationId: string) => {
-    if (integrationId === "outlook") {
+    if (integrationId === "google_calendar") {
+      setConnectingId(integrationId);
+      try {
+        const response = await fetch("/api/integrations/google/auth");
+        const data = await response.json();
+        
+        if (response.status === 501) {
+          // Not configured message
+          alert(data.message);
+        } else if (data.authUrl) {
+          // Redirect to Google OAuth
+          window.location.href = data.authUrl;
+        }
+      } catch (error) {
+        console.error("Error connecting Google:", error);
+        alert("Failed to connect Google integration. Please try again.");
+      } finally {
+        setConnectingId(null);
+      }
+    } else if (integrationId === "outlook") {
       setConnectingId(integrationId);
       try {
         const response = await fetch("/api/integrations/outlook/setup");
@@ -65,10 +84,6 @@ export default function Settings() {
         if (response.status === 501) {
           // Coming soon message
           alert(data.message);
-        } else {
-          // Would normally redirect to OAuth flow
-          // For now, just show the message
-          console.log("Outlook setup:", data);
         }
       } catch (error) {
         console.error("Error connecting Outlook:", error);
@@ -84,10 +99,28 @@ export default function Settings() {
   };
 
   const handleDisconnectIntegration = async (integrationId: string) => {
-    if (integrationId === "outlook") {
+    if (integrationId === "google_calendar") {
       setConnectingId(integrationId);
       try {
-        const response = await fetch(`/api/integrations/${integrationId}`, {
+        const response = await fetch("/api/integrations/google", {
+          method: "DELETE"
+        });
+        const data = await response.json();
+        
+        if (response.ok) {
+          alert("Google integration disconnected successfully!");
+          refetchGoogle();
+        }
+      } catch (error) {
+        console.error("Error disconnecting Google:", error);
+        alert("Failed to disconnect Google integration. Please try again.");
+      } finally {
+        setConnectingId(null);
+      }
+    } else if (integrationId === "outlook") {
+      setConnectingId(integrationId);
+      try {
+        const response = await fetch("/api/integrations/outlook", {
           method: "DELETE"
         });
         const data = await response.json();

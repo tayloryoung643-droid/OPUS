@@ -64,6 +64,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // Google Calendar and Gmail integration routes
+  app.get("/api/integrations/google/auth", isAuthenticated, async (req, res) => {
+    try {
+      if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+        return res.status(501).json({
+          message: "Google integration not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.",
+          status: "not_configured"
+        });
+      }
+
+      const { googleAuth } = await import('./services/googleAuth');
+      const authUrl = googleAuth.getAuthUrl();
+      res.json({ authUrl });
+    } catch (error) {
+      console.error("Error generating Google auth URL:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/integrations/google/callback", isAuthenticated, async (req: any, res) => {
+    try {
+      const { code } = req.query;
+      if (!code) {
+        return res.status(400).json({ message: "Missing authorization code" });
+      }
+
+      const { googleAuth } = await import('./services/googleAuth');
+      const tokens = await googleAuth.getTokens(code);
+      
+      const userId = req.user.claims.sub;
+      
+      // Check if user already has a Google integration
+      const existingIntegration = await storage.getGoogleIntegration(userId);
+      
+      const googleIntegrationData = {
+        userId,
+        accessToken: tokens.access_token!,
+        refreshToken: tokens.refresh_token || null,
+        tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
+        scopes: tokens.scope?.split(' ') || [],
+        isActive: true
+      };
+
+      if (existingIntegration) {
+        await storage.updateGoogleIntegration(userId, googleIntegrationData);
+      } else {
+        await storage.createGoogleIntegration(googleIntegrationData);
+      }
+
+      // Redirect back to settings page with success
+      res.redirect('/?google_connected=true');
+    } catch (error) {
+      console.error("Error handling Google OAuth callback:", error);
+      res.redirect('/?google_error=true');
+    }
+  });
+
+  app.get("/api/integrations/google/status", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const googleIntegration = await storage.getGoogleIntegration(userId);
+      
+      res.json({
+        connected: !!googleIntegration?.isActive,
+        scopes: googleIntegration?.scopes || [],
+        connectedAt: googleIntegration?.createdAt,
+        service: "google"
+      });
+    } catch (error) {
+      console.error("Error checking Google integration status:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/integrations/google", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      await storage.deleteGoogleIntegration(userId);
+      
+      res.json({
+        message: "Google integration disconnected successfully",
+        status: "disconnected"
+      });
+    } catch (error) {
+      console.error("Error disconnecting Google integration:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Google Calendar data routes
+  app.get("/api/calendar/events", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { googleCalendarService } = await import('./services/googleCalendar');
+      
+      const events = await googleCalendarService.getUpcomingEvents(userId, 10);
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching calendar events:", error);
+      res.status(500).json({ message: "Failed to fetch calendar events" });
+    }
+  });
+
+  app.get("/api/calendar/today", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { googleCalendarService } = await import('./services/googleCalendar');
+      
+      const events = await googleCalendarService.getTodaysEvents(userId);
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching today's calendar events:", error);
+      res.status(500).json({ message: "Failed to fetch today's events" });
+    }
+  });
   
   // Get all calls with company data
   app.get("/api/calls", async (req, res) => {

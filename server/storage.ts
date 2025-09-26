@@ -1,5 +1,5 @@
 import { 
-  companies, contacts, calls, callPreps, users, integrations, integrationData, crmOpportunities,
+  companies, contacts, calls, callPreps, users, integrations, integrationData, crmOpportunities, googleIntegrations,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
@@ -7,10 +7,12 @@ import {
   type User, type UpsertUser,
   type Integration, type InsertIntegration,
   type IntegrationData, type InsertIntegrationData,
-  type CrmOpportunity, type InsertCrmOpportunity
+  type CrmOpportunity, type InsertCrmOpportunity,
+  type GoogleIntegration, type InsertGoogleIntegration
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
+import { CryptoService } from "./services/crypto";
 
 export interface IStorage {
   // User methods for Replit Auth
@@ -64,6 +66,12 @@ export interface IStorage {
   getIntegrationData(integrationId: string, dataType: string): Promise<IntegrationData[]>;
   updateIntegrationData(id: string, updates: Partial<InsertIntegrationData>): Promise<IntegrationData>;
   deleteIntegrationData(integrationId: string, externalId: string): Promise<void>;
+
+  // Google integration methods
+  createGoogleIntegration(googleIntegration: InsertGoogleIntegration): Promise<GoogleIntegration>;
+  getGoogleIntegration(userId: string): Promise<GoogleIntegration | undefined>;
+  updateGoogleIntegration(userId: string, updates: Partial<InsertGoogleIntegration>): Promise<GoogleIntegration>;
+  deleteGoogleIntegration(userId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -312,6 +320,97 @@ export class DatabaseStorage implements IStorage {
         eq(integrationData.integrationId, integrationId),
         eq(integrationData.externalId, externalId)
       ));
+  }
+
+  // Google integration methods
+  async createGoogleIntegration(insertGoogleIntegration: InsertGoogleIntegration): Promise<GoogleIntegration> {
+    // Encrypt tokens before storing
+    const encryptedData = { ...insertGoogleIntegration };
+    if (encryptedData.accessToken) {
+      encryptedData.accessToken = JSON.stringify(CryptoService.encrypt(encryptedData.accessToken));
+    }
+    if (encryptedData.refreshToken) {
+      encryptedData.refreshToken = JSON.stringify(CryptoService.encrypt(encryptedData.refreshToken));
+    }
+    
+    const [googleIntegration] = await db.insert(googleIntegrations).values(encryptedData).returning();
+    return this.decryptGoogleIntegrationTokens(googleIntegration);
+  }
+
+  async getGoogleIntegration(userId: string): Promise<GoogleIntegration | undefined> {
+    const [googleIntegration] = await db
+      .select()
+      .from(googleIntegrations)
+      .where(and(
+        eq(googleIntegrations.userId, userId),
+        eq(googleIntegrations.isActive, true)
+      ));
+    
+    if (!googleIntegration) return undefined;
+    
+    return this.decryptGoogleIntegrationTokens(googleIntegration);
+  }
+
+  async updateGoogleIntegration(userId: string, updates: Partial<InsertGoogleIntegration>): Promise<GoogleIntegration> {
+    // Encrypt tokens before updating
+    const encryptedUpdates = { ...updates };
+    if (encryptedUpdates.accessToken) {
+      encryptedUpdates.accessToken = JSON.stringify(CryptoService.encrypt(encryptedUpdates.accessToken));
+    }
+    if (encryptedUpdates.refreshToken) {
+      encryptedUpdates.refreshToken = JSON.stringify(CryptoService.encrypt(encryptedUpdates.refreshToken));
+    }
+    
+    const [googleIntegration] = await db
+      .update(googleIntegrations)
+      .set({ ...encryptedUpdates, updatedAt: new Date() } as any)
+      .where(eq(googleIntegrations.userId, userId))
+      .returning();
+    return this.decryptGoogleIntegrationTokens(googleIntegration);
+  }
+
+  // Helper method to decrypt tokens from database
+  private decryptGoogleIntegrationTokens(googleIntegration: GoogleIntegration): GoogleIntegration {
+    const decrypted = { ...googleIntegration };
+    
+    try {
+      if (decrypted.accessToken) {
+        // Check if it's already encrypted
+        try {
+          const encryptedData = JSON.parse(decrypted.accessToken);
+          if (CryptoService.isEncrypted(encryptedData)) {
+            decrypted.accessToken = CryptoService.decrypt(encryptedData);
+          }
+        } catch (e) {
+          // Token is not encrypted or JSON, leave as is
+        }
+      }
+      
+      if (decrypted.refreshToken) {
+        // Check if it's already encrypted
+        try {
+          const encryptedData = JSON.parse(decrypted.refreshToken);
+          if (CryptoService.isEncrypted(encryptedData)) {
+            decrypted.refreshToken = CryptoService.decrypt(encryptedData);
+          }
+        } catch (e) {
+          // Token is not encrypted or JSON, leave as is
+        }
+      }
+    } catch (error) {
+      console.error('Error decrypting Google integration tokens:', error);
+      // Return the integration without decrypting if there's an error
+      // This allows for graceful handling of legacy data
+    }
+    
+    return decrypted;
+  }
+
+  async deleteGoogleIntegration(userId: string): Promise<void> {
+    await db
+      .update(googleIntegrations)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(googleIntegrations.userId, userId));
   }
 }
 

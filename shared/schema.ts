@@ -207,6 +207,19 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Google integrations table to store OAuth tokens
+export const googleIntegrations = pgTable("google_integrations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: 'cascade' }),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  tokenExpiry: timestamp("token_expiry"),
+  scopes: jsonb("scopes").$type<string[]>().default([]),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Integration schemas
 export const insertIntegrationSchema = createInsertSchema(integrations).omit({
   id: true,
@@ -218,6 +231,16 @@ export const insertIntegrationDataSchema = createInsertSchema(integrationData).o
   id: true,
   createdAt: true,
 });
+
+export const insertGoogleIntegrationSchema = createInsertSchema(googleIntegrations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Types
+export type GoogleIntegration = typeof googleIntegrations.$inferSelect;
+export type InsertGoogleIntegration = z.infer<typeof insertGoogleIntegrationSchema>;
 
 // User schemas for Replit Auth
 export const insertUserSchema = createInsertSchema(users).omit({

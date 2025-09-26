@@ -227,7 +227,7 @@ export default function Home() {
                   <p className="text-sm text-muted-foreground mb-4">
                     In the next 7 days
                   </p>
-                  <Link href="/dashboard">
+                  <Link href="/">
                     <Button size="sm" className="w-full" data-testid="button-view-calls">
                       View Calls
                     </Button>

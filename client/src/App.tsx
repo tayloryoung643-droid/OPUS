@@ -7,7 +7,6 @@ import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import CallPrep from "@/pages/call-prep";
-import Home from "@/pages/home";
 import Settings from "@/pages/settings";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -20,7 +19,7 @@ function Router() {
         <Route path="/" component={Landing} />
       ) : (
         <>
-          <Route path="/" component={Home} />
+          <Route path="/" component={Dashboard} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/call/:id" component={CallPrep} />
           <Route path="/settings" component={Settings} />

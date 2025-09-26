@@ -36,7 +36,7 @@ export default function Landing() {
             >
               Sign in with Google
             </Button>
-            <Link href="/dashboard">
+            <Link href="/">
               <Button data-testid="button-book-demo">Book Demo</Button>
             </Link>
           </div>
@@ -73,7 +73,7 @@ export default function Landing() {
             
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row gap-4">
-              <Link href="/dashboard">
+              <Link href="/">
                 <Button size="lg" className="bg-white text-primary hover:bg-white/95 font-semibold" data-testid="button-see-action">
                   See It In Action
                 </Button>

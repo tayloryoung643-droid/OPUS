@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Settings, Sparkles, Clock } from "lucide-react";
+import { Search, Settings, Clock } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/ui/navigation";
@@ -39,27 +39,6 @@ export default function Dashboard() {
     queryKey: ["/api/calls/previous"],
   });
 
-  // Setup demo data mutation
-  const setupDemoMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/demo/setup");
-      return response.json();
-    },
-    onSuccess: () => {
-      toast({
-        title: "Demo data created",
-        description: "Sample calls and companies have been set up for demonstration.",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/calls"] });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to set up demo data.",
-        variant: "destructive",
-      });
-    },
-  });
 
   const filteredUpcomingCalls = upcomingCalls.filter(call =>
     call.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -118,19 +97,6 @@ export default function Dashboard() {
             />
           </div>
 
-          {/* Demo Setup Button */}
-          {upcomingCalls.length === 0 && previousCalls.length === 0 && !upcomingLoading && !previousLoading && (
-            <div className="mb-6">
-              <Button
-                onClick={() => setupDemoMutation.mutate()}
-                disabled={setupDemoMutation.isPending}
-                className="w-full"
-                data-testid="button-setup-demo"
-              >
-                {setupDemoMutation.isPending ? "Setting up..." : "Setup Demo Data"}
-              </Button>
-            </div>
-          )}
 
           {/* Upcoming Calls */}
           <div className="mb-8">
@@ -242,65 +208,9 @@ export default function Dashboard() {
               AI-Powered Sales Call Preparation
             </h1>
             <p className="text-muted-foreground mb-8 text-lg">
-              Select a call from the sidebar to view detailed preparation materials, or set up demo data to get started.
+              Select a call from the sidebar to view detailed preparation materials and generate AI-powered insights.
             </p>
             
-            {/* Quick Stats */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <h3 className="text-2xl font-bold text-primary mb-2" data-testid="text-stat-upcoming">
-                    {upcomingCalls.length}
-                  </h3>
-                  <p className="text-muted-foreground">Upcoming Calls</p>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <h3 className="text-2xl font-bold text-primary mb-2" data-testid="text-stat-completed">
-                    {previousCalls.length}
-                  </h3>
-                  <p className="text-muted-foreground">Completed Calls</p>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardContent className="p-6 text-center">
-                  <h3 className="text-2xl font-bold text-primary mb-2" data-testid="text-stat-prep-rate">
-                    100%
-                  </h3>
-                  <p className="text-muted-foreground">AI Prep Rate</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Feature Highlights */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card>
-                <CardContent className="p-6">
-                  <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                    <Sparkles className="text-primary h-6 w-6" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">AI-Generated Insights</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Get comprehensive prospect research, competitive analysis, and conversation strategies powered by advanced AI.
-                  </p>
-                </CardContent>
-              </Card>
-              
-              <Card>
-                <CardContent className="p-6">
-                  <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                    <Clock className="text-primary h-6 w-6" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Save Time</h3>
-                  <p className="text-muted-foreground text-sm">
-                    Reduce call prep time from hours to minutes with automated research and personalized recommendations.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
           </div>
         </div>
       </div>

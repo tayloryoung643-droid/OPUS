@@ -7,8 +7,9 @@ export class GoogleAuthService {
   private readonly redirectUri: string;
 
   constructor() {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    // Trim environment variables to remove any accidental whitespace
+    const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
     
     if (!clientId || !clientSecret) {
       console.warn('Google OAuth credentials not configured. Google integrations will not work.');
@@ -31,7 +32,9 @@ export class GoogleAuthService {
 
   // Check if Google OAuth is properly configured
   isConfigured(): boolean {
-    return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+    const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+    return !!(clientId && clientSecret);
   }
 
   // Generate Google OAuth URL for calendar and gmail access

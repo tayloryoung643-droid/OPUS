@@ -29,19 +29,44 @@ interface ProspectResearchOutput {
   recentNews: string[];
 }
 
-export async function generateProspectResearch(input: ProspectResearchInput): Promise<ProspectResearchOutput> {
+export async function generateProspectResearch(input: ProspectResearchInput, mcpServer?: any): Promise<ProspectResearchOutput> {
   try {
-    const prompt = `You are an AI sales assistant helping prepare for a sales call. Generate comprehensive prospect research for the following company:
+    console.log('[OpenAI-MCP] Starting prospect research generation with MCP tools');
+
+    // Get available tools from MCP server
+    const availableTools = mcpServer ? mcpServer.getOpenAIFunctions() : [];
+    const hasTools = availableTools.length > 0;
+
+    let systemPrompt = `You are an expert sales enablement AI that generates comprehensive prospect research and call preparation materials. `;
+    
+    if (hasTools) {
+      systemPrompt += `You have access to live data tools that can fetch real-time information from Salesforce CRM, Google Calendar, and internal databases. Use these tools to gather current, accurate data before generating your research.
+
+Available tools:
+- salesforce_contact_lookup: Search for contacts by email or company
+- salesforce_opportunity_lookup: Find opportunities and deals
+- salesforce_account_lookup: Get account information and history  
+- calendar_meeting_context: Get meeting details and context
+- calendar_attendee_history: Find previous meetings with attendees
+- prep_notes_search: Search previous call preparation notes
+- call_history_lookup: Get historical call data
+
+IMPORTANT: Use the tools to gather live data first, then synthesize that information into your response. Always respond with valid JSON in the specified format.`;
+    } else {
+      systemPrompt += `Generate research based on the provided information. Always respond with valid JSON.`;
+    }
+
+    const userPrompt = `Generate comprehensive prospect research for the following company:
 
 Company: ${input.companyName}
 Domain: ${input.companyDomain || 'N/A'}
 Industry: ${input.industry || 'N/A'}
 Key Contacts: ${input.contactEmails.join(', ')}
 
-Provide detailed research in the following JSON format:
+${hasTools ? 'First, use the available tools to gather live data about this company and contacts. Then, ' : ''}provide detailed research in the following JSON format:
 {
   "executiveSummary": "Brief summary of the meeting context and key focus areas",
-  "crmHistory": "Summary of past interactions and current relationship status",
+  "crmHistory": "Summary of past interactions and current relationship status", 
   "competitiveLandscape": {
     "primaryCompetitors": [
       {
@@ -61,23 +86,79 @@ Provide detailed research in the following JSON format:
 
 Focus on actionable insights that will help close deals and build relationships.`;
 
-    // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-    const response = await openai.chat.completions.create({
-      model: "gpt-5",
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert sales enablement AI that generates comprehensive prospect research and call preparation materials. Always respond with valid JSON."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      response_format: { type: "json_object" },
-    });
+    const messages: any[] = [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user", 
+        content: userPrompt
+      }
+    ];
 
-    const result = JSON.parse(response.choices[0].message.content || '{}');
+    let completionParams: any = {
+      model: "gpt-5",
+      messages,
+      response_format: { type: "json_object" },
+    };
+
+    // Add tools if MCP server is available
+    if (hasTools) {
+      completionParams.tools = availableTools.map((tool: any) => ({
+        type: "function",
+        function: tool
+      }));
+      completionParams.tool_choice = "auto";
+    }
+
+    console.log(`[OpenAI-MCP] Making request with ${hasTools ? availableTools.length : 0} available tools`);
+
+    const response = await openai.chat.completions.create(completionParams);
+
+    let finalResponse = response;
+
+    // Handle tool calls if present
+    if (response.choices[0].message.tool_calls && mcpServer) {
+      console.log(`[OpenAI-MCP] Processing ${response.choices[0].message.tool_calls.length} tool calls`);
+
+      const toolMessages = [...messages, response.choices[0].message];
+
+      // Execute each tool call
+      for (const toolCall of response.choices[0].message.tool_calls) {
+        try {
+          const toolName = toolCall.function.name;
+          const toolArgs = JSON.parse(toolCall.function.arguments);
+          
+          console.log(`[OpenAI-MCP] Executing tool: ${toolName}`);
+          const toolResult = await mcpServer.executeTool(toolName, toolArgs);
+          
+          toolMessages.push({
+            role: "tool",
+            tool_call_id: toolCall.id,
+            content: JSON.stringify(toolResult)
+          });
+        } catch (toolError) {
+          console.error(`[OpenAI-MCP] Tool execution failed:`, toolError);
+          toolMessages.push({
+            role: "tool", 
+            tool_call_id: toolCall.id,
+            content: JSON.stringify({ error: "Tool execution failed" })
+          });
+        }
+      }
+
+      // Get final response with tool results
+      finalResponse = await openai.chat.completions.create({
+        model: "gpt-5",
+        messages: toolMessages,
+        response_format: { type: "json_object" },
+      });
+    }
+
+    const result = JSON.parse(finalResponse.choices[0].message.content || '{}');
+    console.log('[OpenAI-MCP] Prospect research generation completed successfully');
+    
     return result as ProspectResearchOutput;
   } catch (error) {
     console.error('Failed to generate prospect research:', error);

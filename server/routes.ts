@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
+import { createMCPServer } from "./mcp/mcp-server.js";
 import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema } from "@shared/schema";
 import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
@@ -689,13 +690,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Generate AI-powered research
+      // Create MCP server with context for dynamic data access
+      let mcpServer = null;
+      try {
+        const userId = req.user?.claims?.sub;
+        if (userId) {
+          mcpServer = createMCPServer({
+            userId,
+            storage,
+            googleCalendarService: undefined, // Will be imported dynamically by tools
+            salesforceCrmService: undefined   // Will be imported dynamically by tools
+          });
+          
+          console.log('[MCP] Created MCP server for call prep generation');
+        }
+      } catch (mcpError) {
+        console.warn('[MCP] Failed to create MCP server, continuing with static generation:', mcpError);
+      }
+
+      // Generate AI-powered research with MCP tools for dynamic data access
       const research = await generateProspectResearch({
         companyName: company.name,
         companyDomain: company.domain || undefined,
         industry: company.industry || undefined,
         contactEmails: contacts.map(c => c.email)
-      });
+      }, mcpServer);
 
       // Create or update call prep
       const existingPrep = await storage.getCallPrep(call.id);

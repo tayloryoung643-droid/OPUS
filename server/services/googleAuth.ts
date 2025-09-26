@@ -109,7 +109,7 @@ export class GoogleAuthService {
         refresh_token: refreshToken, // Keep existing refresh token
         expiry_date: Date.now() + (3600 * 1000) // 1 hour from now
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error refreshing Google tokens:', error);
       if (error.message?.includes('invalid_grant') || error.message?.includes('invalid_request')) {
         throw new Error('REFRESH_TOKEN_INVALID');

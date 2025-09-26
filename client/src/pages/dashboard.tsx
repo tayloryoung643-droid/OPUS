@@ -29,7 +29,20 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const { toast } = useToast();
 
-  // Fetch upcoming calls
+  // Check Google Calendar connection status
+  const { data: googleStatus } = useQuery({
+    queryKey: ["/api/integrations/google/status"],
+    retry: false
+  });
+
+  // Fetch Google Calendar events (upcoming)
+  const { data: calendarEvents, isLoading: calendarLoading } = useQuery<any[]>({
+    queryKey: ["/api/calendar/events"],
+    enabled: !!(googleStatus as any)?.connected,
+    retry: false
+  });
+
+  // Fetch database calls (from Salesforce sync)
   const { data: upcomingCalls = [], isLoading: upcomingLoading } = useQuery<CallWithCompany[]>({
     queryKey: ["/api/calls/upcoming"],
   });
@@ -40,7 +53,25 @@ export default function Dashboard() {
   });
 
 
-  const filteredUpcomingCalls = upcomingCalls.filter(call =>
+  // Convert Google Calendar events to call format
+  const upcomingCalendarEvents = Array.isArray(calendarEvents) ? calendarEvents.map((event: any) => ({
+    id: `calendar_${event.id}`,
+    title: event.summary || 'No Title',
+    scheduledAt: event.start?.dateTime || event.start?.date || new Date().toISOString(),
+    status: 'upcoming',
+    callType: 'meeting',
+    company: {
+      id: 'unknown',
+      name: 'Google Calendar',
+      domain: undefined,
+      industry: undefined,
+    }
+  })) : [];
+
+  // Combine all upcoming calls (database + Google Calendar)
+  const allUpcomingCalls = [...upcomingCalls, ...upcomingCalendarEvents];
+
+  const filteredUpcomingCalls = allUpcomingCalls.filter(call =>
     call.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     call.company?.name.toLowerCase().includes(searchQuery.toLowerCase())
   );

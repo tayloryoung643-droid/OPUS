@@ -152,8 +152,15 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T 
 }
 
 export default function PrepSheetView({ event }: PrepSheetProps) {
-  const [notesText, setNotesText] = useState("");
-  const currentEventRef = useRef<string | null>(null);
+  const [notesState, setNotesState] = useState<{
+    eventId: string | null;
+    text: string;
+    lastSavedText: string;
+  }>({
+    eventId: null,
+    text: "",
+    lastSavedText: ""
+  });
   const { toast } = useToast();
 
   const formatDate = (dateString: string) => {
@@ -201,49 +208,52 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
     },
   });
 
-  // Single source of truth for current event - updated immediately on event change
-  useEffect(() => {
-    currentEventRef.current = event?.id || null;
-    // Immediately reset text and cancel pending saves when event changes
-    setNotesText("");
-    debouncedSaveNotes.cancel();
-    console.log('Event changed to:', event?.id, 'text reset, saves cancelled');
-  }, [event?.id]);
-
-  // Debounced notes save that uses current event ref to avoid closure issues
+  // Debounced save with bulletproof state validation
   const debouncedSaveNotes = useCallback(
-    debounce((text: string, debugEventId: string) => {
-      const currentEventId = currentEventRef.current;
-      console.log(`Debounced save: requested for ${debugEventId}, current is ${currentEventId}, text: "${text}"`);
-      if (currentEventId && currentEventId === debugEventId) {
-        console.log('✓ Executing save for correct event:', currentEventId);
-        saveNotesMutation.mutate({ eventId: currentEventId, text });
-      } else {
-        console.log('✗ Cancelled save - event mismatch or no current event');
+    debounce((eventId: string, text: string) => {
+      // Double-check the event ID is still current when save executes
+      if (event?.id === eventId) {
+        saveNotesMutation.mutate({ eventId, text });
+        // Update the lastSavedText to track what was saved
+        setNotesState(prev => ({
+          ...prev,
+          lastSavedText: text
+        }));
       }
     }, 1000),
-    [saveNotesMutation]
+    [event?.id, saveNotesMutation]
   );
 
-  // Sync notes text with fetched data when userNote loads for current event
+  // Handle event changes - immediately reset state
   useEffect(() => {
-    if (userNote !== undefined && event?.id) {
-      console.log('Loading notes for event:', event.id, 'text:', userNote?.text);
-      setNotesText(userNote?.text || "");
+    if (event?.id !== notesState.eventId) {
+      debouncedSaveNotes.cancel();
+      setNotesState({
+        eventId: event?.id || null,
+        text: "",
+        lastSavedText: ""
+      });
     }
-  }, [userNote, event?.id]);
+  }, [event?.id, notesState.eventId]);
 
-  // Auto-save notes on text change with enhanced safety checks
+  // Load notes from server when userNote data arrives
   useEffect(() => {
-    const currentEventId = event?.id;
-    if (userNote !== undefined && currentEventId) {
-      const isUserChange = notesText !== (userNote?.text || "");
-      if (isUserChange && notesText.trim() !== "") {
-        console.log('Scheduling auto-save for event:', currentEventId, 'text:', notesText);
-        debouncedSaveNotes(notesText, currentEventId);
-      }
+    if (userNote !== undefined && event?.id && notesState.eventId === event.id) {
+      const serverText = userNote?.text || "";
+      setNotesState(prev => ({
+        ...prev,
+        text: serverText,
+        lastSavedText: serverText
+      }));
     }
-  }, [notesText, userNote, debouncedSaveNotes, event?.id]);
+  }, [userNote, event?.id, notesState.eventId]);
+
+  // Auto-save when text changes
+  useEffect(() => {
+    if (notesState.eventId && notesState.text !== notesState.lastSavedText) {
+      debouncedSaveNotes(notesState.eventId, notesState.text);
+    }
+  }, [notesState.text, notesState.lastSavedText, notesState.eventId, debouncedSaveNotes]);
 
   // Generate AI prep mutation
   const generatePrepMutation = useMutation({
@@ -448,8 +458,15 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
             </h3>
             <Textarea
               placeholder="Type your notes here..."
-              value={notesText}
-              onChange={(e) => setNotesText(e.target.value)}
+              value={notesState.text}
+              onChange={(e) => {
+                if (notesState.eventId === event?.id) {
+                  setNotesState(prev => ({
+                    ...prev,
+                    text: e.target.value
+                  }));
+                }
+              }}
               className="min-h-[120px]"
               data-testid="textarea-prep-notes"
             />

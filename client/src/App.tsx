@@ -4,7 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SalesCoachProvider } from "@/contexts/SalesCoachContext";
-import { Switch, Route } from "wouter";
+import { Switch, Route, useLocation } from "wouter";
 import OpusAgenda from "@/pages/OpusAgenda";
 import Settings from "@/pages/settings";
 import LegacyApp from "./LegacyApp";
@@ -63,6 +63,10 @@ function Router() {
 
 function App() {
   const [coachOpen, setCoachOpen] = useState(false);
+  const [location] = useLocation();
+
+  // Hide Opus Orb on public pages
+  const shouldShowOrb = ENABLE_OPUS && location !== "/" && location !== "/login";
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -70,8 +74,8 @@ function App() {
         <SalesCoachProvider>
           <Toaster />
           <Router />
-          {/* Persistent Opus Orb - only show in Opus mode */}
-          {ENABLE_OPUS && (
+          {/* Persistent Opus Orb - hide on public home and login pages */}
+          {shouldShowOrb && (
             <>
               <OpusOrb onOpen={() => setCoachOpen(true)} />
               <SalesCoachModal 

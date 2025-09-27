@@ -16,6 +16,10 @@ export function isGuestEnabled(): boolean {
   return process.env.VITE_ENABLE_GUEST === "true";
 }
 
+export function isDemoMode(): boolean {
+  return process.env.VITE_DEMO_MODE === "true";
+}
+
 export function isGuestUser(email: string): boolean {
   return email === GUEST_USER.email;
 }
@@ -144,7 +148,7 @@ export function loadGuestSeedData(): SeedData {
 }
 
 export async function seedGuestData(): Promise<void> {
-  if (!isGuestEnabled()) {
+  if (!isGuestEnabled() && !isDemoMode()) {
     return;
   }
 

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { isGuestEnabled, authenticateGuest, createGuestSession, ensureGuestUser, seedGuestData } from "./services/guestAuth";
+import { isGuestEnabled, isDemoMode, authenticateGuest, createGuestSession, ensureGuestUser, seedGuestData } from "./services/guestAuth";
 import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
 import { createMCPServer } from "./mcp/mcp-server.js";
@@ -16,7 +16,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   await setupAuth(app);
   
   // Initialize guest user and seed data if enabled
-  if (isGuestEnabled()) {
+  if (isGuestEnabled() || isDemoMode()) {
     await ensureGuestUser();
     await seedGuestData();
   }

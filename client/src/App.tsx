@@ -13,6 +13,7 @@ import NotFound from "@/pages/not-found";
 import LegacyApp from "./LegacyApp";
 import OpusOrb from "@/components/OpusOrb";
 import SalesCoachModal from "@/components/SalesCoachModal";
+import OpusHomePage from "@/components/OpusHomePage";
 
 const ENABLE_OPUS = import.meta.env.VITE_ENABLE_OPUS_UI === "true";
 
@@ -44,6 +45,7 @@ function OpusRouter() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
+      <Route path="/opus" component={OpusHomePage} />
       <Route path="/dashboard" component={OpusMainDashboard} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />

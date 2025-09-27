@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -128,6 +128,9 @@ export default function SalesCoachModal({ isOpen, onClose, eventId }: SalesCoach
             <Bot className="h-5 w-5" />
             <span>AI Sales Coach</span>
           </DialogTitle>
+          <DialogDescription className="text-blue-100">
+            Interact with your AI Sales Coach for real-time assistance with call preparation, objection handling, and sales strategies.
+          </DialogDescription>
         </DialogHeader>
 
         {/* Chat Messages */}

@@ -86,12 +86,28 @@ export class GoogleCalendarService {
       const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
       const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
 
+      console.log('DEBUG getTodaysEvents - Today:', today.toISOString());
+      console.log('DEBUG getTodaysEvents - StartOfDay:', startOfDay.toISOString());
+      console.log('DEBUG getTodaysEvents - EndOfDay:', endOfDay.toISOString());
+
       const response = await calendar.events.list({
         calendarId: 'primary',
         timeMin: startOfDay.toISOString(),
         timeMax: endOfDay.toISOString(),
         singleEvents: true,
         orderBy: 'startTime',
+      });
+
+      console.log('DEBUG getTodaysEvents - Events found:', response.data.items?.length || 0);
+      response.data.items?.forEach((event, i) => {
+        console.log(`DEBUG Event ${i}:`, {
+          id: event.id,
+          summary: event.summary,
+          startDateTime: event.start?.dateTime,
+          startDate: event.start?.date,
+          endDateTime: event.end?.dateTime,
+          endDate: event.end?.date
+        });
       });
 
       return (response.data.items || [])

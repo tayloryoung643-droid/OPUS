@@ -1,0 +1,259 @@
+The google integration is connected , but still doesnt show todays calls on the home page and when I go to the Agenda and goes white and shows this error: Unexpected Application Error!
+Cannot access 'formatEventTime' before initialization
+ReferenceError: Cannot access 'formatEventTime' before initialization
+    at https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/src/features/agenda/OpusAgendaMock.tsx?t=1759015325147:358:13
+    at Array.map (<anonymous>)
+    at https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/src/features/agenda/OpusAgendaMock.tsx?t=1759015325147:354:35
+    at updateMemo (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:12210:27)
+    at Object.useMemo (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:12726:24)
+    at useMemo (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-QCHXOAYK.js?v=df67cbf0:1094:29)
+    at OpusAgendaMock (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/src/features/agenda/OpusAgendaMock.tsx?t=1759015325147:350:27)
+    at renderWithHooks (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:11548:26)
+    at updateFunctionComponent (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:14582:28)
+    at beginWork (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:15924:22)
+💿 Hey developer 👋
+
+You can provide a way better UX than this when your app throws errors by providing your own ErrorBoundary or errorElement prop on your route.
+Thought for 18s
+ChatGPT said:
+
+Got you. Two things are going on:
+
+The white screen / crash is from a temporal-dead-zone error: formatEventTime is referenced before it’s defined.
+
+Today’s calls not showing is almost always timezone + filtering (and sometimes still rendering mock data when Google is connected).
+
+Here’s a ready-to-paste prompt (with code patches) for Agent 3 to fix both quickly.
+
+🛠️ Agent 3 – Fix Agenda crash + show real “Today” calls
+
+Goals
+
+Stop the crash in OpusAgendaMock.tsx (Cannot access 'formatEventTime' before initialization).
+
+Remove mock events when Google is connected.
+
+Ensure backend returns events for today in America/Vancouver and the UI renders them on Home + Agenda.
+
+Add an Error Boundary so the app doesn’t white-screen again.
+
+1) Fix the temporal-dead-zone error in src/features/agenda/OpusAgendaMock.tsx
+
+Move helper functions above any usage, or switch them to function declarations (which are hoisted).
+
+// src/features/agenda/OpusAgendaMock.tsx
+
+// ✅ put helpers at the very top (ABOVE component) or use function declarations
+
+type GCalEvent = {
+  id: string;
+  summary?: string;
+  description?: string;
+  location?: string;
+  attendees?: { email: string; responseStatus?: string }[];
+  hangoutLink?: string;
+  start: { dateTime?: string; date?: string; timeZone?: string };
+  end: { dateTime?: string; date?: string; timeZone?: string };
+};
+
+// Use a function declaration so it's hoisted
+function formatEventTime(ev: GCalEvent, tz: string = 'America/Vancouver') {
+  const startISO = ev.start?.dateTime ?? (ev.start?.date ? `${ev.start.date}T00:00:00` : '');
+  const endISO   = ev.end?.dateTime   ?? (ev.end?.date   ? `${ev.end.date}T23:59:59` : '');
+  if (!startISO) return '—';
+
+  const start = new Date(startISO);
+  const end   = endISO ? new Date(endISO) : null;
+  const opts: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: tz };
+
+  // All-day events (no time)
+  if (ev.start?.date && !ev.start?.dateTime) return 'All day';
+
+  const startStr = new Intl.DateTimeFormat(undefined, opts).format(start);
+  const endStr   = end ? new Intl.DateTimeFormat(undefined, opts).format(end) : '';
+  return endStr ? `${startStr}–${endStr}` : startStr;
+}
+
+// Small helper to safely read attendees
+function eventAttendees(ev: GCalEvent) {
+  return ev.attendees?.map(a => a.email).filter(Boolean) ?? [];
+}
+
+// …rest of file (component, hooks, etc.)
+
+
+Also make sure no const formatEventTime = … remains below any usage. One definition only.
+
+2) Stop using mock data when Google is connected
+
+In the Agenda component, gate the mock:
+
+// wherever we choose data source
+const { data: integrationStatus } = useQuery(['integrations/status'], fetchIntegrationStatus);
+const googleConnected = integrationStatus?.google?.calendar?.connected === true;
+
+// If connected, use live data; otherwise use mock (or empty)
+const { data: events, isLoading } = useQuery(
+  ['calendar', 'today'],
+  () => fetch('/api/calendar/events?range=today').then(r => r.json()),
+  { enabled: googleConnected }
+);
+
+const items = googleConnected ? (events ?? []) : []; // kill the fake list for now
+
+
+If you still need a mock in dev, hide it behind import.meta.env.DEV && !googleConnected.
+
+3) Backend: return today’s events in America/Vancouver with sane defaults
+
+Add/patch the server route so time bounds are computed in the user TZ and we always use singleEvents=true & orderBy=startTime.
+
+// server/routes/calendar.ts (or similar)
+
+import { google } from 'googleapis';
+import { DateTime } from 'luxon';
+
+router.get('/api/calendar/events', async (req, res) => {
+  try {
+    const tz = 'America/Vancouver';
+    const range = (req.query.range as string) || 'today';
+
+    let timeMin: string | undefined;
+    let timeMax: string | undefined;
+
+    if (range === 'today') {
+      const start = DateTime.now().setZone(tz).startOf('day');
+      const end   = DateTime.now().setZone(tz).endOf('day');
+      timeMin = start.toISO();
+      timeMax = end.toISO();
+    } else if (range === 'upcoming') {
+      const start = DateTime.now().setZone(tz);
+      const end   = DateTime.now().setZone(tz).plus({ days: 7 });
+      timeMin = start.toISO();
+      timeMax = end.toISO();
+    } else {
+      // fallback: next 24h
+      const start = DateTime.now().setZone(tz);
+      const end   = start.plus({ days: 1 });
+      timeMin = start.toISO();
+      timeMax = end.toISO();
+    }
+
+    const auth = await createGoogleAuthForUser(req.user); // existing util
+    const calendar = google.calendar({ version: 'v3', auth });
+
+    const resp = await calendar.events.list({
+      calendarId: 'primary',
+      timeMin,
+      timeMax,
+      singleEvents: true,
+      orderBy: 'startTime',
+      maxResults: 50,
+    });
+
+    // Normalize a minimal, stable shape for the UI
+    const events = (resp.data.items ?? []).map(e => ({
+      id: e.id,
+      summary: e.summary,
+      description: e.description,
+      location: e.location,
+      attendees: e.attendees?.map(a => ({ email: a.email, responseStatus: a.responseStatus })) ?? [],
+      hangoutLink: e.hangoutLink || e.conferenceData?.entryPoints?.[0]?.uri,
+      start: e.start, // { dateTime, date, timeZone }
+      end: e.end,
+    }));
+
+    res.json(events);
+  } catch (err) {
+    console.error('GET /api/calendar/events error', err);
+    res.status(500).json({ error: 'calendar_events_failed' });
+  }
+});
+
+
+If we have multiple calendars, repeat events.list for each and merge, but start with primary to keep it simple.
+
+4) Home page “Today’s calls” should call the same endpoint
+
+In the Home/Overview widget, fetch the same ?range=today and show top 3:
+
+const { data: todays } = useQuery(['calendar','home','today'], () =>
+  fetch('/api/calendar/events?range=today').then(r => r.json()),
+  { enabled: googleConnected }
+);
+
+// render
+{(todays ?? []).slice(0,3).map(ev => (
+  <li key={ev.id} className="...">
+    <div className="text-sm">{ev.summary ?? 'Untitled event'}</div>
+    <div className="text-xs opacity-70">{formatEventTime(ev)}</div>
+  </li>
+))}
+
+5) Add an Error Boundary so routing errors don’t white-screen
+
+Create a reusable boundary and wire it to the router’s errorElement.
+
+// src/components/RouteErrorBoundary.tsx
+import { isRouteErrorResponse, useRouteError } from "react-router-dom";
+
+export default function RouteErrorBoundary() {
+  const error = useRouteError() as any;
+  let title = 'Unexpected Application Error';
+  let message = 'Something went wrong.';
+
+  if (isRouteErrorResponse(error)) {
+    title = `${error.status} ${error.statusText}`;
+    message = error.data?.message ?? message;
+  } else if (error?.message) {
+    message = error.message;
+  }
+
+  return (
+    <div className="p-6 text-white bg-neutral-900 min-h-[50vh]">
+      <h1 className="text-xl font-semibold">{title}</h1>
+      <p className="mt-2 opacity-80">{message}</p>
+      <button onClick={() => location.assign('/')}
+              className="mt-4 px-3 py-2 rounded bg-white/10 hover:bg-white/20">
+        Go Home
+      </button>
+    </div>
+  );
+}
+
+// src/App.tsx (or wherever routes are defined)
+import RouteErrorBoundary from '@/components/RouteErrorBoundary';
+
+createBrowserRouter([
+  {
+    path: '/',
+    element: <Root />,
+    errorElement: <RouteErrorBoundary />,
+    children: [
+      { path: 'agenda', element: <AgendaPage />, errorElement: <RouteErrorBoundary /> },
+      // ...
+    ],
+  },
+]);
+
+6) Small UI hardening (so empty days don’t look broken)
+
+In Agenda list rendering:
+
+if (isLoading) return <SkeletonRows count={4} />;
+
+if (!items || items.length === 0) {
+  return (
+    <div className="text-sm opacity-70 p-4">
+      No events for today. If you just connected Google, try refreshing.
+    </div>
+  );
+}
+
+7) Sanity checks
+
+Ensure we request the gmail.readonly and calendar.readonly scopes but only the calendar route runs here. (Gmail can be used later for attendee threading.)
+
+Confirm the token refresh path is functioning (401 → refresh → retry).
+
+Verify CORS, APP_DASHBOARD_URL, and the Replit callback are consistent with the OAuth client you’re using.

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CONFIG } from "@/config";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 // ===== Helpers (small components) =====
 function Section({ title, children }) {
@@ -186,28 +187,7 @@ export default function OpusAgendaMock() {
     []
   );
 
-  // Process real calendar events into agenda format
-  const processedAgenda = useMemo(() => {
-    if (CONFIG.USE_MOCKS) return mockAgenda;
-
-    if (!calendarEvents || !Array.isArray(calendarEvents)) return { upcoming: [], previous: [] };
-
-    const now = new Date();
-    const events = calendarEvents.map(event => ({
-      id: event.id,
-      title: event.summary || 'Untitled Event',
-      company: event.location || '',
-      time: formatEventTime(event.start),
-      attendees: event.attendees?.map(a => a.email).filter(Boolean) || [],
-      originalEvent: event
-    }));
-
-    const upcoming = events.filter(event => new Date(event.originalEvent.start) >= now);
-    const previous = events.filter(event => new Date(event.originalEvent.start) < now);
-
-    return { upcoming, previous };
-  }, [calendarEvents, mockAgenda]);
-
+  // Helper function to format event time - MUST be defined before use
   const formatEventTime = (startTime) => {
     const eventDate = new Date(startTime);
     const now = new Date();
@@ -230,6 +210,28 @@ export default function OpusAgendaMock() {
       return `${dayName} • ${timeStr}`;
     }
   };
+
+  // Process real calendar events into agenda format
+  const processedAgenda = useMemo(() => {
+    if (CONFIG.USE_MOCKS) return mockAgenda;
+
+    if (!calendarEvents || !Array.isArray(calendarEvents)) return { upcoming: [], previous: [] };
+
+    const now = new Date();
+    const events = calendarEvents.map(event => ({
+      id: event.id,
+      title: event.summary || 'Untitled Event',
+      company: event.location || '',
+      time: formatEventTime(event.start),
+      attendees: event.attendees?.map(a => a.email).filter(Boolean) || [],
+      originalEvent: event
+    }));
+
+    const upcoming = events.filter(event => new Date(event.originalEvent.start) >= now);
+    const previous = events.filter(event => new Date(event.originalEvent.start) < now);
+
+    return { upcoming, previous };
+  }, [calendarEvents, mockAgenda]);
 
   // ===== State =====
   const [selectedId, setSelectedId] = useState(null);
@@ -383,7 +385,8 @@ export default function OpusAgendaMock() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="flex items-center justify-between px-6 md:px-10 py-4 border-b border-zinc-900/60 sticky top-0 bg-black/70 backdrop-blur z-40">
         <div className="flex items-center gap-3">
@@ -702,5 +705,6 @@ export default function OpusAgendaMock() {
         </section>
       </main>
     </div>
+    </ErrorBoundary>
   );
 }

@@ -19,9 +19,11 @@ export class GoogleAuthService {
       return;
     }
 
-    // Use Replit domain for redirect URI
-    const replitDomain = process.env.REPLIT_DOMAINS || 'localhost:5000';
-    this.redirectUri = `https://${replitDomain}/api/integrations/google/callback`;
+    // Use proper protocol for redirect URI - match Salesforce implementation
+    const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0]?.trim() || 'localhost:5000';
+    const isLocalhost = replitDomain.includes('localhost');
+    const protocol = isLocalhost ? 'http' : 'https';
+    this.redirectUri = `${protocol}://${replitDomain}/api/integrations/google/callback`;
     
     this.oauth2Client = new OAuth2Client(
       clientId,

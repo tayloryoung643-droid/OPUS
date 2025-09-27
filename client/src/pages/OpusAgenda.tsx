@@ -6,6 +6,7 @@ import OpusHeroGreeting from "../components/Opus/HeroGreeting";
 import OpusAgendaList from "../components/Opus/AgendaList";
 import OpusPrepSheet from "../components/Opus/PrepSheet";
 import OpusInsights from "../components/Opus/Insights";
+import OpusRhythm from "../components/Opus/Rhythm";
 
 export type CalendarEvent = {
   id: string;
@@ -40,7 +41,7 @@ export default function OpusAgenda() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#071222] via-[#0b1530] to-[#0d1738] text-white antialiased">
+    <div className="min-h-screen bg-gradient-to-br from-black via-indigo-900/80 to-violet-900/60 text-white antialiased">
       <div className="mx-auto max-w-7xl px-4 md:px-6">
         <OpusTopNav active="Agenda" onAgendaClick={onAgendaTabClick} />
 
@@ -49,27 +50,31 @@ export default function OpusAgenda() {
           <OpusHeroGreeting firstName={firstName} />
         )}
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-start">
-          {/* Left: Agenda (always pinned) */}
-          <aside className="md:col-span-4">
-            <div className="sticky top-4 space-y-4">
-              <OpusAgendaList onSelect={onSelectEvent} />
-            </div>
-          </aside>
-
-          {/* Center: Prep sheet when an event is selected, else placeholder */}
-          <main className="md:col-span-6">
-            <div className="rounded-2xl bg-white/5 hover:bg-white/8 transition p-4">
+        {/* Main Dashboard Cards */}
+        {viewMode === "AGENDA" && (
+          <div className="mb-8">
+            <div className="rounded-2xl bg-white/5 hover:bg-white/8 transition p-6">
               <OpusPrepSheet event={selectedEvent} />
             </div>
-          </main>
+          </div>
+        )}
 
-          {/* Right: Insights (always visible) */}
-          <aside className="md:col-span-2">
-            <div className="sticky top-4 space-y-4">
-              <OpusInsights />
-            </div>
-          </aside>
+        {/* Bottom Section: Three Cards Layout */}
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+          {/* Today's Agenda */}
+          <div className="space-y-4">
+            <OpusAgendaList onSelect={onSelectEvent} />
+          </div>
+
+          {/* Rhythm */}
+          <div className="space-y-4">
+            <OpusRhythm />
+          </div>
+
+          {/* Quarter Insights */}  
+          <div className="space-y-4">
+            <OpusInsights />
+          </div>
         </div>
       </div>
     </div>

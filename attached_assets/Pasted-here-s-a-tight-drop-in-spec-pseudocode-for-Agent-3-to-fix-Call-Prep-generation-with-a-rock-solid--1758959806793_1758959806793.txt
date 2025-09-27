@@ -1,0 +1,236 @@
+here’s a tight, drop-in spec + pseudocode for Agent 3 to fix Call Prep generation with a rock-solid fallback so you never see “Call Not Found” again.
+
+Call Prep Generation: spec + pseudocode (with fallback)
+Overview
+
+Goal: Given a calendar event, always return a prep sheet. If no CRM/email data is found, return a Base Prep with Notes pinned and core context. Use confidence-scored matching to enrich when available.
+
+Data sources (async in parallel)
+
+Calendar: eventId, title, start/end, description, attendees (names + emails)
+
+CRM (Salesforce): Accounts, Contacts, Opportunities, Activities (by email/domain/name)
+
+Email (Gmail): last 90d threads w/ attendees’ emails
+
+Calls (Gong/other, if connected): last calls + summaries
+
+Web/company basics (optional): company site, LinkedIn
+
+Matching rules (confidence score)
+score = 0..100
+
++40 if attendee email matches CRM Contact email
++25 if calendar title contains exact Account/Opportunity name
++15 if attendee domain matches Account website domain
++10 if recent (≤90d) email thread w/ attendee email found
++10 if prior call transcript/sum exists for any attendee email
+-10 if multiple Accounts tie (tie-break by email match > name > domain)
+
+
+High confidence ≥70 → attach Account + Opportunity
+
+Medium 40–69 → attach Account only
+
+Low <40 → no CRM attach; proceed with Base Prep
+
+API changes
+POST /api/prep-sheet/generate
+
+Request
+
+{
+  "calendarEventId": "string"
+}
+
+
+Response (always 200)
+
+{
+  "status": "ok",
+  "prep": { /* structured prep (see below) */ },
+  "confidence": 0-100,
+  "matched": true|false,
+  "matchReason": "email_match|name_match|domain_match|none"
+}
+
+
+Error only for true system failures (500)
+
+Backend pseudocode (Node/TS)
+// services/prep/generatePrep.ts
+export async function generatePrep(calendarEventId: string, userId: string) {
+  // 1) Fetch event (required)
+  const event = await calendarService.getEvent(userId, calendarEventId);
+  if (!event) return basePrep("No calendar event found");
+
+  // 2) Extract actors
+  const attendees = normalizeAttendees(event.attendees); // emails, names, domains
+  const companyCandidates = inferCompaniesFromTitle(event.title); // tokens
+
+  // 3) Fan-out in parallel
+  const [
+    crmContacts,
+    crmAccounts,
+    crmOpps,
+    emailThreads,
+    callHistory
+  ] = await Promise.all([
+    sf.findContactsByEmails(attendees.emails),
+    sf.findAccountsByDomainsOrNames(attendees.domains, companyCandidates),
+    sf.findOppsByAccountsOrTitle(companyCandidates),
+    gmail.getThreadsForEmails(attendees.emails, { days: 90 }),
+    calls.getSummaries(attendees.emails, { days: 120 })
+  ]);
+
+  // 4) Score match
+  const score = scoreMatch({ event, attendees, crmContacts, crmAccounts, crmOpps, emailThreads, callHistory });
+  const matched = score >= 40;
+
+  // 5) Build prep
+  let prep: Prep;
+  if (!matched) {
+    prep = buildBasePrep(event, attendees); // Notes pinned, basic context
+  } else {
+    const primaryAccount = chooseBestAccount(crmAccounts, crmContacts, event, attendees);
+    const primaryOpp = chooseBestOpp(crmOpps, primaryAccount);
+
+    prep = buildEnrichedPrep({
+      event,
+      attendees,
+      account: primaryAccount,
+      opportunity: primaryOpp,
+      contacts: crmContacts,
+      lastEmails: summarizeEmails(emailThreads),
+      lastCalls: summarizeCalls(callHistory),
+    });
+  }
+
+  // 6) Persist (cache) + return
+  await savePrep(userId, event.id, prep, { score, matched });
+  return {
+    status: "ok",
+    prep,
+    confidence: score,
+    matched,
+    matchReason: computeReason(score, { crmContacts, crmAccounts, emailThreads, callHistory })
+  };
+}
+
+Helpers (sketch)
+function buildBasePrep(event, attendees): Prep {
+  return {
+    meta: {
+      title: event.title ?? "Call",
+      time: formatTime(event.start, event.end),
+      attendees: attendees.list,
+      source: "BasePrep"
+    },
+    sections: [
+      notesSection(), // always first & expanded
+      { id: "objectives", title: "Call Objectives", items: bulletPlaceholders() },
+      { id: "agenda", title: "Suggested Agenda", items: defaultAgenda() },
+      { id: "questions", title: "Discovery Questions", items: defaultQuestions() },
+      { id: "next_steps", title: "Next Steps", items: [] }
+    ]
+  };
+}
+
+function buildEnrichedPrep(ctx): Prep {
+  return {
+    meta: {
+      title: ctx.event.title,
+      time: formatTime(ctx.event.start, ctx.event.end),
+      attendees: ctx.attendees.list,
+      account: basicAccount(ctx.account),
+      opportunity: basicOpp(ctx.opportunity),
+      source: "Enriched"
+    },
+    sections: [
+      notesSection(),
+      insightsFromCRM(ctx),              // stakeholders, stage, risks
+      emailSignals(ctx.lastEmails),      // unanswered Qs, commitments
+      callRecap(ctx.lastCalls),          // key moments, objections
+      tailoredAgenda(ctx),
+      tailoredQuestions(ctx),
+      nextBestActions(ctx)               // 3 NBAs
+    ]
+  };
+}
+
+Frontend behavior (React)
+
+On event click:
+
+Show skeleton prep immediately.
+
+Call /api/prep-sheet/generate.
+
+Render returned prep.sections in order; Notes is pinned open at top.
+
+If matched === false, show tiny banner:
+“No CRM match found — showing base prep. Connect Salesforce/Gmail for richer insights.”
+
+Save Notes locally (autosave) + POST /api/prep-sheet/save (debounced).
+
+UI copy & states
+
+Replace “Call Not Found” with:
+
+If event missing: “We couldn’t open this event. Try refreshing your calendar.” (only when calendar API failed)
+
+Otherwise: never an error; just Base Prep.
+
+Rhythm card feed (to add alongside Agenda)
+
+Backend delivers a slim “rhythm” object on the same response:
+
+{
+  "rhythm": [
+    "Back-to-back meetings 10–4 — grab a snack 🍎",
+    "3 calls prepped — streak alive 🔥",
+    "2-hour gap at 1–3 PM — perfect for follow-ups ✉️"
+  ]
+}
+
+
+If none available, omit the card.
+
+Edge cases & safeguards
+
+Multiple account ties → pick the one with max contact email matches, else exact title match, else domain.
+
+Private attendees (no emails) → Base Prep.
+
+API timeouts on any source → continue with whatever returned; do not fail overall.
+
+Cache: if a prep exists and event unchanged, return cached within 100ms for snappy UX.
+
+Minimal tests for Agent 3
+
+Event with clear email→Contact match → returns Enriched, confidence ≥ 70.
+
+Event with only domain match → returns Enriched (Account only), confidence 40–69.
+
+Event with no matches → returns Base Prep; no errors.
+
+One source fails (Gmail timeout) → still returns a Prep.
+
+Autosave Notes persists across reloads.
+
+Optional: tiny scoring function sketch
+function scoreMatch(ctx): number {
+  let s = 0;
+  if (ctx.crmContacts?.length) s += 40;
+  if (titleContainsAccount(ctx.event.title, ctx.crmAccounts)) s += 25;
+  if (domainIntersect(ctx.attendees.domains, ctx.crmAccounts)) s += 15;
+  if (ctx.emailThreads?.length) s += 10;
+  if (ctx.callHistory?.length) s += 10;
+  if (hasTies(ctx.crmAccounts)) s -= 10;
+  return Math.max(0, Math.min(100, s));
+}
+
+Drop-in prompt for Agent 3
+
+Implement the Call Prep generator with confidence-scored matching + guaranteed fallback.
+Update POST /api/prep-sheet/generate to ALWAYS return a prep object. Use the pseudocode above. Pin Notes at the top, and when no match, show Base Prep with event title/time/attendees + default sections. Remove any code path that throws “Call Not Found.” Add confidence, matched, and optional rhythm array to the response. On the frontend, show a small banner only when matched === false. Cache results per eventId. Keep errors for true system failures only.

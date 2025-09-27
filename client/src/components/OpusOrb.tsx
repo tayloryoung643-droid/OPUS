@@ -2,20 +2,32 @@ import { motion } from "framer-motion";
 
 export default function OpusOrb({ onOpen }: { onOpen: () => void }) {
   return (
-    <button
-      aria-label="Open AI Sales Coach"
-      onClick={onOpen}
-      className="fixed right-8 top-24 z-40 aspect-square w-[132px] rounded-full
-                 bg-[radial-gradient(closest-side,rgba(1,8,20,0.9),rgba(1,8,20,0.6)_70%,transparent_71%),conic-gradient(from_0deg,rgba(56,189,248,0.9),rgba(168,85,247,0.9))]"
-      data-testid="button-opus-orb"
-    >
-      <motion.span
-        className="absolute inset-0 rounded-full"
-        initial={{ boxShadow: "0 0 0 0 rgba(56,189,248,0.25)" }}
-        animate={{ boxShadow: ["0 0 0 0 rgba(56,189,248,0.25)","0 0 0 16px rgba(56,189,248,0)"] }}
-        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-      />
-      <span className="absolute inset-[18%] rounded-full bg-[#0a1224]/90" />
-    </button>
+    <div className="fixed right-8 top-1/2 -translate-y-1/2 z-40">
+      <button
+        aria-label="Open AI Sales Coach"
+        onClick={onOpen}
+        className="relative aspect-square w-[160px] rounded-full border-2 border-transparent bg-gradient-to-tr from-cyan-400 to-purple-500 p-1 transition-transform hover:scale-105"
+        data-testid="button-opus-orb"
+      >
+        {/* Pulsing glow halo */}
+        <motion.div
+          className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400/30 to-purple-500/30 blur-xl"
+          initial={{ scale: 1, opacity: 0.3 }}
+          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+        />
+        
+        {/* Hollow circle interior */}
+        <div className="relative h-full w-full rounded-full bg-black/80 backdrop-blur-sm" />
+        
+        {/* Electric blue inner glow */}
+        <motion.div
+          className="absolute inset-2 rounded-full bg-gradient-to-tr from-cyan-400/20 to-purple-500/20"
+          initial={{ opacity: 0.5 }}
+          animate={{ opacity: [0.5, 0.8, 0.5] }}
+          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </button>
+    </div>
   );
 }

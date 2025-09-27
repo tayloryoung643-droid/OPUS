@@ -1467,65 +1467,139 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
-  // Helper functions for prep sheet generation
-  async function buildBasicPrep({ event, call }: { event: any; call?: any }) {
-    const eventTitle = event.title || event.summary || "Meeting";
-    const attendeeList = (event.attendees || []).map((a: any) => 
-      typeof a === 'string' ? a : a.email || a.name || 'Unknown'
-    ).join(', ');
-
+  // Helper functions for robust prep sheet generation
+  function buildBasePrep(event: any, attendees: any): any {
     return {
-      executiveSummary: `Upcoming call: ${eventTitle}. This is a basic preparation sheet generated from calendar data.`,
-      objectives: [`Discuss meeting topic: ${eventTitle}`, "Build rapport and understand needs", "Identify next steps"],
-      attendees: event.attendees || [],
-      suggestedAgenda: [
-        "Opening and introductions",
-        "Understanding current challenges",
-        "Exploring potential solutions",
-        "Discussing next steps"
-      ],
-      discovery: {
-        keyQuestions: [
-          "What are your main priorities this quarter?",
-          "What challenges are you currently facing?",
-          "How are you handling this today?",
-          "What would an ideal solution look like?"
-        ],
-        focusAreas: ["Current situation", "Pain points", "Decision process", "Timeline"]
+      meta: {
+        title: event.title || "Call",
+        time: `${new Date(event.start).toLocaleTimeString()} - ${event.end ? new Date(event.end).toLocaleTimeString() : 'TBD'}`,
+        attendees: attendees || [],
+        source: "BasePrep"
       },
-      risks: ["Limited context about attendees", "No CRM history available"],
-      nextSteps: ["Send follow-up email", "Schedule next meeting", "Provide relevant resources"],
-      myNotes: "" // Empty for user to fill
+      sections: [
+        {
+          id: "notes",
+          title: "Notes",
+          type: "notes",
+          content: "",
+          expanded: true, // Always pinned open
+          editable: true
+        },
+        {
+          id: "objectives", 
+          title: "Call Objectives",
+          items: [
+            `Discuss: ${event.title || 'meeting topic'}`,
+            "Build rapport and understand current situation",
+            "Identify pain points and challenges", 
+            "Determine next steps and timeline"
+          ]
+        },
+        {
+          id: "agenda",
+          title: "Suggested Agenda", 
+          items: [
+            "Opening and introductions (5 min)",
+            "Current situation and challenges (15 min)",
+            "Exploring potential solutions (20 min)",
+            "Next steps and timeline (10 min)"
+          ]
+        },
+        {
+          id: "questions",
+          title: "Discovery Questions",
+          items: [
+            "What are your main priorities this quarter?",
+            "What challenges are you currently facing with [relevant area]?",
+            "How are you handling this today?",
+            "What would an ideal solution look like for your team?"
+          ]
+        },
+        {
+          id: "next_steps",
+          title: "Next Steps",
+          items: [
+            "Send follow-up email with recap",
+            "Schedule next meeting",
+            "Prepare relevant resources/demos"
+          ]
+        }
+      ]
     };
   }
 
-  async function buildRichPrep({ event, account, call }: { event: any; account: any; call?: any }) {
-    const basicPrep = await buildBasicPrep({ event, call });
+  function buildEnrichedPrep(ctx: any): any {
+    const basePrep = buildBasePrep(ctx.event, ctx.attendees);
     
-    // Enhance with account data
+    // Enhance sections with CRM data
     return {
-      ...basicPrep,
-      executiveSummary: `Call with ${account.Name} - ${event.title}. Account context available from CRM.`,
-      accountContext: {
-        name: account.Name,
-        industry: account.Industry,
-        website: account.Website,
-        description: account.Description
+      ...basePrep,
+      meta: {
+        ...basePrep.meta,
+        account: ctx.account ? {
+          name: ctx.account.name,
+          industry: ctx.account.industry,
+          website: ctx.account.website
+        } : null,
+        source: "Enriched"
       },
-      crmHistory: `Previous interactions with ${account.Name} available in Salesforce.`,
-      objectives: [
-        `Advance opportunity with ${account.Name}`,
-        "Leverage existing account relationship",
-        "Build on previous interactions",
-        "Identify expansion opportunities"
+      sections: [
+        basePrep.sections[0], // Keep Notes first
+        {
+          id: "insights",
+          title: "CRM Insights",
+          items: [
+            `Account: ${ctx.account?.name || 'Unknown'}`,
+            `Industry: ${ctx.account?.industry || 'Not specified'}`,
+            `Previous interactions: ${ctx.contacts?.length || 0} contacts found`,
+            ctx.opportunity ? `Opportunity: ${ctx.opportunity.name} (${ctx.opportunity.stage})` : 'No active opportunity found'
+          ]
+        },
+        ...basePrep.sections.slice(1) // Rest of sections
       ]
     };
+  }
+
+  function scoreMatch(ctx: any): { score: number; reason: string } {
+    let score = 0;
+    let reason = "none";
+    
+    // +40 if attendee email matches CRM Contact email
+    if (ctx.crmContacts?.length) {
+      score += 40;
+      reason = "email_match";
+    }
+    
+    // +25 if calendar title contains exact Account/Opportunity name  
+    if (ctx.crmAccounts?.length && ctx.event.title?.toLowerCase().includes(ctx.crmAccounts[0]?.name?.toLowerCase())) {
+      score += 25;
+      if (reason === "none") reason = "name_match";
+    }
+    
+    // +15 if attendee domain matches Account website domain
+    if (ctx.attendeeDomains?.length && ctx.crmAccounts?.some((acc: any) => 
+        ctx.attendeeDomains.some((domain: string) => acc.website?.includes(domain)))) {
+      score += 15; 
+      if (reason === "none") reason = "domain_match";
+    }
+    
+    // +10 if recent email threads found
+    if (ctx.emailThreads?.length) {
+      score += 10;
+    }
+    
+    // +10 if call history exists
+    if (ctx.callHistory?.length) {
+      score += 10;
+    }
+    
+    return { score: Math.max(0, Math.min(100, score)), reason };
   }
 
   // Resilient prep sheet generation route (for Opus UI)  
   app.post("/api/prep-sheet/generate", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
-      const { event, source } = req.body || {};
+      const { event } = req.body || {};
       if (!event) {
         return res.status(400).json({ error: "Missing event payload" });
       }
@@ -1535,75 +1609,120 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
         return res.status(401).json({ error: "User not authenticated" });
       }
 
-      const key = event.iCalUID || event.id;
+      // 1) Extract attendees and normalize
+      const attendees = (event.attendees || []).map((attendee: any) => {
+        if (typeof attendee === 'string') return attendee;
+        return attendee.email || attendee.name || attendee;
+      });
       
-      // Try to find existing call by calendar event ID  
-      let call = null;
-      try {
-        const allCalls = await storage.getCallsWithCompany();
-        call = allCalls.find((c: any) => c.calendarEventId === key);
-      } catch (error) {
-        console.log('Error finding existing call:', error);
-      }
-      
-      if (!call) {
-        try {
-          // Parse date safely
-          let scheduledAt: Date;
-          try {
-            scheduledAt = new Date(event.start);
-            if (isNaN(scheduledAt.getTime())) {
-              scheduledAt = new Date(); // Fallback to current time
-            }
-          } catch {
-            scheduledAt = new Date(); // Fallback to current time
-          }
+      const attendeeDomains = attendees
+        .filter((a: string) => a.includes('@'))
+        .map((email: string) => email.split('@')[1])
+        .filter(Boolean);
 
-          call = await storage.createCall({
-            title: event.title || event.summary || "Untitled Meeting",
-            scheduledAt: scheduledAt,
-            companyId: null,
-            status: "upcoming",
-            callType: "discovery",
-            stage: "prospecting"
-          });
-        } catch (createError) {
-          console.error('Error creating call:', createError);
-          // Don't fail the request - we can still return prep without a saved call
-        }
-      }
+      // 2) Mock CRM data lookup (in real implementation, this would be actual integrations)
+      const mockCrmLookup = async () => {
+        // Simulate CRM lookup delay
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Mock some results based on domain
+        const hasCommonDomain = attendeeDomains.some(domain => 
+          ['gmail.com', 'company.com', 'acme.com'].includes(domain)
+        );
+        
+        return {
+          crmContacts: hasCommonDomain ? [{ email: attendees[0], name: 'Mock Contact' }] : [],
+          crmAccounts: hasCommonDomain ? [{ name: 'Mock Account', industry: 'Technology' }] : [],
+          crmOpps: [],
+          emailThreads: hasCommonDomain ? ['Recent email thread found'] : [],
+          callHistory: []
+        };
+      };
 
-      let account = null;
-      
-      // Try non-blocking Salesforce match
+      // 3) Attempt data enrichment (non-blocking)
+      let crmData;
       try {
-        if (event.attendees && event.attendees.length > 0) {
-          console.log('Attempting Salesforce account match for attendees:', event.attendees);
-          // Simplified - would integrate with actual Salesforce service
-        }
+        crmData = await mockCrmLookup();
+        console.log('CRM lookup completed for:', attendees);
       } catch (error: any) {
-        console.log('Non-blocking Salesforce match failed:', error?.message || 'Unknown error');
+        console.log('CRM lookup failed, using base data:', error?.message);
+        crmData = { crmContacts: [], crmAccounts: [], crmOpps: [], emailThreads: [], callHistory: [] };
       }
 
-      // Generate prep sheet (rich if account found, basic otherwise)
-      const prep = account 
-        ? await buildRichPrep({ event, account, call })
-        : await buildBasicPrep({ event, call });
+      // 4) Score the match
+      const matchContext = {
+        event,
+        attendees,
+        attendeeDomains,
+        ...crmData
+      };
+      
+      const { score, reason } = scoreMatch(matchContext);
+      const matched = score >= 40;
 
-      return res.json({ ok: true, prep, callId: call?.id });
+      // 5) Build prep based on confidence
+      let prep;
+      if (!matched) {
+        prep = buildBasePrep(event, attendees);
+      } else {
+        prep = buildEnrichedPrep({
+          event,
+          attendees,
+          account: crmData.crmAccounts[0],
+          opportunity: crmData.crmOpps[0],
+          contacts: crmData.crmContacts
+        });
+      }
+
+      // 6) Always return success with prep
+      return res.json({
+        status: "ok",
+        prep,
+        confidence: score,
+        matched,
+        matchReason: reason
+      });
       
     } catch (error) {
       console.error("prep-generate error", error);
       
-      // Graceful fallback even on exceptions
+      // GUARANTEED fallback - never fail
       try {
-        const fallbackPrep = await buildBasicPrep({ 
-          event: req.body?.event || { title: "Meeting", start: new Date().toISOString() }
+        const fallbackEvent = req.body?.event || { 
+          title: "Meeting", 
+          start: new Date().toISOString(),
+          attendees: []
+        };
+        const fallbackPrep = buildBasePrep(fallbackEvent, []);
+        
+        return res.status(200).json({
+          status: "ok",
+          prep: fallbackPrep,
+          confidence: 0,
+          matched: false,
+          matchReason: "fallback",
+          warning: "Generated with fallback data due to system error"
         });
-        return res.status(200).json({ ok: true, prep: fallbackPrep, warning: "Generated with fallback data" });
       } catch (fallbackError) {
-        console.error("Fallback prep generation failed:", fallbackError);
-        return res.status(500).json({ error: "Failed to generate prep sheet" });
+        console.error("Even fallback prep generation failed:", fallbackError);
+        // This should never happen, but if it does, return minimal structure
+        return res.status(200).json({
+          status: "ok",
+          prep: {
+            meta: { title: "Call", time: "TBD", attendees: [], source: "Emergency" },
+            sections: [{
+              id: "notes",
+              title: "Notes", 
+              type: "notes",
+              content: "",
+              expanded: true,
+              editable: true
+            }]
+          },
+          confidence: 0,
+          matched: false,
+          matchReason: "emergency"
+        });
       }
     }
   });

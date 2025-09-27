@@ -1,0 +1,219 @@
+PROMPT FOR AGENT 3 — Agenda loads with demo data; fix routing + auth + settings
+
+Context / Current bug
+
+The deployed link opens straight into Agenda and shows seeded mock demo calls (DataFlow, CloudScale, etc.).
+
+Settings button does nothing.
+
+Overview tab doesn’t navigate back.
+
+I need a normal app flow: Home (logged-out) → Login → Overview (default) → Agenda, with per-user data only (no seeded mocks).
+
+Goal
+
+Correct routing & guards
+
+Working Settings + Logout
+
+Remove demo imports; only load user-scoped data after auth
+
+Guest/demo stays behind an explicit ?demo=1 or DEMO_MODE=true flag — never by default
+
+1) Routing: React Router v6 (SPA)
+
+Define routes:
+
+/                → Public: Home (marketing)
+// or /login     → Public: Login (Google OAuth)
+/overview        → Private: Overview (default after auth)
+/agenda          → Private: Agenda
+/settings        → Private: Settings
+
+
+Implement a ProtectedRoute wrapper and make /overview, /agenda, /settings require a valid auth token.
+
+Add src/router.tsx:
+
+import { createBrowserRouter, Navigate } from "react-router-dom";
+import Home from "./pages/Home";
+import Login from "./pages/Login";
+import Overview from "./pages/Overview";
+import Agenda from "./pages/Agenda";
+import Settings from "./pages/Settings";
+import { getToken } from "./services/authService";
+
+const Protected = ({ element }: { element: JSX.Element }) =>
+  getToken() ? element : <Navigate to="/login" replace />;
+
+export const router = createBrowserRouter([
+  { path: "/", element: <Home /> },
+  { path: "/login", element: <Login /> },
+  { path: "/overview", element: <Protected element={<Overview />} /> },
+  { path: "/agenda", element: <Protected element={<Agenda />} /> },
+  { path: "/settings", element: <Protected element={<Settings />} /> },
+  { path: "*", element: <Navigate to="/" replace /> },
+]);
+
+
+Wire it in App.tsx:
+
+import { RouterProvider } from "react-router-dom";
+import { router } from "./router";
+export default function App(){ return <RouterProvider router={router}/>; }
+
+2) Navigation fixes (Header)
+
+Overview tab should navigate to /overview.
+
+Settings button should navigate to /settings.
+
+Logout should clear auth + in-memory stores and route to /.
+
+import { useNavigate } from "react-router-dom";
+import { clearSession } from "@/services/authService";
+import { resetStores } from "@/state/resetStores";
+
+const Header = () => {
+  const nav = useNavigate();
+
+  const onLogout = async () => {
+    try { await fetch("/api/auth/logout",{ method:"POST" }).catch(()=>{});
+    } finally {
+      clearSession();
+      resetStores();      // clear recoil/zustand/query caches if used
+      nav("/", { replace: true });
+    }
+  };
+
+  return (
+    <header>
+      <button onClick={() => nav("/overview")}>Overview</button>
+      <button onClick={() => nav("/agenda")}>Agenda</button>
+      <button onClick={() => nav("/settings")}>Settings</button>
+      <button onClick={onLogout}>Log out</button>
+    </header>
+  );
+};
+
+3) Kill auto-mock imports; make demo explicit
+
+Create env flags
+
+.env / Vercel:
+
+VITE_DEMO_MODE=false
+VITE_USE_MOCKS=false
+
+
+Central toggle src/config.ts:
+
+export const CONFIG = {
+  DEMO_MODE: import.meta.env.VITE_DEMO_MODE === "true" || new URLSearchParams(window.location.search).get("demo")==="1",
+  USE_MOCKS: import.meta.env.VITE_USE_MOCKS === "true",
+};
+
+
+Guard the mock loader (currently services/mockDataService.ts):
+
+import { CONFIG } from "@/config";
+// Export no-ops when not in demo
+export async function getMockAgenda(){
+  if (!CONFIG.DEMO_MODE && !CONFIG.USE_MOCKS) return [];
+  // ... existing mock generation
+}
+
+
+Agenda data fetch (replace any unconditional mock import):
+
+import { CONFIG } from "@/config";
+import { getCalendarEvents } from "@/services/calendarService";
+import { getMockAgenda } from "@/services/mockDataService";
+
+export async function loadAgenda(userId: string){
+  if (CONFIG.DEMO_MODE || CONFIG.USE_MOCKS) return getMockAgenda();
+  return getCalendarEvents({ userId }); // calls /api/calendar/events; must be authed
+}
+
+
+Empty-state UX (no more fake data):
+
+const events = await loadAgenda(user.id);
+if (!events?.length) {
+  return <EmptyState
+    title="No upcoming calls yet"
+    subtitle="Connect Google Calendar in Settings to see events here."
+    cta={{ label:"Open Settings", onClick: () => nav("/settings") }}
+  />;
+}
+
+4) Settings page must work
+
+Ensure Settings resolves to a component that:
+
+Shows integration status (/api/integrations/status)
+
+Buttons for Connect/Disconnect Google & Salesforce
+
+Save profile + a visible Log out button (same onLogout above)
+
+useEffect(() => {
+  (async () => {
+    const res = await fetch("/api/integrations/status", { credentials:"include" });
+    setStatus(await res.json());
+  })();
+}, []);
+
+5) Auth service utilities
+
+src/services/authService.ts:
+
+export const getToken = () => localStorage.getItem("access_token");
+export const setSession = (token:string) => localStorage.setItem("access_token", token);
+export const clearSession = () => localStorage.removeItem("access_token");
+
+
+After successful OAuth callback, store token, then navigate("/overview").
+
+App default for authenticated users = /overview.
+
+6) Backend checks (Express)
+
+/api/auth/me should 401 when no token; frontend redirects to /login.
+
+/api/calendar/events must require auth and return user-scoped events only.
+
+Never return mock data from the API unless process.env.DEMO_MODE === "true" and the caller has x-demo: 1 (belt and suspenders).
+
+Example:
+
+app.get("/api/calendar/events", requireAuth, async (req,res)=>{
+  if (process.env.DEMO_MODE === "true" && req.headers["x-demo"] === "1") {
+    return res.json(getMockAgenda());
+  }
+  const events = await calendarForUser(req.user.id);
+  return res.json(events);
+});
+
+7) Default route behavior
+
+Logged-out visit to root / → show Home.
+
+If user is authenticated and hits / or /login, redirect to /overview.
+
+// in Home/Login components:
+if (getToken()) return <Navigate to="/overview" replace />;
+
+8) Acceptance criteria
+
+Visiting the app in a fresh browser shows Home → Login.
+
+After login, user lands on /overview. Clicking Agenda goes to /agenda.
+
+Settings opens and works; can connect integrations and Log out.
+
+No mock calls are shown for real users. Empty state prompts to connect Calendar.
+
+Demo data appears only when ?demo=1 or env flags are true.
+
+Please implement the above, remove any leftover auto-seed calls, and push a preview.

@@ -305,13 +305,14 @@ export default function OpusAgendaMock() {
   // Chat helpers
   const thread = chatByCall[selected?.id] || [];
   const pushChat = (role, text) => {
+    if (!selected?.id) return;
     const next = { ...(chatByCall || {}) };
     next[selected.id] = [...(next[selected.id] || []), { role, text }];
     setChatByCall(next);
   };
 
   const sendChat = () => {
-    if (!chatDraft.trim()) return;
+    if (!chatDraft.trim() || !selected?.id) return;
     pushChat("user", chatDraft.trim());
     setChatDraft("");
     setTimeout(() => {

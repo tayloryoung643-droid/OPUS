@@ -229,7 +229,7 @@ export default function Settings() {
           </h1>
           <p className="text-muted-foreground">
             Connect your tools to unlock AI-powered call preparation. The more data you connect, 
-            the better insights Momentum AI can provide for your sales calls.
+            the better insights Opus can provide for your sales calls.
           </p>
         </div>
 

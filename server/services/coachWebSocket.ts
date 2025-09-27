@@ -3,6 +3,10 @@ import { createServer, type Server } from 'http';
 import { parse } from 'url';
 import { storage } from '../storage';
 import { createMCPServer } from '../mcp/mcp-server.js';
+import OpenAI from 'openai';
+import { writeFileSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import type { CoachSession, CoachTranscript, CoachSuggestion } from '@shared/schema';
 
 interface AuthenticatedWebSocket extends WebSocket {
@@ -24,12 +28,18 @@ export class CoachWebSocketService {
   private clients: Map<string, AuthenticatedWebSocket> = new Map();
   private audioBuffers: Map<string, Buffer[]> = new Map();
   private transcriptionTimers: Map<string, NodeJS.Timeout> = new Map();
+  private openai: OpenAI;
 
   constructor(server: Server) {
     this.wss = new WebSocketServer({
       server,
       path: '/ws/coach',
       perMessageDeflate: false // Better for real-time audio
+    });
+
+    // Initialize OpenAI client
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
     });
 
     this.setupWebSocketServer();
@@ -220,35 +230,116 @@ export class CoachWebSocketService {
 
   private async transcribeAudio(sessionId: string, userId: string, audioData: Buffer) {
     try {
-      // TODO: Implement OpenAI Whisper transcription
-      // For now, create a mock transcript
-      const mockTranscript = `Audio received at ${new Date().toISOString()} (${audioData.length} bytes)`;
-      
-      // Save transcript to database
-      const transcript = await storage.createCoachTranscript({
-        sessionId,
-        at: new Date(),
-        speaker: 'rep', // TODO: Implement speaker detection
-        text: mockTranscript
-      });
+      console.log(`[Coach-WS] Transcribing ${audioData.length} bytes of audio for session ${sessionId}`);
 
-      console.log(`[Coach-WS] Created transcript ${transcript.id} for session ${sessionId}`);
-
-      // Send transcript to client
-      const ws = this.clients.get(sessionId);
-      if (ws) {
-        this.sendMessage(ws, {
-          type: 'transcript',
-          payload: transcript
-        });
+      if (audioData.length < 1000) {
+        console.log(`[Coach-WS] Audio data too small for transcription: ${audioData.length} bytes`);
+        return;
       }
 
-      // Generate coaching suggestions using MCP
-      await this.generateCoachingSuggestions(sessionId, userId, mockTranscript);
+      // Create temporary file for OpenAI Whisper
+      const tempFilePath = join(tmpdir(), `coach-audio-${sessionId}-${Date.now()}.webm`);
+      
+      try {
+        // Write audio data to temporary file
+        writeFileSync(tempFilePath, audioData);
+        
+        // Transcribe using OpenAI Whisper
+        const transcription = await this.openai.audio.transcriptions.create({
+          file: { 
+            name: 'audio.webm',
+            buffer: audioData,
+            type: 'audio/webm'
+          } as any,
+          model: 'whisper-1',
+          language: 'en',
+          response_format: 'json',
+          temperature: 0.2
+        });
+
+        const transcriptText = transcription.text?.trim();
+        
+        if (!transcriptText || transcriptText.length < 3) {
+          console.log(`[Coach-WS] Empty or too short transcription for session ${sessionId}`);
+          return;
+        }
+
+        console.log(`[Coach-WS] Transcribed: "${transcriptText}" for session ${sessionId}`);
+
+        // Determine speaker (simplified - in production would use speaker diarization)
+        const speaker = this.detectSpeaker(transcriptText);
+        
+        // Save transcript to database
+        const transcript = await storage.createCoachTranscript({
+          sessionId,
+          at: new Date(),
+          speaker,
+          text: transcriptText
+        });
+
+        console.log(`[Coach-WS] Created transcript ${transcript.id} for session ${sessionId}`);
+
+        // Send transcript to client
+        const ws = this.clients.get(sessionId);
+        if (ws) {
+          this.sendMessage(ws, {
+            type: 'transcript',
+            payload: transcript
+          });
+        }
+
+        // Generate coaching suggestions using MCP
+        await this.generateCoachingSuggestions(sessionId, userId, transcriptText);
+
+      } finally {
+        // Clean up temporary file
+        try {
+          unlinkSync(tempFilePath);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
 
     } catch (error) {
       console.error(`[Coach-WS] Transcription error for session ${sessionId}:`, error);
+      
+      // Send error to client
+      const ws = this.clients.get(sessionId);
+      if (ws) {
+        this.sendMessage(ws, {
+          type: 'error',
+          payload: { message: 'Transcription failed', error: error.message }
+        });
+      }
     }
+  }
+
+  private detectSpeaker(text: string): 'rep' | 'prospect' | 'system' {
+    // Simple heuristic-based speaker detection
+    // In production, would use proper speaker diarization
+    const lowerText = text.toLowerCase();
+    
+    // Check for question indicators (likely prospect)
+    if (lowerText.includes('?') || 
+        lowerText.includes('what') || 
+        lowerText.includes('how') || 
+        lowerText.includes('when') ||
+        lowerText.includes('where') ||
+        lowerText.includes('why')) {
+      return 'prospect';
+    }
+    
+    // Check for sales/presentation language (likely rep)
+    if (lowerText.includes('our solution') ||
+        lowerText.includes('our product') ||
+        lowerText.includes('we offer') ||
+        lowerText.includes('let me show') ||
+        lowerText.includes('i can help')) {
+      return 'rep';
+    }
+    
+    // Default to rep for most cases
+    return 'rep';
   }
 
   private async generateCoachingSuggestions(sessionId: string, userId: string, transcript: string) {

@@ -1,0 +1,105 @@
+Agent 3 Prompt — Implement Opus Agenda UI (Simplified)
+
+Context
+
+Frontend: React + TypeScript + Vite + Tailwind.
+
+Existing services (DO NOT break): calendarService, salesforceService, geminiService, PrepSheetView, ChatModal.
+
+Goal: Match the attached UI mockup but simplified for MVP. Only the Agenda tab should function.
+
+Requirements / Acceptance Criteria
+
+Rename
+
+Change branding in the UI from “AE Partner” to “Opus” everywhere.
+
+Navigation Tabs
+
+Tabs shown: Agenda | Pipeline | Tasks | Coach | Insights.
+
+Only Agenda tab should be functional; the others are static placeholders (non-clickable).
+
+Agenda Tab Behavior
+
+Default state:
+
+Show “Good morning, {firstName}” greeting.
+
+Show Agenda list on the left.
+
+Show Insights and Partner Circle (voice circle) on the right.
+
+When the user clicks the Agenda tab:
+
+The “Good morning, {firstName}” greeting disappears.
+
+The Agenda list remains pinned to the left.
+
+When the user clicks on an event in the agenda:
+
+Generate and display a Call Prep Sheet (PrepSheetView) on the right-hand side.
+
+Agenda stays visible and pinned on the left.
+
+Insights and the Partner Circle (voice circle) remain visible on the right-hand side.
+
+Removed Features
+
+Remove “Generate Call Prep” button.
+
+Remove “Draft Follow-Up” button.
+
+Layout Rules
+
+Left: Agenda list (scrollable).
+
+Center/Right: Call Prep Sheet (when event clicked).
+
+Far Right: Partner Circle docked + Insights cards pinned.
+
+Mobile responsive — Agenda stacks above Call Prep and insights.
+
+Safety / Rollout
+
+Work in a new branch: feat/opus-agenda-ui.
+
+Keep old UI behind a flag: VITE_ENABLE_OPUS_UI=true.
+
+Do not modify or delete backend logic.
+
+If calendar/SFDC lookup fails, still render agenda with basic info.
+
+Implementation Steps
+
+Create new page: pages/OpusAgenda.tsx.
+
+Components:
+
+OpusHeroGreeting.tsx (disappears once Agenda clicked).
+
+OpusAgendaList.tsx (always pinned left, triggers prep sheet).
+
+OpusPrepSheet.tsx (wrapper around PrepSheetView).
+
+OpusInsights.tsx (quota + streaks).
+
+OpusPartnerCircle.tsx (voice circle + drawer with ChatModal).
+
+Wire agenda events:
+
+Click event → PrepSheetView loads for that event with Salesforce context.
+
+If no account found → load prep sheet with notes + default info.
+
+Update App.tsx route:
+
+If VITE_ENABLE_OPUS_UI=true → show OpusAgenda as homepage.
+
+Constraints / Don’ts
+
+Don’t alter backend APIs or OAuth.
+
+Don’t enable Pipeline/Tasks/Coach/Insights yet (Agenda only).
+
+Don’t break existing integrations.

@@ -1,5 +1,6 @@
 import { 
   companies, contacts, calls, callPreps, prepNotes, users, integrations, integrationData, crmOpportunities, googleIntegrations, salesforceIntegrations,
+  coachSessions, coachTranscripts, coachSuggestions,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
@@ -10,7 +11,10 @@ import {
   type IntegrationData, type InsertIntegrationData,
   type CrmOpportunity, type InsertCrmOpportunity,
   type GoogleIntegration, type InsertGoogleIntegration,
-  type SalesforceIntegration, type InsertSalesforceIntegration
+  type SalesforceIntegration, type InsertSalesforceIntegration,
+  type CoachSession, type InsertCoachSession,
+  type CoachTranscript, type InsertCoachTranscript,
+  type CoachSuggestion, type InsertCoachSuggestion
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -89,6 +93,20 @@ export interface IStorage {
   getSalesforceIntegration(userId: string): Promise<SalesforceIntegration | undefined>;
   updateSalesforceIntegration(userId: string, updates: Partial<InsertSalesforceIntegration>): Promise<SalesforceIntegration>;
   deleteSalesforceIntegration(userId: string): Promise<void>;
+
+  // Sales Coach methods
+  createCoachSession(session: InsertCoachSession): Promise<CoachSession>;
+  getCoachSession(id: string): Promise<CoachSession | undefined>;
+  getCoachSessionByUserAndEvent(userId: string, eventId: string): Promise<CoachSession | undefined>;
+  updateCoachSession(id: string, updates: Partial<InsertCoachSession>): Promise<CoachSession>;
+  getActiveCoachSession(userId: string): Promise<CoachSession | undefined>;
+
+  createCoachTranscript(transcript: InsertCoachTranscript): Promise<CoachTranscript>;
+  getCoachTranscripts(sessionId: string): Promise<CoachTranscript[]>;
+
+  createCoachSuggestion(suggestion: InsertCoachSuggestion): Promise<CoachSuggestion>;
+  getCoachSuggestions(sessionId: string): Promise<CoachSuggestion[]>;
+  updateCoachSuggestion(id: string, updates: Partial<InsertCoachSuggestion>): Promise<CoachSuggestion>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -569,6 +587,87 @@ export class DatabaseStorage implements IStorage {
     }
     
     return decrypted;
+  }
+
+  // Sales Coach methods
+  async createCoachSession(insertSession: InsertCoachSession): Promise<CoachSession> {
+    const [session] = await db.insert(coachSessions).values(insertSession).returning();
+    return session;
+  }
+
+  async getCoachSession(id: string): Promise<CoachSession | undefined> {
+    const [session] = await db.select().from(coachSessions).where(eq(coachSessions.id, id));
+    return session || undefined;
+  }
+
+  async getCoachSessionByUserAndEvent(userId: string, eventId: string): Promise<CoachSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(coachSessions)
+      .where(and(
+        eq(coachSessions.userId, userId),
+        eq(coachSessions.eventId, eventId)
+      ))
+      .orderBy(desc(coachSessions.createdAt))
+      .limit(1);
+    return session || undefined;
+  }
+
+  async updateCoachSession(id: string, updates: Partial<InsertCoachSession>): Promise<CoachSession> {
+    const [session] = await db
+      .update(coachSessions)
+      .set(updates)
+      .where(eq(coachSessions.id, id))
+      .returning();
+    return session;
+  }
+
+  async getActiveCoachSession(userId: string): Promise<CoachSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(coachSessions)
+      .where(and(
+        eq(coachSessions.userId, userId),
+        eq(coachSessions.status, "listening")
+      ))
+      .orderBy(desc(coachSessions.createdAt))
+      .limit(1);
+    return session || undefined;
+  }
+
+  async createCoachTranscript(insertTranscript: InsertCoachTranscript): Promise<CoachTranscript> {
+    const [transcript] = await db.insert(coachTranscripts).values(insertTranscript).returning();
+    return transcript;
+  }
+
+  async getCoachTranscripts(sessionId: string): Promise<CoachTranscript[]> {
+    return await db
+      .select()
+      .from(coachTranscripts)
+      .where(eq(coachTranscripts.sessionId, sessionId))
+      .orderBy(coachTranscripts.at);
+  }
+
+  async createCoachSuggestion(insertSuggestion: InsertCoachSuggestion): Promise<CoachSuggestion> {
+    const [suggestion] = await db.insert(coachSuggestions).values(insertSuggestion).returning();
+    return suggestion;
+  }
+
+  async getCoachSuggestions(sessionId: string): Promise<CoachSuggestion[]> {
+    return await db
+      .select()
+      .from(coachSuggestions)
+      .where(eq(coachSuggestions.sessionId, sessionId))
+      .orderBy(desc(coachSuggestions.at));
+  }
+
+  async updateCoachSuggestion(id: string, updates: Partial<InsertCoachSuggestion>): Promise<CoachSuggestion> {
+    const [suggestion] = await db
+      .update(coachSuggestions)
+      .set(updates)
+      .where(eq(coachSuggestions.id, id))
+      .returning();
+    return suggestion;
   }
 }
 

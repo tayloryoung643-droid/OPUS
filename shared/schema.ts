@@ -302,3 +302,87 @@ export const insertPrepNoteSchema = createInsertSchema(prepNotes).omit({
 
 export type PrepNote = typeof prepNotes.$inferSelect;
 export type InsertPrepNote = z.infer<typeof insertPrepNoteSchema>;
+
+// Sales Coach tables
+export const coachSessions = pgTable("coach_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  eventId: varchar("event_id").notNull(), // Google Calendar event ID
+  status: text("status").notNull().default("idle"), // idle, connecting, listening, ended, error
+  startedAt: timestamp("started_at"),
+  endedAt: timestamp("ended_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const coachTranscripts = pgTable("coach_transcripts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => coachSessions.id, { onDelete: 'cascade' }),
+  at: timestamp("at").notNull().defaultNow(),
+  speaker: text("speaker").notNull(), // "rep", "prospect", "system"
+  text: text("text").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const coachSuggestions = pgTable("coach_suggestions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => coachSessions.id, { onDelete: 'cascade' }),
+  at: timestamp("at").notNull().defaultNow(),
+  type: text("type").notNull(), // "suggestion", "objection", "knowledge"
+  priority: text("priority").notNull().default("medium"), // "low", "medium", "high"
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  customerQuote: text("customer_quote"), // For objection handling
+  recommendedResponse: text("recommended_response"), // For objection handling
+  resolved: boolean("resolved").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Sales Coach relations
+export const coachSessionsRelations = relations(coachSessions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [coachSessions.userId],
+    references: [users.id],
+  }),
+  transcripts: many(coachTranscripts),
+  suggestions: many(coachSuggestions),
+}));
+
+export const coachTranscriptsRelations = relations(coachTranscripts, ({ one }) => ({
+  session: one(coachSessions, {
+    fields: [coachTranscripts.sessionId],
+    references: [coachSessions.id],
+  }),
+}));
+
+export const coachSuggestionsRelations = relations(coachSuggestions, ({ one }) => ({
+  session: one(coachSessions, {
+    fields: [coachSuggestions.sessionId],
+    references: [coachSessions.id],
+  }),
+}));
+
+// Sales Coach insert schemas
+export const insertCoachSessionSchema = createInsertSchema(coachSessions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCoachTranscriptSchema = createInsertSchema(coachTranscripts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCoachSuggestionSchema = createInsertSchema(coachSuggestions).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Sales Coach types
+export type CoachSession = typeof coachSessions.$inferSelect;
+export type InsertCoachSession = z.infer<typeof insertCoachSessionSchema>;
+
+export type CoachTranscript = typeof coachTranscripts.$inferSelect;
+export type InsertCoachTranscript = z.infer<typeof insertCoachTranscriptSchema>;
+
+export type CoachSuggestion = typeof coachSuggestions.$inferSelect;
+export type InsertCoachSuggestion = z.infer<typeof insertCoachSuggestionSchema>;

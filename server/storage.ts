@@ -32,17 +32,20 @@ export interface IStorage {
   // Company methods
   createCompany(company: InsertCompany): Promise<Company>;
   getCompany(id: string): Promise<Company | undefined>;
+  getCompanyById(id: string): Promise<Company | undefined>;
   getCompanyByDomain(domain: string): Promise<Company | undefined>;
   updateCompany(id: string, updates: Partial<InsertCompany>): Promise<Company>;
 
   // Contact methods
   createContact(contact: InsertContact): Promise<Contact>;
+  getContactById(id: string): Promise<Contact | undefined>;
   getContactsByCompany(companyId: string): Promise<Contact[]>;
   updateContact(id: string, updates: Partial<InsertContact>): Promise<Contact>;
 
   // Call methods
   createCall(call: InsertCall): Promise<Call>;
   getCall(id: string): Promise<Call | undefined>;
+  getCallById(id: string): Promise<Call | undefined>;
   getCallsWithCompany(): Promise<Array<Call & { company: Company }>>;
   getUpcomingCalls(): Promise<Array<Call & { company: Company }>>;
   getPreviousCalls(): Promise<Array<Call & { company: Company }>>;
@@ -51,6 +54,8 @@ export interface IStorage {
 
   // Opportunity methods
   createOpportunity(opportunity: InsertCrmOpportunity): Promise<CrmOpportunity>;
+  createCrmOpportunity(opportunity: InsertCrmOpportunity): Promise<CrmOpportunity>;
+  getCrmOpportunityById(id: string): Promise<CrmOpportunity | undefined>;
   getOpportunitiesByCompany(companyId: string): Promise<CrmOpportunity[]>;
   updateOpportunity(id: string, updates: Partial<InsertCrmOpportunity>): Promise<CrmOpportunity>;
 
@@ -153,6 +158,10 @@ export class DatabaseStorage implements IStorage {
     return company || undefined;
   }
 
+  async getCompanyById(id: string): Promise<Company | undefined> {
+    return this.getCompany(id);
+  }
+
   async getCompanyByDomain(domain: string): Promise<Company | undefined> {
     const [company] = await db.select().from(companies).where(eq(companies.domain, domain));
     return company || undefined;
@@ -171,6 +180,11 @@ export class DatabaseStorage implements IStorage {
   async createContact(insertContact: InsertContact): Promise<Contact> {
     const [contact] = await db.insert(contacts).values(insertContact).returning();
     return contact;
+  }
+
+  async getContactById(id: string): Promise<Contact | undefined> {
+    const [contact] = await db.select().from(contacts).where(eq(contacts.id, id));
+    return contact || undefined;
   }
 
   async getContactsByCompany(companyId: string): Promise<Contact[]> {
@@ -195,6 +209,10 @@ export class DatabaseStorage implements IStorage {
   async getCall(id: string): Promise<Call | undefined> {
     const [call] = await db.select().from(calls).where(eq(calls.id, id));
     return call || undefined;
+  }
+
+  async getCallById(id: string): Promise<Call | undefined> {
+    return this.getCall(id);
   }
 
   async getCallsWithCompany(): Promise<Array<Call & { company: Company }>> {
@@ -255,6 +273,15 @@ export class DatabaseStorage implements IStorage {
   async createOpportunity(insertOpportunity: InsertCrmOpportunity): Promise<CrmOpportunity> {
     const [opportunity] = await db.insert(crmOpportunities).values(insertOpportunity).returning();
     return opportunity;
+  }
+
+  async createCrmOpportunity(insertOpportunity: InsertCrmOpportunity): Promise<CrmOpportunity> {
+    return this.createOpportunity(insertOpportunity);
+  }
+
+  async getCrmOpportunityById(id: string): Promise<CrmOpportunity | undefined> {
+    const [opportunity] = await db.select().from(crmOpportunities).where(eq(crmOpportunities.id, id));
+    return opportunity || undefined;
   }
 
   async getOpportunitiesByCompany(companyId: string): Promise<CrmOpportunity[]> {

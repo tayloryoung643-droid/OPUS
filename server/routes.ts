@@ -1,6 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { isGuestEnabled, authenticateGuest, createGuestSession, ensureGuestUser, seedGuestData } from "./services/guestAuth";
 import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
 import { createMCPServer } from "./mcp/mcp-server.js";
@@ -14,9 +15,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth (Google Sign-in support)
   await setupAuth(app);
   
+  // Initialize guest user and seed data if enabled
+  if (isGuestEnabled()) {
+    await ensureGuestUser();
+    await seedGuestData();
+  }
+  
+
+  // Guest login route
+  app.post('/api/auth/guest/login', async (req, res) => {
+    try {
+      if (!isGuestEnabled()) {
+        return res.status(404).json({ message: "Guest login not enabled" });
+      }
+
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
+
+      const isValid = await authenticateGuest(email, password);
+      if (!isValid) {
+        return res.status(401).json({ message: "Invalid guest credentials" });
+      }
+
+      // Create guest session
+      createGuestSession(req);
+      
+      const user = await storage.getUser("usr_guest_momentum_ai");
+      res.json({ user, guestMode: true });
+    } catch (error) {
+      console.error("Error with guest login:", error);
+      res.status(500).json({ message: "Failed to login as guest" });
+    }
+  });
+
+  // Enhanced auth middleware that supports both Replit auth and guest users
+  const isAuthenticatedOrGuest = (req: any, res: any, next: any) => {
+    // Check if this is a guest user session
+    if (req.user?.claims?.sub === "usr_guest_momentum_ai") {
+      return next();
+    }
+    
+    // Otherwise use standard authentication
+    return isAuthenticated(req, res, next);
+  };
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);

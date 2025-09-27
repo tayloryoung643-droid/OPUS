@@ -147,7 +147,6 @@ export async function seedGuestData(): Promise<void> {
       const existingCompany = await storage.getCompanyById(account.id);
       if (!existingCompany) {
         await storage.createCompany({
-          id: account.id,
           name: account.name,
           domain: account.domain,
           industry: account.industry,
@@ -163,7 +162,6 @@ export async function seedGuestData(): Promise<void> {
       const existingContact = await storage.getContactById(contact.id);
       if (!existingContact) {
         await storage.createContact({
-          id: contact.id,
           companyId: contact.account_id,
           email: contact.email,
           firstName: contact.first_name,
@@ -187,7 +185,6 @@ export async function seedGuestData(): Promise<void> {
         }
 
         await storage.createCall({
-          id: event.id,
           companyId: event.linked_account_id,
           title: event.title,
           scheduledAt: eventDate,
@@ -203,7 +200,6 @@ export async function seedGuestData(): Promise<void> {
       const existingOpportunity = await storage.getCrmOpportunityById(opportunity.id);
       if (!existingOpportunity) {
         await storage.createCrmOpportunity({
-          id: opportunity.id,
           companyId: opportunity.account_id,
           name: opportunity.name,
           stage: opportunity.stage,

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -11,9 +11,21 @@ import LegacyApp from "./LegacyApp";
 import OpusOrb from "@/components/OpusOrb";
 import SalesCoachModal from "@/components/SalesCoachModal";
 import OpusHomePage from "@/pages/OpusHomePage";
+import OpusLandingPage from "@/pages/OpusLandingPage";
 import { ProtectedRoute, PublicGate } from "@/routes/guards";
 
 const ENABLE_OPUS = import.meta.env.VITE_ENABLE_OPUS_UI === "true";
+
+// Redirect component for /app -> /app/overview
+function AppRedirect() {
+  const [, setLocation] = useLocation();
+  
+  React.useEffect(() => {
+    setLocation('/app/overview');
+  }, [setLocation]);
+  
+  return null;
+}
 
 function OpusRouter() {
   return (
@@ -30,6 +42,20 @@ function OpusRouter() {
         <PublicGate>
           <OpusHomePage />
         </PublicGate>
+      </Route>
+
+      {/* /app redirects to /app/overview */}
+      <Route path="/app">
+        <ProtectedRoute>
+          <AppRedirect />
+        </ProtectedRoute>
+      </Route>
+
+      {/* New Overview landing page */}
+      <Route path="/app/overview">
+        <ProtectedRoute>
+          <OpusLandingPage />
+        </ProtectedRoute>
       </Route>
 
       {/* Auth-only dashboard (Agenda) */}

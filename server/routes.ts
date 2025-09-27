@@ -90,6 +90,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Standard /api/auth/me endpoint - returns 401 when no token
+  app.get('/api/auth/me', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
   // Integration routes for Outlook
   app.get("/api/integrations/outlook/setup", isAuthenticatedOrGuest, async (req, res) => {
     try {
@@ -384,8 +396,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Google Calendar data routes
-  app.get("/api/calendar/events", isAuthenticatedOrGuest, async (req: any, res) => {
+  app.get("/api/calendar/events", isAuthenticated, async (req: any, res) => {
     try {
+      // Return mock data only if explicitly in demo mode with demo header
+      if (process.env.VITE_DEMO_MODE === "true" && req.headers["x-demo"] === "1") {
+        const { loadGuestSeedData } = await import('./services/guestAuth');
+        try {
+          const seedData = loadGuestSeedData();
+          return res.json(seedData.calendar.events);
+        } catch (error) {
+          console.warn("Could not load demo data, falling back to empty array");
+          return res.json([]);
+        }
+      }
+
       const userId = req.user.claims.sub;
       const { googleCalendarService } = await import('./services/googleCalendar');
       

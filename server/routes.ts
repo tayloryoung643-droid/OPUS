@@ -4,7 +4,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
 import { createMCPServer } from "./mcp/mcp-server.js";
-import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema } from "@shared/schema";
+import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema, insertCoachSessionSchema, insertCoachTranscriptSchema, insertCoachSuggestionSchema } from "@shared/schema";
 import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
 import { z } from "zod";
@@ -1045,6 +1045,173 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
       res.json({ message: "Integration deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: "Failed to delete integration" });
+    }
+  });
+
+  // Sales Coach routes
+  // Create a new coach session
+  app.post("/api/coach/sessions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessionData = insertCoachSessionSchema.parse({
+        ...req.body,
+        userId
+      });
+
+      const session = await storage.createCoachSession(sessionData);
+      console.log(`[Coach] Created session ${session.id} for user ${userId}, event ${session.eventId}`);
+      
+      res.status(201).json(session);
+    } catch (error) {
+      console.error("Error creating coach session:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid session data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create coach session" });
+    }
+  });
+
+  // Get a specific coach session
+  app.get("/api/coach/sessions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessionId = req.params.id;
+
+      const session = await storage.getCoachSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+
+      // Ensure user owns this session
+      if (session.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(session);
+    } catch (error) {
+      console.error("Error fetching coach session:", error);
+      res.status(500).json({ message: "Failed to fetch coach session" });
+    }
+  });
+
+  // Update a coach session (e.g., change status, end session)
+  app.patch("/api/coach/sessions/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessionId = req.params.id;
+
+      const session = await storage.getCoachSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+
+      // Ensure user owns this session
+      if (session.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updates = insertCoachSessionSchema.partial().parse(req.body);
+      const updatedSession = await storage.updateCoachSession(sessionId, updates);
+      
+      console.log(`[Coach] Updated session ${sessionId} status: ${updatedSession.status}`);
+      res.json(updatedSession);
+    } catch (error) {
+      console.error("Error updating coach session:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update coach session" });
+    }
+  });
+
+  // End a coach session (convenience endpoint)
+  app.post("/api/coach/sessions/:id/end", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessionId = req.params.id;
+
+      const session = await storage.getCoachSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+
+      // Ensure user owns this session
+      if (session.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updatedSession = await storage.updateCoachSession(sessionId, {
+        status: "ended",
+        endedAt: new Date()
+      });
+      
+      console.log(`[Coach] Ended session ${sessionId}`);
+      res.json(updatedSession);
+    } catch (error) {
+      console.error("Error ending coach session:", error);
+      res.status(500).json({ message: "Failed to end coach session" });
+    }
+  });
+
+  // Get transcripts for a session
+  app.get("/api/coach/sessions/:id/transcripts", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessionId = req.params.id;
+
+      const session = await storage.getCoachSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+
+      // Ensure user owns this session
+      if (session.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const transcripts = await storage.getCoachTranscripts(sessionId);
+      res.json(transcripts);
+    } catch (error) {
+      console.error("Error fetching coach transcripts:", error);
+      res.status(500).json({ message: "Failed to fetch transcripts" });
+    }
+  });
+
+  // Get suggestions for a session
+  app.get("/api/coach/sessions/:id/suggestions", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const sessionId = req.params.id;
+
+      const session = await storage.getCoachSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+
+      // Ensure user owns this session
+      if (session.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const suggestions = await storage.getCoachSuggestions(sessionId);
+      res.json(suggestions);
+    } catch (error) {
+      console.error("Error fetching coach suggestions:", error);
+      res.status(500).json({ message: "Failed to fetch suggestions" });
+    }
+  });
+
+  // Get or create session for a specific event
+  app.get("/api/coach/sessions/event/:eventId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const eventId = req.params.eventId;
+
+      const session = await storage.getCoachSessionByUserAndEvent(userId, eventId);
+      res.json(session || null);
+    } catch (error) {
+      console.error("Error fetching coach session by event:", error);
+      res.status(500).json({ message: "Failed to fetch session" });
     }
   });
 

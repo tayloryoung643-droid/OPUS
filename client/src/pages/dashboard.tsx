@@ -8,6 +8,8 @@ import { Search, Clock } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/ui/navigation";
+import { SalesCoachLauncher } from "@/components/coach/SalesCoachLauncher";
+import { SalesCoachPanel } from "@/components/coach/SalesCoachPanel";
 
 type CallSource = "database" | "calendar";
 
@@ -349,6 +351,12 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Sales Coach Panel - conditionally rendered when panel is open */}
+      <SalesCoachPanel />
+      
+      {/* Floating Sales Coach Launcher for quick access */}
+      <SalesCoachLauncher variant="floating" />
     </div>
   );
 }

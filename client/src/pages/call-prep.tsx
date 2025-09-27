@@ -17,6 +17,8 @@ import CompetitiveLandscape from "@/components/call-prep/competitive-landscape";
 import KeyStakeholders from "@/components/call-prep/key-stakeholders";
 import RecentNews from "@/components/call-prep/recent-news";
 import SuggestedOpportunities from "@/components/call-prep/suggested-opportunities";
+import { SalesCoachLauncher } from "@/components/coach/SalesCoachLauncher";
+import { SalesCoachPanel } from "@/components/coach/SalesCoachPanel";
 
 interface CallDetails {
   call: {
@@ -416,6 +418,14 @@ export default function CallPrep() {
             </div>
           </div>
 
+          {/* Sales Coach Integration */}
+          <div className="mb-6">
+            <SalesCoachLauncher 
+              eventId={resolvedCallId} 
+              variant="inline"
+            />
+          </div>
+
           {/* Partial Prep Mode */}
           {partialPrepData && (
             <>
@@ -589,6 +599,9 @@ export default function CallPrep() {
           )}
         </div>
       </div>
+
+      {/* Sales Coach Panel - conditionally rendered when panel is open */}
+      <SalesCoachPanel />
     </div>
   );
 }

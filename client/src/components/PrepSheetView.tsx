@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -135,17 +135,25 @@ interface PrepSheetProps {
   event: CallWithCompany | null;
 }
 
-// Simple debounce utility
-function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T {
+// Debounce utility with cancel support
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T & { cancel: () => void } {
   let timeoutId: ReturnType<typeof setTimeout>;
-  return ((...args: any[]) => {
+  
+  const debounced = ((...args: any[]) => {
     clearTimeout(timeoutId);
     timeoutId = setTimeout(() => func.apply(null, args), wait);
-  }) as T;
+  }) as T & { cancel: () => void };
+  
+  debounced.cancel = () => {
+    clearTimeout(timeoutId);
+  };
+  
+  return debounced;
 }
 
 export default function PrepSheetView({ event }: PrepSheetProps) {
   const [notesText, setNotesText] = useState("");
+  const currentEventRef = useRef<string | null>(null);
   const { toast } = useToast();
 
   const formatDate = (dateString: string) => {
@@ -193,29 +201,49 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
     },
   });
 
-  // Debounced notes save
+  // Single source of truth for current event - updated immediately on event change
+  useEffect(() => {
+    currentEventRef.current = event?.id || null;
+    // Immediately reset text and cancel pending saves when event changes
+    setNotesText("");
+    debouncedSaveNotes.cancel();
+    console.log('Event changed to:', event?.id, 'text reset, saves cancelled');
+  }, [event?.id]);
+
+  // Debounced notes save that uses current event ref to avoid closure issues
   const debouncedSaveNotes = useCallback(
-    debounce((text: string) => {
-      if (event?.id) {
-        saveNotesMutation.mutate({ eventId: event.id, text });
+    debounce((text: string, debugEventId: string) => {
+      const currentEventId = currentEventRef.current;
+      console.log(`Debounced save: requested for ${debugEventId}, current is ${currentEventId}, text: "${text}"`);
+      if (currentEventId && currentEventId === debugEventId) {
+        console.log('✓ Executing save for correct event:', currentEventId);
+        saveNotesMutation.mutate({ eventId: currentEventId, text });
+      } else {
+        console.log('✗ Cancelled save - event mismatch or no current event');
       }
     }, 1000),
-    [event?.id]
+    [saveNotesMutation]
   );
 
-  // Sync notes text with fetched data
+  // Sync notes text with fetched data when userNote loads for current event
   useEffect(() => {
-    if (userNote?.text && notesText !== userNote.text) {
-      setNotesText(userNote.text);
+    if (userNote !== undefined && event?.id) {
+      console.log('Loading notes for event:', event.id, 'text:', userNote?.text);
+      setNotesText(userNote?.text || "");
     }
-  }, [userNote?.text]);
+  }, [userNote, event?.id]);
 
-  // Auto-save notes on text change
+  // Auto-save notes on text change with enhanced safety checks
   useEffect(() => {
-    if (notesText !== (userNote?.text || "")) {
-      debouncedSaveNotes(notesText);
+    const currentEventId = event?.id;
+    if (userNote !== undefined && currentEventId) {
+      const isUserChange = notesText !== (userNote?.text || "");
+      if (isUserChange && notesText.trim() !== "") {
+        console.log('Scheduling auto-save for event:', currentEventId, 'text:', notesText);
+        debouncedSaveNotes(notesText, currentEventId);
+      }
     }
-  }, [notesText, userNote?.text, debouncedSaveNotes]);
+  }, [notesText, userNote, debouncedSaveNotes, event?.id]);
 
   // Generate AI prep mutation
   const generatePrepMutation = useMutation({
@@ -228,7 +256,12 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
         title: "AI prep generated",
         description: "Your call preparation sheet has been updated with AI insights.",
       });
-      if (event?.id && 'call' in data && data.call?.id) {
+      // Invalidate and refetch the call details to get updated prep data
+      if (event?.id) {
+        queryClient.invalidateQueries({ queryKey: ["/api/calls", event.id] });
+      }
+      // Also try to set data if response has the expected format
+      if (event?.id && data && 'call' in data && data.call?.id) {
         queryClient.setQueryData(["/api/calls", event.id], data);
       }
     },
@@ -474,9 +507,8 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
               </div>
               <div className="space-y-6">
                 <KeyStakeholders contacts={contacts} />
-                <RecentNews news={company?.recentNews} />
+                <RecentNews news={company?.recentNews || []} />
                 <SuggestedOpportunities
-                  risks={callPrep.dealRisks || []}
                   immediate={callPrep.immediateOpportunities || []}
                   strategic={callPrep.strategicExpansion || []}
                 />

@@ -24,7 +24,7 @@ export default function IntegrationsSettings() {
   const googleCalendarMutation = useMutation({
     mutationFn: async (action: "connect" | "disconnect") => {
       if (action === "connect") {
-        window.location.href = "/api/auth/google/calendar";
+        window.location.href = "/api/integrations/google/auth";
         return;
       } else {
         return apiRequest("DELETE", "/api/integrations/google");

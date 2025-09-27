@@ -308,7 +308,7 @@ export class CoachWebSocketService {
       if (ws) {
         this.sendMessage(ws, {
           type: 'error',
-          payload: { message: 'Transcription failed', error: error.message }
+          payload: { message: 'Transcription failed', error: (error as Error).message }
         });
       }
     }
@@ -344,7 +344,7 @@ export class CoachWebSocketService {
 
   private async generateCoachingSuggestions(sessionId: string, userId: string, transcript: string) {
     try {
-      console.log(`[Coach-WS] Generating MCP-powered suggestions for session ${sessionId} based on: "${transcript}"`);
+      console.log(`[Coach-WS] Generating methodology-aware suggestions for session ${sessionId} based on: "${transcript}"`);
       
       // Get the session data for context
       const session = await storage.getCoachSession(sessionId);
@@ -354,13 +354,52 @@ export class CoachWebSocketService {
       }
 
       // Get recent conversation history for better context
-      const recentTranscripts = await storage.getCoachTranscripts(sessionId, 10);
+      const recentTranscripts = await storage.getCoachTranscripts(sessionId);
       const conversationContext = recentTranscripts
         .map(t => `${t.speaker}: ${t.text}`)
         .join('\n');
 
-      // Initialize MCP server for tool access
-      const mcpServer = await createMCPServer();
+      // Get call and company data for methodology analysis
+      let callContext = null;
+      let methodologyWeights = null;
+      
+      try {
+        if (session.eventId) {
+          const call = await storage.getCall(session.eventId);
+          if (call && call.companyId) {
+            const company = await storage.getCompany(call.companyId);
+            const contacts = await storage.getContactsByCompany(call.companyId);
+            
+            if (company) {
+              // Import methodology analysis tools
+              const { analyzeCallContext } = await import('./callContextAnalyzer');
+              const { calculateMethodologyWeights } = await import('./salesMethodologies');
+              
+              // Analyze call context for methodology selection
+              const analysisInput = {
+                call: { ...call, company },
+                crmData: {
+                  contacts: contacts || [],
+                  account: company
+                }
+              };
+              
+              callContext = await analyzeCallContext(analysisInput);
+              
+              // Calculate methodology weights
+              methodologyWeights = calculateMethodologyWeights(callContext);
+              
+              console.log(`[Coach-WS] Call context analyzed: ${callContext.callType} | ${callContext.dealStage} | ${callContext.complexity} complexity`);
+            }
+          }
+        }
+      } catch (contextError) {
+        const error = contextError as Error;
+        console.log(`[Coach-WS] Could not analyze call context:`, error.message);
+      }
+
+      // Initialize MCP server for tool access  
+      const mcpServer = await createMCPServer({ userId, storage });
       
       let crmContext = '';
       let calendarContext = '';
@@ -370,37 +409,70 @@ export class CoachWebSocketService {
         // Get CRM context if available
         try {
           // Use MCP tools to get Salesforce data
-          const accountsResult = await mcpServer.call_tool({
-            name: 'salesforce_search_accounts',
-            arguments: { query: transcript.substring(0, 50) }
+          const accountsResult = await mcpServer.executeTool('salesforce_account_lookup', { 
+            query: transcript.substring(0, 50) 
           });
           
-          const opportunitiesResult = await mcpServer.call_tool({
-            name: 'salesforce_search_opportunities', 
-            arguments: { query: transcript.substring(0, 50) }
+          const opportunitiesResult = await mcpServer.executeTool('salesforce_opportunity_lookup', {
+            query: transcript.substring(0, 50) 
           });
 
           crmContext = `CRM Data:\nAccounts: ${JSON.stringify(accountsResult)}\nOpportunities: ${JSON.stringify(opportunitiesResult)}`;
         } catch (mcpError) {
-          console.log(`[Coach-WS] CRM context unavailable:`, mcpError.message);
+          const error = mcpError as Error;
+          console.log(`[Coach-WS] CRM context unavailable:`, error.message);
         }
 
         // Get calendar context
         try {
-          const calendarResult = await mcpServer.call_tool({
-            name: 'calendar_get_events',
-            arguments: { 
-              timeMin: new Date().toISOString(),
-              maxResults: 5
-            }
+          const calendarResult = await mcpServer.executeTool('calendar_meeting_context', {
+            eventId: session.eventId || sessionId
           });
           calendarContext = `Calendar Context: ${JSON.stringify(calendarResult)}`;
         } catch (mcpError) {
-          console.log(`[Coach-WS] Calendar context unavailable:`, mcpError.message);
+          const error = mcpError as Error;
+          console.log(`[Coach-WS] Calendar context unavailable:`, error.message);
         }
 
-        // Generate AI-powered coaching suggestions using OpenAI
-        const prompt = `You are an expert sales coach providing real-time guidance during a sales call.
+        // Generate methodology-aware coaching suggestions
+        let prompt = '';
+        
+        if (callContext && methodologyWeights) {
+          // Use methodology-aware prompt generation
+          const { generateLiveCoachingPrompt } = await import('./methodologyPrompts');
+          const promptContext = {
+            callContext,
+            methodologyWeights,
+            prospectData: {} as any // Not needed for live coaching
+          };
+          
+          // Generate methodology-specific coaching prompt
+          prompt = generateLiveCoachingPrompt(
+            promptContext,
+            conversationContext + '\n\nLatest: ' + transcript,
+            'Live call coaching needed based on latest conversation'
+          );
+          
+          // Enhance with JSON format requirement
+          prompt += `
+
+ADDITIONAL CONTEXT:
+CRM Data: ${crmContext}
+Calendar: ${calendarContext}
+
+Respond with a JSON array of 1-2 coaching suggestions in this format:
+[{
+  "title": "Suggestion title (max 50 chars)",
+  "body": "Specific action to take (max 150 chars)",
+  "type": "suggestion|objection|opportunity|warning",
+  "priority": "high|medium|low",
+  "methodology": "SPIN|MEDDIC|BANT|Challenger|Sandler|Mixed"
+}]`;
+          
+          console.log(`[Coach-WS] Using methodology-aware coaching with top methodology: ${Object.entries(methodologyWeights).sort(([,a], [,b]) => b - a)[0][0]}`);
+        } else {
+          // Fallback to generic prompt if methodology analysis unavailable
+          prompt = `You are an expert sales coach providing real-time guidance during a sales call.
 
 CONVERSATION CONTEXT:
 ${conversationContext}
@@ -425,8 +497,12 @@ Respond with a JSON array of suggestions in this format:
   "title": "Ask about timeline",
   "body": "They mentioned budget approval - ask: 'What's your timeline for making this decision?'",
   "type": "suggestion", 
-  "priority": "high"
+  "priority": "high",
+  "methodology": "Mixed"
 }]`;
+          
+          console.log(`[Coach-WS] Using generic coaching prompt (methodology analysis unavailable)`);
+        }
 
         const completion = await this.openai.chat.completions.create({
           model: 'gpt-4',

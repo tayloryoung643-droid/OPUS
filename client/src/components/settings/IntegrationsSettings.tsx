@@ -27,7 +27,7 @@ export default function IntegrationsSettings() {
         window.location.href = "/api/auth/google/calendar";
         return;
       } else {
-        return apiRequest("DELETE", "/api/integrations/google-calendar");
+        return apiRequest("DELETE", "/api/integrations/google");
       }
     },
     onSuccess: () => {

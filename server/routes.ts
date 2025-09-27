@@ -132,6 +132,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Combined integrations status endpoint
+  app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      // Get Google integration status
+      const googleIntegration = await storage.getGoogleIntegration(userId);
+      const googleStatus = {
+        connected: !!googleIntegration?.isActive,
+        scopes: googleIntegration?.scopes || [],
+        connectedAt: googleIntegration?.createdAt,
+        service: "google"
+      };
+
+      // Get Salesforce integration status
+      const salesforceIntegration = await storage.getSalesforceIntegration(userId);
+      const salesforceStatus = {
+        connected: !!salesforceIntegration?.isActive,
+        instanceUrl: salesforceIntegration?.instanceUrl,
+        connectedAt: salesforceIntegration?.createdAt,
+        service: "salesforce"
+      };
+
+      // Outlook is always not connected for now
+      const outlookStatus = {
+        connected: false,
+        service: "outlook",
+        message: "Outlook integration coming soon"
+      };
+
+      res.json({
+        googleCalendar: googleStatus,
+        salesforce: salesforceStatus,
+        outlook: outlookStatus
+      });
+    } catch (error) {
+      console.error("Error checking integrations status:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.delete("/api/integrations/outlook", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       // For now, just return success

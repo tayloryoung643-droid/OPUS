@@ -61,7 +61,7 @@ IMPORTANT: Use the tools to gather live data first, then synthesize that informa
 Company: ${input.companyName}
 Domain: ${input.companyDomain || 'N/A'}
 Industry: ${input.industry || 'N/A'}
-Key Contacts: ${input.contactEmails.join(', ')}
+Key Contacts: ${input.contactEmails?.join(', ') || 'N/A'}
 
 ${hasTools ? 'First, use the available tools to gather live data about this company and contacts. Then, ' : ''}provide detailed research in the following JSON format:
 {

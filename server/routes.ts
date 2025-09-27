@@ -684,32 +684,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         console.info(`[prepSheet] generation mode: partial, candidates: ${candidates.length}`);
         
-        return res.status(200).json({
-          mode: 'partial',
-          sheet: {
-            notesSectionFirst: true,
-            banner: candidates.length > 0 
-              ? 'Account suggestions found. Link an account to enrich with full prep.' 
-              : 'Limited context: no account linked yet. Link an account to enrich.',
-            eventSummary: { 
-              title: call.title, 
-              start: call.scheduledAt, 
-              end: null, 
-              location: null 
+        // Generate AI-enhanced prep even for partial mode using MCP tools
+        try {
+          console.log('[prepSheet] Generating MCP-enhanced prep for partial mode');
+          
+          const research = await generateProspectResearch({
+            companyName: calendarEvent?.summary || call.title || 'Meeting',
+            companyDomain: undefined,
+            industry: undefined,
+            contactName: calendarEvent?.attendees?.[0]?.email?.split('@')[0] || 'Contact',
+            contactEmail: calendarEvent?.attendees?.[0]?.email || undefined,
+            contactTitle: undefined,
+            mcpServer: mcpServer,
+            callTitle: calendarEvent?.summary || call.title,
+            callDescription: calendarEvent?.description
+          });
+
+          console.log('[prepSheet] MCP-enhanced partial mode generation completed');
+          
+          // Save the generated AI research to prep notes
+          const userId = req.user?.claims?.sub;
+          const calendarEventId = calendarEvent?.id;
+          if (userId && calendarEventId && research) {
+            try {
+              const prepText = `AI-Generated Call Preparation
+
+Executive Summary:
+${research.executiveSummary || 'N/A'}
+
+Conversation Strategy:
+${research.conversationStrategy || 'N/A'}
+
+Competitive Landscape:
+${research.competitiveLandscape || 'N/A'}
+
+Immediate Opportunities:
+${research.immediateOpportunities?.join('\n• ') || 'N/A'}
+
+Deal Risks:
+${research.dealRisks?.join('\n• ') || 'N/A'}
+
+Strategic Expansion:
+${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
+
+              await storage.upsertPrepNote(userId, calendarEventId, prepText);
+              console.log('[prepSheet] Saved AI-generated content to prep notes');
+            } catch (error) {
+              console.warn('[prepSheet] Failed to save prep notes:', error);
+            }
+          }
+          
+          return res.status(200).json({
+            mode: 'partial',
+            sheet: {
+              notesSectionFirst: true,
+              banner: candidates.length > 0 
+                ? 'Account suggestions found. Link an account to enrich with full prep.' 
+                : 'AI-generated prep sheet ready. Link an account for AI insights.',
+              eventSummary: { 
+                title: call.title, 
+                start: call.scheduledAt, 
+                end: null, 
+                location: null 
+              },
+              attendees: calendarEvent?.attendees?.map(a => ({
+                email: a.email,
+                name: a.displayName,
+                status: a.responseStatus
+              })) || [],
+              organizer: calendarEvent?.organizer,
+              agendaFromInvite: parseInviteToBullets(calendarEvent?.description || ''),
+              actionItems: research?.immediateOpportunities || [],
+              risks: research?.dealRisks || [],
+              // Add AI-generated sections for partial mode
+              partialPrep: {
+                executiveSummary: research?.executiveSummary || '',
+                conversationStrategy: research?.conversationStrategy || '',
+                competitiveLandscape: research?.competitiveLandscape || ''
+              }
             },
-            attendees: calendarEvent?.attendees?.map(a => ({
-              email: a.email,
-              name: a.displayName,
-              status: a.responseStatus
-            })) || [],
-            organizer: calendarEvent?.organizer,
-            agendaFromInvite: parseInviteToBullets(calendarEvent?.description || ''),
-            actionItems: [],
-            risks: []
-          },
-          needsSelection: candidates.length > 0,
-          candidates: candidates
-        });
+            needsSelection: candidates.length > 0,
+            candidates: candidates
+          });
+        } catch (error) {
+          console.warn('[prepSheet] MCP-enhanced partial generation failed, falling back to basic mode:', error);
+          
+          return res.status(200).json({
+            mode: 'partial',
+            sheet: {
+              notesSectionFirst: true,
+              banner: candidates.length > 0 
+                ? 'Account suggestions found. Link an account to enrich with full prep.' 
+                : 'Limited context: no account linked yet. Link an account to enrich.',
+              eventSummary: { 
+                title: call.title, 
+                start: call.scheduledAt, 
+                end: null, 
+                location: null 
+              },
+              attendees: calendarEvent?.attendees?.map(a => ({
+                email: a.email,
+                name: a.displayName,
+                status: a.responseStatus
+              })) || [],
+              organizer: calendarEvent?.organizer,
+              agendaFromInvite: parseInviteToBullets(calendarEvent?.description || ''),
+              actionItems: [],
+              risks: []
+            },
+            needsSelection: candidates.length > 0,
+            candidates: candidates
+          });
+        }
       }
 
       // Generate AI-powered research with MCP tools for dynamic data access

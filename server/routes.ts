@@ -7,6 +7,7 @@ import { createMCPServer } from "./mcp/mcp-server.js";
 import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema, insertCoachSessionSchema, insertCoachTranscriptSchema, insertCoachSuggestionSchema } from "@shared/schema";
 import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
+import { CoachWebSocketService } from "./services/coachWebSocket";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -1215,6 +1216,22 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
+  // WebSocket status endpoint
+  app.get("/api/coach/ws/status", isAuthenticated, async (req: any, res) => {
+    try {
+      // This will be available after the server is created
+      res.json({
+        websocketAvailable: true,
+        wsPath: '/ws/coach',
+        protocol: req.headers['x-forwarded-proto'] === 'https' ? 'wss' : 'ws',
+        host: req.get('host')
+      });
+    } catch (error) {
+      console.error("Error getting WebSocket status:", error);
+      res.status(500).json({ message: "Failed to get WebSocket status" });
+    }
+  });
+
   // Create sample data endpoint for demo
   app.post("/api/demo/setup", async (req, res) => {
     try {
@@ -1319,5 +1336,10 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   const httpServer = createServer(app);
+  
+  // Initialize Coach WebSocket service
+  const coachWS = new CoachWebSocketService(httpServer);
+  console.log('[Coach] WebSocket service initialized');
+  
   return httpServer;
 }

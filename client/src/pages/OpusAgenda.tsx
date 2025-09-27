@@ -1,12 +1,12 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import Landing from "@/pages/landing";
-import OpusTopNav from "@/components/Opus/TopNav";
-import OpusHeroGreeting from "@/components/Opus/HeroGreeting";
-import OpusAgendaList from "@/components/Opus/AgendaList";
-import OpusPrepSheet from "@/components/Opus/PrepSheet";
-import OpusInsights from "@/components/Opus/Insights";
-import OpusPartnerCircle from "@/components/Opus/PartnerCircle";
+import OpusTopNav from "../components/Opus/TopNav";
+import OpusHeroGreeting from "../components/Opus/HeroGreeting";
+import OpusAgendaList from "../components/Opus/AgendaList";
+import OpusPrepSheet from "../components/Opus/PrepSheet";
+import OpusInsights from "../components/Opus/Insights";
+import OpusPartnerCircle from "../components/Opus/PartnerCircle";
 
 export type CalendarEvent = {
   id: string;

@@ -39,7 +39,7 @@ export default function OpusPartnerCircle() {
               <SalesCoachModal 
                 isOpen={true} 
                 onClose={() => setOpen(false)}
-                eventId={null}
+                eventId={undefined}
               />
             </div>
           </div>

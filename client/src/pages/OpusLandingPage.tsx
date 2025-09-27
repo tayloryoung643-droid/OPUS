@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import SettingsModal from "@/components/SettingsModal";
+import OpusCoachPanel from "@/components/OpusCoachPanel";
 
 export default function OpusLandingPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -10,12 +11,6 @@ export default function OpusLandingPage() {
     { time: "3:00 PM", title: "Orthodontist", subtitle: "Orthodontist" },
   ];
 
-  const proactive = [
-    "I reviewed your pipeline — we'll need to do some prospecting today to stay on pace for target",
-    "Drafted 4 follow-up emails — please review and send",
-    "Produced 5 call prep sheets",
-    "Heads up: 1-1 with Director today — I drafted a prep sheet and your accomplishments for the quarter",
-  ];
 
   return (
     <div className="min-h-screen bg-black text-white font-sans">
@@ -113,38 +108,9 @@ export default function OpusLandingPage() {
             </div>
           </section>
 
-          {/* Right: Big Orb + Proactive Chat */}
+          {/* Right: Opus Coach Panel */}
           <aside>
-            <div className="mx-auto max-w-lg">
-              {/* Slightly smaller Orb */}
-              <div className="relative grid place-items-center">
-                <div className="h-56 w-56 md:h-72 md:w-72 rounded-full border-2 border-purple-500/70 animate-pulse shadow-[0_0_120px_-20px_rgba(168,85,247,0.7)]" />
-              </div>
-
-              {/* Chat box under the orb */}
-              <div className="mt-6 rounded-2xl border border-zinc-900/70 bg-black p-5">
-                <div className="text-sm text-zinc-400 mb-2">Opus → Taylor</div>
-                <div className="space-y-3">
-                  {proactive.map((line, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 rounded-lg border border-zinc-900/60 bg-zinc-950/60 px-3 py-2 text-sm italic text-white"
-                    >
-                      <span className="h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
-                      <span>{line}</span>
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-2 rounded-lg border border-zinc-900/60 bg-zinc-950/60 px-3 py-2 text-sm italic text-white">
-                    <span className="h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
-                    <span>Just tap me if you need help on a call — I'll nudge you in the right direction.</span>
-                  </div>
-                  <div className="flex items-center gap-2 rounded-lg border border-zinc-900/60 bg-zinc-950/60 px-3 py-2 text-sm italic text-white">
-                    <span className="h-2 w-2 rounded-full bg-purple-500 animate-pulse" />
-                    <span>We got this!</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <OpusCoachPanel />
           </aside>
         </div>
 

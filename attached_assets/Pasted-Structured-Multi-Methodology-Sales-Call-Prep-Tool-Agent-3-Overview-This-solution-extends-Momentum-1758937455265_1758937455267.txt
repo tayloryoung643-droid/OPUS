@@ -1,0 +1,628 @@
+Structured Multi-Methodology Sales Call Prep Tool (Agent 3)
+Overview
+
+This solution extends Momentum AI’s sales call preparation tool with a Structured MCP (Multi-Methodology Call Preparation) approach. It combines leading sales frameworks – MEDDIC, BANT, SPIN, Challenger Sale, Sandler, and Solution Selling – to dynamically generate both pre-call prep sheets and live coaching feedback. By blending these methodologies, the AI can tailor its guidance to each scenario (e.g. emphasize MEDDIC for complex enterprise deals, use SPIN questions for discovery calls)
+secondnature.ai
+secondnature.ai
+. This ensures reps cover basic qualifications like BANT (Budget, Authority, Need, Timeline) for quick lead vetting
+secondnature.ai
+, engage in consultative discovery with SPIN questions
+secondnature.ai
+, thoroughly qualify enterprise opportunities with MEDDIC’s checkpoints
+secondnature.ai
+, and leverage Challenger insights or Sandler tactics when appropriate. The tool is built on the existing Momentum AI architecture – a React 19.1.1 + Tailwind frontend and Node.js/Express backend – and integrates Google Calendar, Salesforce CRM, and Google’s Generative AI (Gemini) for LLM-driven content.
+
+Key Features:
+
+Pre-Call Prep Sheets: Auto-generated, context-rich summaries before meetings. The AI pulls data from integrated sources (CRM records, calendar events, uploaded notes, etc.) to produce a structured prep document. Sections are labeled clearly (e.g. “SPIN Questions”, “MEDDIC Champion Insight”, “Challenger Reframe”) providing actionable guidance for the call. The sheet can include an agenda, prospect background, pain points, qualification criteria, suggested questions, potential objections with responses, and next steps – all synthesized from multiple frameworks. Reps can edit or add notes to these sections, making the output customizable.
+
+Live Sales Coaching (Streaming Chat): During the call, a chat interface offers real-time coaching. The AI (Agent 3) listens for context (either via live transcript integration or rep inputs) and provides on-the-fly suggestions: answers to unexpected questions, advice on handling objections, or prompts on which question to ask next. This happens through a streaming response UI, so the rep sees the AI’s guidance in real-time. The AI’s dialogue adapts to the call’s flow – for instance, if it “hears” a pricing objection, it might surface a Sandler technique (e.g. reversing with a question) or emphasize a Challenger-style insight to reframe the conversation. Tone analysis and sentiment detection (powered by the LLM or additional NLP models) can trigger proactive tips – for example, detecting customer hesitation and advising the rep to adjust tone or provide a specific reassurance.
+
+Methodology-Aware Logic: The system automatically detects which sales methodology (or mix) to prioritize based on the opportunity context and call type. For example, if the upcoming meeting is a first discovery call for a new lead, the AI will lean into SPIN-type exploratory questions. If the deal is a high-value enterprise opportunity in negotiation, the AI will prioritize MEDDIC criteria (e.g. confirming the Economic Buyer, Decision Process) and BANT factors (Budget/Timeline)
+secondnature.ai
+. This is implemented via prompt chaining and conditional logic: the backend examines CRM data (like deal size, stage, customer segment) and meeting info to decide which framework’s guidance to emphasize. All frameworks are available, but the prompt dynamically adjusts weighting – ensuring the output is neither too generic nor overwhelming. (For instance, BANT is great for quick qualification but insufficient alone for complex modern sales
+secondnature.ai
+, so the AI might use BANT to check basics then dive deeper with MEDDIC or SPIN as needed.)
+
+Integration & Extensibility: The tool connects to Google Calendar (to pull event details and attendees), Salesforce (to pull opportunity/account data), and can be extended via a plugin system to other data sources (Google Drive for relevant docs, Notion or Guru for battle cards, etc.). During prep sheet generation, the backend aggregates these inputs and enriches the prompt so the AI has all relevant context. The architecture supports adding more methodology frameworks or custom sections via configuration, ensuring the system can evolve with new sales strategies.
+
+Below, we provide the prompt design and code implementation for this Agent 3 upgrade. The code is presented in a Replit-friendly format, with comments for clarity and customization.
+
+Prompt Design (Multi-Methodology Synthesis)
+
+The prompt given to the LLM (Google Gemini) is carefully structured to synthesize multiple sales frameworks into actionable guidance. It instructs the AI to produce a comprehensive prep sheet and be ready for live coaching, tailored to the specific call. Key elements of the prompt include:
+
+Context Insertion: The prompt begins by inserting contextual data: meeting details (title, date/time), participants (names, titles), the company and opportunity info from CRM (industry, deal size, stage, relevant notes), and the call type/purpose. This grounds the AI in the scenario it’s preparing for. For example, “Meeting: ACME Corp – Solution Demo, Oct 5 @ 2 PM. Attendees: Jane Doe (CTO), John Smith (AE)… Opportunity: $250k deal in negotiation (Proposal sent).” Any known pain points or prior correspondence can be included as bullet points.
+
+Framework Instructions: Next, the prompt explicitly lists the sales methodologies to use and how to apply them. For instance:
+
+“Use MEDDIC to verify Metrics, Economic Buyer, Decision Criteria/Process, identified Pain, Champion, and Competition status.”
+
+“Apply BANT to summarize Budget, Authority, Need, and Timeline qualification.”
+
+“Include SPIN questions for discovery (Situation, Problem, Implication, Need-Payoff) if this is an early-stage conversation.”
+
+“Incorporate a Challenger Sale insight (a reframing or surprising insight that challenges the prospect’s status quo) to bring additional value.”
+
+“Use Sandler methodology elements like an upfront contract (agenda agreement) and pain questions, where appropriate.”
+
+“Apply Solution Selling by aligning our product’s capabilities to the specific problems the prospect needs to solve.”
+
+These instructions ensure the AI considers each framework. The prompt may note which framework is primary for this call (based on context) so the AI can prioritize its style. For example, “Focus primarily on MEDDIC (complex enterprise deal) but also prepare a few SPIN questions for uncovering needs”.
+
+Structured Output Format: The prompt tells the AI to output the prep sheet in a structured, labeled format. We use Markdown headings for clarity, which the frontend will render or style. A sample structure (communicated in the prompt) might be:
+
+**Opportunity Overview:**  
+*(A few sentences summarizing who the client is, their situation, and why they’re interested.)*  
+
+**Customer Profile:**  
+- **Industry & Background:** *(Key details about the company or buyer’s context.)*  
+- **Current Challenges:** *(Noted pain points or challenges gleaned from CRM notes or prior calls.)*  
+
+**SPIN Questions:**  
+1. Situation: …  
+2. Problem: …  
+3. Implication: …  
+4. Need-Payoff: …  
+
+**MEDDIC Checklist:**  
+- **Metrics:** …  
+- **Economic Buyer:** …  
+- **Decision Criteria:** …  
+- **Decision Process / Paper Process:** …  
+- **Identified Pain:** …  
+- **Champion:** …  
+- **Competition:** …  
+
+**BANT Summary:**  
+- **Budget:** …  
+- **Authority:** …  
+- **Need:** …  
+- **Timeline:** …  
+
+**Challenger Insight:**  
+*(An insight or provocative perspective that reframes the prospect’s thinking, e.g. a industry trend or a pitfall of their current approach that our solution can solve.)*  
+
+**Potential Objections & Responses:**  
+- *Objection:* “…” **Coach Tip:** … *(AI provides a response or tactic, possibly using Sandler techniques like reversing or acknowledging and pivoting)*  
+- *Objection:* “…” **Coach Tip:** …  
+
+**Call Agenda:**  
+1. Introduction & Up-Front Contract – _“We have 30 minutes; my goal is to… What would you like to make sure we cover?”_  
+2. Discovery Discussion – *(SPIN questions from above)*  
+3. Value Proposition – *(Link prospect needs to our solution)*  
+4. Objection Handling – *(If any come up, use prepared responses)*  
+5. Next Steps & Close – _“Does it make sense to… [schedule next call, etc]?”_  
+
+**Next Steps:**  
+- *(Specific follow-up tasks or timeline to keep the deal moving, based on Solution Selling alignment.)*  
+
+
+The prompt will not literally include the filled answers (that’s what the AI generates), but it informs the AI of this format. By labeling sections like above, the output is easy to scan and edit. The rep can quickly find, for example, suggested SPIN questions or the identified Economic Buyer from MEDDIC in the sheet.
+
+Tone and Customizability: We instruct the AI to keep the tone professional, concise, and helpful, as this content is meant for the sales rep’s use. It should avoid overly generic advice and base suggestions on the actual data provided (e.g., if CRM notes a specific pain point, the AI should reference it in questions or insights). We also mention that the rep may edit the output, so the AI can present information in a way that’s easy to adjust (bullet lists, short paragraphs). The prompt may end with a line like: “Present the information in a way the sales rep can easily customize or expand during prep.”
+
+Live Coaching Readiness: While the real-time coaching is handled through a chat interface, the initial prompt can set the stage by telling the AI to be prepared for follow-up questions. For example: “You will also answer follow-up questions and provide live suggestions during the call based on this prep sheet, so think through possible Q&A.” This helps the model create a more thorough prep, anticipating areas where the rep might need on-call support (such as tricky product questions or negotiation tactics). It essentially primes the AI for the second phase (live dialogue) using the same context.
+
+Sample Prompt Template
+
+Below is a simplified prompt template illustrating how these elements come together. In the actual implementation, the backend will fill in placeholders (denoted by {...}) with real data before sending it to the LLM:
+
+You are an AI Sales Assistant helping a sales rep prepare for an upcoming call.
+
+**Meeting Details:**
+- Title: {Meeting_Title}
+- Date/Time: {Meeting_DateTime}
+- Attendees: {Attendee_Names_and_Roles} 
+- Company: {Account_Name} ({Industry})
+- Opportunity: "{Opportunity_Name}" – Stage: {Sales_Stage}, Value: {Deal_Value}
+- Call Type/Purpose: {Call_Type} (e.g. Discovery, Demo, Negotiation)
+
+**Context:**
+{Bullet_points_of_relevant_context}
+- Recent interactions/notes: {CRM_Notes_or_User_Uploaded_Notes}
+- Known pain points: {Known_Pain_Points}
+- Prior objections or concerns: {Known_Objections}
+- Existing solution/environment: {Current_Solution_Details}
+*(The above data is drawn from CRM, calendar invites, emails, etc.)*
+
+**Your Task:** 
+Generate a comprehensive **Call Preparation Sheet** for the sales rep. Integrate insights from multiple sales methodologies to cover all angles:
+- Apply **MEDDIC** to confirm key qualification info (Metrics, Economic Buyer, Decision Criteria & Process, Paper Process, Identified Pain, Champion, Competition).
+- Use **BANT** to summarize Budget, Authority, Need, Timeline status.
+- Use **SPIN Selling** to formulate discovery questions (Situation, Problem, Implication, Need-Payoff) tailored to this prospect.
+- Include a **Challenger Sale** insight: offer a perspective that challenges the prospect’s thinking or highlights an unrecognized problem/opportunity.
+- Incorporate **Sandler** tactics where useful (e.g. an upfront contract in the agenda, or reframing prospect questions by asking further about their needs).
+- Leverage **Solution Selling** by aligning the prospect’s pains to our solution’s capabilities and value.
+
+**Format:**
+Structure the prep sheet clearly with headings and bullet points. Include the following sections (at minimum):
+1. **Opportunity Overview** – A brief summary of the prospect and why they’re interested.
+2. **Customer Profile** – Key background info and current challenges.
+3. **SPIN Questions** – Questions to ask (categorized by Situation/Problem/Implication/Need).
+4. **MEDDIC Checklist** – List out what we know or need to find out for each MEDDIC element.
+5. **BANT Summary** – Quick status on budget, authority (decision-makers), need, timing.
+6. **Challenger Insight** – A compelling insight or reframing to share that adds value.
+7. **Objections & Responses** – Likely objections and how to address them.
+8. **Call Agenda & Next Steps** – Proposed call flow and post-call actions.
+
+Make sure each section is labeled and contains concise, actionable content (e.g., bullet points or numbered lists for easy scanning). **Focus on the {Primary_Methodology} aspects** most relevant to this call, but do not omit other critical info. The output should read like a tailored “cheat sheet” for the rep to confidently conduct the call.
+
+Remember to be **specific**: reference the prospect’s actual context (industry, pain points) in your suggestions. Avoid generic advice. If some information is unknown, note it as a question for the rep to ask.
+
+Begin now and output the prep sheet in Markdown format.
+
+
+In this template:
+
+{Primary_Methodology} will be dynamically set (e.g. “MEDDIC”, “SPIN”, etc.) based on context, signaling the AI which framework to prioritize in tone or depth.
+
+We explicitly enumerate the sections and frameworks to leave no ambiguity for the LLM about the expected output structure.
+
+With this prompt design, the AI will produce a well-organized prep document that the frontend can render for the rep. Next, we’ll look at the code changes required to implement this and enable the live chat coaching.
+
+Backend Implementation (Node.js/Express)
+
+On the backend, we will update/create API endpoints to generate the prep sheet and handle live chat. The backend’s responsibilities include: fetching and aggregating data from integrations, deciding on methodology emphasis, constructing the prompt, and calling the LLM API (Google Gemini) to get responses (with streaming for the chat endpoint). We assume the Momentum AI backend already has OAuth tokens for Google and Salesforce stored (as indicated in the architecture docs) and service modules for calendar and CRM integration.
+
+Below is an example implementation for two key endpoints: /api/prep-sheet/generate for generating the prep sheet, and /api/chat/message for the live coaching chat. This code can be added to your Node/Express server (e.g., in routes/prepSheet.js and routes/chat.js, then mounted in the main server). Comments are included for clarity and customization:
+
+// backend/routes/prepSheet.js - Express route to generate AI-driven prep sheets
+
+const express = require('express');
+const router = express.Router();
+// Assume we have service modules to get calendar event and CRM (Salesforce) data:
+const calendarService = require('../services/calendarService');
+const salesforceService = require('../services/salesforceService');
+// Google Generative AI (Gemini) client (e.g., from @google/genai or similar SDK):
+const gemini = require('../services/geminiService');
+
+router.post('/api/prep-sheet/generate', async (req, res) => {
+  try {
+    const { eventId } = req.body;
+    if (!eventId) {
+      return res.status(400).json({ error: 'Missing eventId' });
+    }
+
+    // 1. Fetch meeting details from Google Calendar
+    const event = await calendarService.getEvent(eventId); 
+    // The event object might include title, datetime, attendees list, description, etc.
+    if (!event) throw new Error('Calendar event not found');
+
+    // 2. Fetch related CRM data from Salesforce (if any). 
+    // For example, the calendar event description or metadata might contain an opportunity or account ID.
+    let oppData = null;
+    if (event.salesforceOpportunityId) {
+      oppData = await salesforceService.getOpportunity(event.salesforceOpportunityId);
+    } else if (event.attendees) {
+      // Alternatively, match by attendee email to a Contact/Lead in CRM to retrieve account info
+      oppData = await salesforceService.findOpportunityByAttendees(event.attendees);
+    }
+
+    // 3. Determine call type and primary methodology based on context.
+    const callType = determineCallType(event, oppData);
+    const primaryMethod = determinePrimaryMethodology(oppData, callType);
+
+    // 4. Build the LLM prompt with multi-methodology instructions (as discussed above).
+    const prompt = buildPrepPrompt(event, oppData, callType, primaryMethod);
+    console.log("Generated Prompt:\n", prompt);  // Debug: you can log the prompt for inspection
+
+    // 5. Call the Google Gemini API to generate the prep sheet text.
+    // We'll assume gemini.generateText returns the AI's completion as a string.
+    const aiResponse = await gemini.generateText(prompt);
+    // (If the Gemini SDK requires specifying a model or parameters like temperature, those would be set in geminiService.)
+
+    // 6. Return the AI-generated prep sheet.
+    return res.json({ prepSheet: aiResponse });
+  } catch (err) {
+    console.error("Prep sheet generation failed:", err);
+    res.status(500).json({ error: 'Failed to generate prep sheet' });
+  }
+});
+
+// Helper: Determine call type from calendar or CRM info.
+function determineCallType(event, oppData) {
+  // Example logic: check event title or opportunity stage to infer call purpose
+  const title = event.title?.toLowerCase() || "";
+  if (title.includes("discovery") || title.includes("intro")) return "Discovery";
+  if (title.includes("demo")) return "Demo";
+  if (title.includes("negotiation") || oppData?.stage === "Negotiation") return "Negotiation";
+  if (title.includes("qbr") || title.includes("business review")) return "QBR";
+  // Default fallback:
+  return "General";
+}
+
+// Helper: Decide primary sales methodology to emphasize
+function determinePrimaryMethodology(oppData, callType) {
+  // If it's an early-stage call, SPIN is often primary to explore needs
+  if (callType === "Discovery") return "SPIN";
+  // If it's a pricing/negotiation discussion, BANT (to ensure all basics are met) could be primary
+  if (callType === "Negotiation") return "MEDDIC";  // For negotiation in enterprise, MEDDIC ensures all criteria are met
+  if (callType === "Demo") {
+    // Demos might benefit from Challenger (insights) to differentiate
+    return "Challenger";
+  }
+  // Use opportunity data: high deal value or enterprise type -> MEDDIC, low deal value -> BANT
+  if (oppData) {
+    const dealSize = oppData.amount || oppData.value || 0;
+    const isEnterprise = oppData.companySize ? oppData.companySize > 1000 : false;
+    if (isEnterprise || dealSize > 100000) return "MEDDIC";
+    if (dealSize < 10000) return "BANT";
+  }
+  // Default to SPIN for general cases
+  return "SPIN";
+}
+
+// Helper: Construct the prompt string for the LLM
+function buildPrepPrompt(event, oppData, callType, primaryMethod) {
+  const title       = event.title || "Sales Call";
+  const dateTime    = event.dateTime || event.startTime || "";
+  const attendees   = event.attendees || [];  // array of { name, email, role }
+  const attendeeList= attendees.map(a => `${a.name} (${a.role || a.email})`).join(", ");
+  const accountName = oppData?.accountName || oppData?.company || "";
+  const industry    = oppData?.industry || "";
+  const oppName     = oppData?.name || "";
+  const stage       = oppData?.stage || "";
+  const value       = oppData?.amount ? `$${oppData.amount}` : (oppData?.value || "");
+  const painPoints  = oppData?.painPoints || oppData?.notes || "";
+  const decisionMaker = oppData?.economicBuyer || oppData?.decisionMaker || "";
+  const champion    = oppData?.champion || oppData?.influencer || "";
+  const knownObjections = oppData?.objections || "";
+  const currentSolution = oppData?.currentSolution || oppData?.incumbent || "";
+
+  // Start assembling the prompt with meeting and context details
+  let prompt = `You are an AI Sales Assistant helping a sales rep prepare for an upcoming call.\n\n`;
+  prompt += `**Meeting Details:**\n`;
+  prompt += `- Title: ${title}\n`;
+  if (dateTime) prompt += `- Date/Time: ${dateTime}\n`;
+  if (attendeeList) prompt += `- Attendees: ${attendeeList}\n`;
+  if (accountName) {
+    prompt += `- Company: ${accountName}`;
+    if (industry) prompt += ` (${industry})`;
+    prompt += `\n`;
+  }
+  if (oppName) {
+    prompt += `- Opportunity: "${oppName}"`;
+    if (stage || value) prompt += ` – `;
+    if (stage) prompt += `Stage: ${stage}`;
+    if (value) prompt += `${stage ? ', ' : ''}Value: ${value}`;
+    prompt += `\n`;
+  }
+  if (callType) prompt += `- Call Type/Purpose: ${callType}\n`;
+
+  // Add any key context points as bullet points
+  prompt += `\n**Context:**\n`;
+  if (painPoints) prompt += `- Known pain points: ${painPoints}\n`;
+  if (decisionMaker) prompt += `- Identified economic buyer / decision-maker: ${decisionMaker}\n`;
+  if (champion) prompt += `- Internal champion/ally: ${champion}\n`;
+  if (currentSolution) prompt += `- Current solution in place: ${currentSolution}\n`;
+  if (knownObjections) prompt += `- Previous objections/concerns: ${knownObjections}\n`;
+  // You can include more context: e.g., "- Recent email summary: ...", "- Prior call notes: ..."
+
+  // Now instruct the AI on the task and methodologies
+  prompt += `\nYou have the above info. **Task:** Generate a comprehensive Call Prep Sheet integrating multiple sales methodologies.\n`;
+  prompt += `- Use MEDDIC to verify Metrics, Economic Buyer, Decision Criteria/Process, Paper Process, Pain, Champion, Competition.\n`;
+  prompt += `- Use BANT to summarize Budget, Authority, Need, Timeline.\n`;
+  prompt += `- Use SPIN to propose discovery questions (Situation, Problem, Implication, Need-Payoff) relevant to this call.\n`;
+  prompt += `- Include a Challenger Sale style insight to reframe the prospect's thinking with a unique perspective.\n`;
+  prompt += `- Apply Sandler techniques (like an upfront contract and pain-funnel questions) where appropriate.\n`;
+  prompt += `- Leverage Solution Selling by mapping our solution to the prospect's specific needs.\n\n`;
+
+  // Instruct on output format and sections
+  prompt += `**Format & Sections:** Provide the prep sheet in Markdown with clear headings for each section. Include:\n`;
+  prompt += `1. Opportunity Overview\n`;
+  prompt += `2. Customer Profile (background and current challenges)\n`;
+  prompt += `3. SPIN Questions\n`;
+  prompt += `4. MEDDIC Checklist\n`;
+  prompt += `5. BANT Summary\n`;
+  prompt += `6. Challenger Insight\n`;
+  prompt += `7. Objections & Responses\n`;
+  prompt += `8. Call Agenda & Next Steps\n\n`;
+  prompt += `Ensure each section is labeled and populated with relevant content. Focus primarily on the **${primaryMethod}** methodology (as this is most relevant here), but do cover key points from all frameworks so nothing is missed.\n`;
+  prompt += `Be specific to the context (use the info above) and keep the tone professional and concise. If some information is unknown, indicate it as a question for the rep to ask.\n`;
+  prompt += `End of instructions. Now output the prep sheet:\n`;
+
+  return prompt;
+}
+
+module.exports = router;
+
+
+In the above code:
+
+We fetch event details and possibly related CRM data.
+
+determineCallType and determinePrimaryMethodology are simple utility functions to decide how to steer the AI. These can be customized further (for example, you might base it on opportunity sales cycle length or product type).
+
+buildPrepPrompt assembles the final prompt string with all needed info and instructions. Note how it injects variables like painPoints or champion only if available, so the prompt remains relevant. You can customize the sections or wording as needed; just ensure the prompt stays within model input limits if the context is large.
+
+Finally, we call gemini.generateText(prompt). In the Momentum AI architecture, the Google Generative AI integration (Gemini) is used for text generation. The geminiService would wrap the PaLM API (Google’s LLM). Make sure to handle API keys and parameters (e.g., model name, temperature) inside geminiService. If the API supports streaming responses, you might integrate that in the chat endpoint (below).
+
+Now, for the live coaching chat, we create an endpoint that accepts user messages (or transcribed call segments) and streams AI responses. This uses a chat completion style prompt: the conversation history plus a system instruction to act as a real-time coach. The AI then responds token-by-token (so we can stream). We’ll use Server-Sent Events (SSE) in this example for streaming to the frontend, which Replit’s Node can handle.
+
+// backend/routes/chat.js - Express route for live sales coaching chat (streaming)
+
+const express = require('express');
+const router = express.Router();
+const gemini = require('../services/geminiService');  // same service, but we'll use a streaming method
+
+// We'll use SSE to stream responses. Ensure response headers for SSE are set.
+router.post('/api/chat/message', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.flushHeaders();  // flush headers to establish SSE
+
+  try {
+    const { userMessage, conversationContext } = req.body;
+    // `conversationContext` could include the prep sheet content or any relevant context (e.g., prospect name, pain points)
+    // In a real app, conversationContext might be a short summary of the call so far or the prepared sheet sections.
+
+    // Build a dynamic prompt for live coaching:
+    let livePrompt = "You are an AI Sales Coach assisting a rep during a live call.\n";
+    livePrompt += "The rep may ask questions or send transcriptions of what the prospect said. Provide helpful, brief suggestions in real-time.\n";
+    livePrompt += "Context:\n";
+    if (conversationContext) {
+      livePrompt += conversationContext + "\n";  // include any context (like key info from prep sheet)
+    }
+    livePrompt += `\nRep: ${userMessage}\nAI Coach:`;  // set up a Q&A turn format
+
+    // Use the Gemini service to stream completion (assuming geminiService offers a stream interface).
+    const stream = await gemini.streamText(livePrompt);  // This returns a readable stream of tokens
+    stream.on('data', (data) => {
+      const token = data.toString();
+      // Send each token as an SSE message
+      res.write(`data: ${token}\n\n`);
+    });
+    stream.on('end', () => {
+      // Mark stream completion to client
+      res.write(`data: [STREAM_END]\n\n`);
+      res.end();
+    });
+  } catch (err) {
+    console.error("Live coaching stream error:", err);
+    // Inform client of error
+    res.write(`data: [ERROR] ${err.message}\n\n`);
+    res.end();
+  }
+});
+
+module.exports = router;
+
+
+In this chat route:
+
+We set the response headers for SSE. The client will receive events that we send via res.write.
+
+We build a livePrompt that includes a brief system role description and the latest user message (which could be the rep asking, e.g., “They just asked about a discount, what do I say?” or even a snippet of the prospect’s last statement). We also append any persistent context (like a summary of the prep sheet or important deal info) so the AI has grounding.
+
+We call gemini.streamText(livePrompt), which should return a stream of the AI’s answer. (Implementation will depend on Google’s API – ensure you use their streaming endpoint or SDK. If it doesn’t support streaming, you could fall back to returning the full answer at once, but streaming improves real-time feel.)
+
+As tokens arrive, we res.write them as SSE data: messages. On completion, we send a special [STREAM_END] marker. The frontend will concatenate tokens into the final message.
+
+Note: Proper error handling and edge cases (like network drops or the rep starting a new chat) should be handled in production. Also, you might incorporate conversation history for better continuity (e.g., send the last few Q&A turns, not just the single userMessage). For simplicity, we show a basic implementation.
+
+With the backend in place, the next step is updating the frontend to use these endpoints, render the structured prep sheet, and facilitate the live chat UI.
+
+Frontend Implementation (React & TypeScript)
+
+On the frontend, we will update or create components to display the methodology-specific prep sheet and handle the streaming chat. The Momentum AI frontend already includes components like PrepSheetView.tsx and ChatModal.tsx. We’ll extend those:
+
+Prep Sheet View (Multi-Section Output)
+
+The PrepSheetView component will call our new API to generate the prep sheet and then display it. We’ll assume the API returns a Markdown string (as structured by the prompt). We can render that using a Markdown renderer or by simply setting innerHTML (if we trust the content). A safer approach is to use a library like react-markdown to convert the Markdown to React elements. Below is a simplified version of PrepSheetView that fetches the prep sheet and displays it with headings and lists styled via Tailwind:
+
+// frontend/components/PrepSheetView.tsx
+import React, { useEffect, useState } from 'react';
+import { apiService } from '../services/apiService'; // assumed to have methods for API calls
+// We use react-markdown to safely render Markdown as React elements
+import ReactMarkdown from 'react-markdown';
+
+interface PrepSheetProps {
+  eventId: string;         // ID of the calendar event to prepare for
+  onEdit?: () => void;     // optional prop if we allow editing
+}
+
+const PrepSheetView: React.FC<PrepSheetProps> = ({ eventId, onEdit }) => {
+  const [prepSheet, setPrepSheet] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string>("");
+
+  useEffect(() => {
+    if (!eventId) return;
+    setLoading(true);
+    setError("");
+    // Call our backend to generate the prep sheet
+    apiService.post('/api/prep-sheet/generate', { eventId })
+      .then(response => {
+        setLoading(false);
+        if (response.data && response.data.prepSheet) {
+          setPrepSheet(response.data.prepSheet);
+        } else {
+          setError("No prep sheet data returned");
+        }
+      })
+      .catch(err => {
+        console.error("Prep sheet fetch error", err);
+        setLoading(false);
+        setError("Failed to load prep sheet");
+      });
+  }, [eventId]);
+
+  if (loading) {
+    return <div className="p-4 text-center text-gray-600">Generating prep sheet...</div>;
+  }
+  if (error) {
+    return <div className="p-4 text-red-600">Error: {error}</div>;
+  }
+  if (!prepSheet) {
+    return <div className="p-4 text-gray-600">No preparation data available.</div>;
+  }
+
+  return (
+    <div className="prep-sheet p-4 overflow-y-auto">
+      {/* Render the markdown with our styling */}
+      <ReactMarkdown 
+        children={prepSheet} 
+        components={{
+          h1: ({node, ...props}) => <h1 className="text-xl font-bold mt-4 mb-2" {...props} />,
+          h2: ({node, ...props}) => <h2 className="text-lg font-semibold mt-3 mb-1" {...props} />,
+          h3: ({node, ...props}) => <h3 className="text-base font-semibold mt-3 mb-1" {...props} />,
+          ul: ({node, ...props}) => <ul className="list-disc ml-5 mb-2" {...props} />,
+          ol: ({node, ...props}) => <ol className="list-decimal ml-5 mb-2" {...props} />,
+          li: ({node, ...props}) => <li className="mb-1" {...props} />,
+          p: ({node, ...props}) => <p className="mb-2" {...props} />
+        }}
+      />
+      {/* Optionally, an Edit button to allow rep to annotate or tweak the sheet */}
+      {onEdit && 
+        <button onClick={onEdit} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded">
+          Edit Prep Sheet
+        </button>
+      }
+    </div>
+  );
+};
+
+export default PrepSheetView;
+
+
+Key points in this React component:
+
+It triggers the generation API when a calendar event is selected (via eventId prop). This could be tied into the Calendar UI: when the rep clicks a meeting, we load its prep sheet.
+
+It uses react-markdown to render the returned Markdown. We provide custom component renderers for headings and lists to apply Tailwind classes (for consistent styling).
+
+If the rep wants to tweak the content, an Edit button could open a simple text area or modal to modify the markdown (this part can be implemented as needed; we just scaffold the possibility via onEdit callback).
+
+The output will show clearly separated sections: e.g., a bold heading for “SPIN Questions” followed by a numbered list of questions. The rep can scroll through this prep sheet during the call, or even print it if needed.
+
+Live Coaching Chat (Streaming ChatModal)
+
+The ChatModal.tsx (or similar component) will handle the UI for the live assistant. We need to send the user’s prompt (or automatically send transcribed text) to the /api/chat/message endpoint and display the streaming response. We can use EventSource for SSE or the Fetch API with a readable stream to handle the server stream.
+
+Below is a conceptual implementation of the chat modal with SSE. It displays a chat log and an input box. When the rep sends a question or indicates what the prospect said, it will stream the AI’s answer into the chat:
+
+// frontend/components/ChatModal.tsx
+import React, { useState, useRef } from 'react';
+import { apiService } from '../services/apiService';
+
+interface Message {
+  sender: 'rep' | 'assistant';
+  text: string;
+}
+
+const ChatModal: React.FC<{ prepContext?: string; onClose: () => void }> = ({ prepContext, onClose }) => {
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState("");
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  const sendMessage = async () => {
+    if (!input.trim()) return;
+    const userMessage = input.trim();
+    // Add the rep's message to the chat log
+    setMessages(prev => [...prev, { sender: 'rep', text: userMessage }]);
+    setInput("");
+
+    // Open an SSE connection to stream the assistant's reply
+    try {
+      // Prepare the EventSource URL or use apiService if it wraps SSE
+      const url = '/api/chat/message';
+      eventSourceRef.current = new EventSource(url);
+      // Send initial data via a POST – since SSE via EventSource is GET-only, we might instead use Fetch streaming.
+      // For simplicity, let's assume the API can start streaming based on an initial POST elsewhere or uses query params.
+      // Alternatively, switch to fetch with ReadableStream for a more controlled approach.
+      
+      // Listen for messages from SSE
+      eventSourceRef.current.onmessage = (event) => {
+        const data = event.data;
+        if (data === "[STREAM_END]") {
+          // Stream ended, close connection
+          eventSourceRef.current?.close();
+          eventSourceRef.current = null;
+        } else if (data.startsWith("[ERROR]")) {
+          console.error("AI Stream error:", data);
+          setMessages(prev => [...prev, { sender: 'assistant', text: "*[Error: could not get response]*" }]);
+          eventSourceRef.current?.close();
+          eventSourceRef.current = null;
+        } else {
+          // Append streaming text (multiple events might form one message)
+          setMessages(prev => {
+            // If last message is from assistant and still streaming, append to it. Otherwise, add new message.
+            const lastMsg = prev[prev.length - 1];
+            if (lastMsg && lastMsg.sender === 'assistant' && !lastMsg.text.endsWith("▌")) {
+              // We use a cursor block ▌or some logic to indicate streaming...
+            }
+            // We'll simplify by always appending for clarity:
+            return [...prev, { sender: 'assistant', text: data }];
+          });
+        }
+      };
+      // Optionally handle SSE errors
+      eventSourceRef.current.onerror = (err) => {
+        console.error("SSE error", err);
+        setMessages(prev => [...prev, { sender: 'assistant', text: "*[Connection lost]*" }]);
+        eventSourceRef.current?.close();
+      };
+
+      // Note: In practice, you might use fetch with streaming (ReadableStream) to send the user message in the request body and get the response.
+      // Using EventSource directly is tricky for POST. This is a simplified approach.
+    } catch (err) {
+      console.error("Failed to send message", err);
+    }
+  };
+
+  return (
+    <div className="chat-modal fixed inset-0 bg-white bg-opacity-90 backdrop-blur-sm flex flex-col p-4">
+      <div className="flex-1 overflow-y-auto mb-2">
+        {/* Chat messages display */}
+        {messages.map((msg, idx) => (
+          <div key={idx} className={`my-1 ${msg.sender === 'assistant' ? 'text-blue-600' : 'text-gray-800'}`}>
+            <strong>{msg.sender === 'assistant' ? 'Coach' : 'You'}:</strong> {msg.text}
+          </div>
+        ))}
+      </div>
+      {/* Input box to ask questions */}
+      <div className="flex items-center border-t pt-2">
+        <input 
+          value={input} 
+          onChange={(e) => setInput(e.target.value)} 
+          onKeyDown={(e) => { if(e.key==='Enter') sendMessage(); }} 
+          className="flex-1 border p-2 mr-2" placeholder="Ask a question or type prospect's remark..." 
+        />
+        <button onClick={sendMessage} className="px-4 py-2 bg-green-600 text-white rounded">Send</button>
+        <button onClick={onClose} className="px-3 py-2 ml-2 text-gray-600">Close</button>
+      </div>
+    </div>
+  );
+};
+
+export default ChatModal;
+
+
+In this ChatModal component:
+
+We maintain a messages state to keep track of the conversation shown on screen.
+
+When the rep sends a message (sendMessage function), we add it to the chat, then open an EventSource connection to receive the AI’s streaming answer. (In a real implementation, you might initiate the SSE by hitting an endpoint that is already prepared to stream based on stored context. For simplicity, we directly instantiate EventSource – note that SSE via POST is non-standard, so you might refactor to use fetch() with stream.)
+
+As SSE onmessage events arrive, we append the data to the messages. We check for our special markers ([STREAM_END] or [ERROR]) to know when to stop.
+
+The UI displays each message, prefixing with “You:” or “Coach:” accordingly, and styles the assistant’s text differently for clarity.
+
+The prepContext prop (if provided) could be used to send context to the API (perhaps via a query param or included in the first user message) – this part can be adjusted depending on how the backend uses context. For example, we might modify sendMessage to call a different endpoint or include prepContext in the request payload.
+
+Using this chat modal, the sales rep can, during a call, quickly type something like “Prospect is asking if we integrate with their current system X” and the AI will stream a helpful response (e.g., suggesting how to highlight an integration or a workaround). The streaming nature means the rep starts seeing the answer immediately, which is crucial in a live conversation.
+
+Integration in App
+
+Finally, ensure these components are integrated into the main app workflow:
+
+When the user selects a calendar event, render <PrepSheetView eventId={...} /> (perhaps in a side panel or modal).
+
+Provide a button like “Open Live Coach” which toggles the ChatModal. The ChatModal might always include context from the current prep sheet (maybe passing the whole prep sheet text or key points as prepContext).
+
+The SettingsModal can have options to configure which frameworks to include or prioritize, by toggling certain sections or methodologies (for example, a rep might turn off Sandler if their org doesn’t use it). This could be done by passing user preferences to the backend to adjust the prompt building (e.g., skip adding Sandler instructions if disabled).
+
+Conclusion
+
+With the above prompt design and code, Agent 3 is now capable of delivering a powerful multi-methodology call preparation experience. The AI-generated prep sheets ensure that no matter the call type or deal complexity, the sales rep is thoroughly prepared with the right strategy. During calls, the live coaching chat serves as a safety net and performance booster, providing real-time, context-aware advice (almost like having a sales manager whispering guidance). This not only improves confidence and technique in the moment, but also reinforces best practices from MEDDIC, SPIN, Challenger, and other frameworks through practical usage.

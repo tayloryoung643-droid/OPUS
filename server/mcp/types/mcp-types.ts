@@ -71,6 +71,15 @@ export const callHistoryLookupSchema = z.object({
   message: "At least one search criteria must be provided"
 });
 
+// Gmail tool schemas
+export const gmailSearchThreadsSchema = z.object({
+  q: z.string().optional().default("newer_than:7d")
+});
+
+export const gmailReadThreadSchema = z.object({
+  threadId: z.string()
+});
+
 // Tool result types
 export interface SalesforceContact {
   Id: string;
@@ -144,12 +153,28 @@ export interface PrepNote {
   updatedAt: Date;
 }
 
+export interface GmailThread {
+  id: string;
+  historyId?: string;
+}
+
+export interface GmailMessage {
+  id: string;
+  date?: string;
+  from?: string;
+  to?: string;
+  subject?: string;
+  snippet: string;
+  body: string;
+}
+
 // Tool execution context
 export interface MCPToolContext {
   userId: string;
   storage: any; // Storage interface
   googleCalendarService?: any;
   salesforceCrmService?: any;
+  user?: any; // User object with claims
 }
 
 // Tool definitions for OpenAI function calling
@@ -382,6 +407,36 @@ export const MCP_TOOL_DEFINITIONS = {
         { required: ["companyName"] },
         { required: ["companyDomain"] }
       ]
+    }
+  },
+
+  gmail_search_threads: {
+    name: "gmail_search_threads",
+    description: "Search recent Gmail threads with a Gmail query (e.g., 'from:prospect@acme.com newer_than:14d'). Returns thread IDs that can be read with gmail_read_thread.",
+    parameters: {
+      type: "object",
+      properties: {
+        q: {
+          type: "string",
+          description: "Gmail search query. Examples: 'from:prospect@acme.com', 'newer_than:14d', 'subject:proposal'",
+          default: "newer_than:7d"
+        }
+      }
+    }
+  },
+
+  gmail_read_thread: {
+    name: "gmail_read_thread",
+    description: "Read a Gmail thread by ID and return normalized headers and text bodies. Use after gmail_search_threads to get specific thread content.",
+    parameters: {
+      type: "object",
+      properties: {
+        threadId: {
+          type: "string",
+          description: "Gmail thread ID obtained from gmail_search_threads"
+        }
+      },
+      required: ["threadId"]
     }
   }
 } as const;

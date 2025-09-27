@@ -10,6 +10,7 @@ import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
 import { CoachWebSocketService } from "./services/coachWebSocket";
 import { z } from "zod";
+import gmailRoutes from "./routes/gmail";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth (Google Sign-in support)
@@ -241,6 +242,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // Gmail routes - Mount the Gmail router
+  app.use("/api/gmail", isAuthenticatedOrGuest, gmailRoutes);
 
   // Salesforce CRM integration routes
   app.get("/api/integrations/salesforce/auth", isAuthenticatedOrGuest, async (req, res) => {

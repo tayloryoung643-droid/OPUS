@@ -1,0 +1,240 @@
+Agent 3 — Task: Add Gmail read capability (MCP + REST) to match our stack
+
+Goal
+Enable read-only Gmail so Opus can search threads and read messages for meeting attendees. Keep least-privilege scopes. Use our existing Google OAuth tokens (same flow as Calendar) stored on req.user.googleIntegration.
+
+Install deps
+
+npm i googleapis
+npm i -D @types/node
+
+
+Project structure (create new files)
+
+server/
+  services/gmail.ts
+  routes/gmail.ts
+  mcp/
+    tools/
+      gmail-tools.ts
+
+1) Gmail service
+
+Create server/services/gmail.ts
+
+import { google } from "googleapis";
+
+export type GoogleTokens = {
+  access_token: string;
+  refresh_token?: string;
+  expiry_date?: number;
+};
+
+function makeOAuth2() {
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI } = process.env;
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+    throw new Error("Missing Google OAuth env vars");
+  }
+  return new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+}
+
+export function gmailClient(tokens: GoogleTokens) {
+  const auth = makeOAuth2();
+  auth.setCredentials(tokens);
+  return google.gmail({ version: "v1", auth });
+}
+
+export async function listRecentThreads(tokens: GoogleTokens, q = "newer_than:7d -category:promotions") {
+  const gmail = gmailClient(tokens);
+  const { data } = await gmail.users.threads.list({ userId: "me", q, maxResults: 20 });
+  return data.threads ?? [];
+}
+
+export async function readThread(tokens: GoogleTokens, threadId: string) {
+  const gmail = gmailClient(tokens);
+  const { data } = await gmail.users.threads.get({ userId: "me", id: threadId, format: "full" });
+  return data;
+}
+
+// Gmail uses URL-safe base64 for bodies
+export function decodeBody(b64?: string) {
+  if (!b64) return "";
+  return Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+}
+
+export function extractMessageParts(msg: any) {
+  const headers: Record<string, string> = {};
+  (msg.payload?.headers || []).forEach((h: any) => (headers[h.name.toLowerCase()] = h.value));
+  const parts = msg.payload?.parts || [];
+  const textPart = parts.find((p: any) => p.mimeType === "text/plain") || msg.payload;
+  const body = decodeBody(textPart?.body?.data);
+  return {
+    id: msg.id,
+    headers,
+    snippet: msg.snippet || "",
+    body,
+  };
+}
+
+2) REST routes
+
+Create server/routes/gmail.ts
+
+import { Router } from "express";
+import { listRecentThreads, readThread, extractMessageParts } from "../services/gmail";
+
+// Assumes req.user.googleIntegration contains Google tokens { access_token, refresh_token, expiry_date }
+// If your user shape differs, adjust the accessor.
+function requireTokens(req: any) {
+  const tokens = req?.user?.googleIntegration;
+  if (!tokens?.access_token) throw new Error("Missing Google tokens on user");
+  return tokens;
+}
+
+const r = Router();
+
+r.get("/threads", async (req: any, res, next) => {
+  try {
+    const tokens = requireTokens(req);
+    const q = (req.query.q as string) || "newer_than:7d";
+    const threads = await listRecentThreads(tokens, q);
+    res.json({ threads });
+  } catch (e) {
+    next(e);
+  }
+});
+
+r.get("/threads/:id", async (req: any, res, next) => {
+  try {
+    const tokens = requireTokens(req);
+    const thread = await readThread(tokens, req.params.id);
+    const messages = (thread.messages || []).map(extractMessageParts).map(m => ({
+      id: m.id,
+      date: m.headers["date"],
+      from: m.headers["from"],
+      to: m.headers["to"],
+      subject: m.headers["subject"],
+      snippet: m.snippet,
+      body: m.body,
+    }));
+    res.json({ threadId: thread.id, messages });
+  } catch (e) {
+    next(e);
+  }
+});
+
+export default r;
+
+
+Mount route in server/index.ts (or your Express bootstrap):
+
+import gmailRoutes from "./routes/gmail";
+app.use("/api/gmail", gmailRoutes);
+
+
+Ensure CORS allows http://localhost:5000 and Vite proxies /api → backend http://localhost:4000.
+
+3) MCP tools
+
+Create server/mcp/tools/gmail-tools.ts
+
+import type { Tool } from "@modelcontextprotocol/sdk/types";
+import { listRecentThreads, readThread, extractMessageParts } from "../../services/gmail";
+
+export const gmailTools: Tool[] = [
+  {
+    name: "gmail_search_threads",
+    description: "Search recent Gmail threads with a Gmail query (e.g., 'from:prospect@acme.com newer_than:14d').",
+    input_schema: {
+      type: "object",
+      properties: { q: { type: "string" } },
+      required: []
+    },
+    invoke: async (_ctx, input: any, { user }: any) => {
+      const tokens = user.googleIntegration;
+      const threads = await listRecentThreads(tokens, input?.q || "newer_than:7d");
+      return { content: threads?.map(t => ({ id: t.id, historyId: t.historyId })) };
+    }
+  },
+  {
+    name: "gmail_read_thread",
+    description: "Read a Gmail thread by id and return normalized headers and text bodies.",
+    input_schema: {
+      type: "object",
+      properties: { threadId: { type: "string" } },
+      required: ["threadId"]
+    },
+    invoke: async (_ctx, input: any, { user }: any) => {
+      const tokens = user.googleIntegration;
+      const t = await readThread(tokens, input.threadId);
+      const messages = (t.messages || []).map(m => {
+        const parts = extractMessageParts(m);
+        return {
+          id: parts.id,
+          date: parts.headers["date"],
+          from: parts.headers["from"],
+          to: parts.headers["to"],
+          subject: parts.headers["subject"],
+          snippet: parts.snippet,
+          body: parts.body
+        };
+      });
+      return { content: [{ type: "json", data: { threadId: t.id, messages } }] };
+    }
+  }
+];
+
+
+Register tools where other MCP tools are exported (e.g., server/mcp/index.ts):
+
+import { gmailTools } from "./tools/gmail-tools";
+export const tools = [
+  // existing tools...
+  ...gmailTools
+];
+
+4) Env + Console setup
+
+In Replit env:
+
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=http://localhost:4000/api/integrations/google/oauth2/callback
+APP_DASHBOARD_URL=http://localhost:5000
+
+
+In Google Cloud Console:
+
+Enable: Gmail API
+
+OAuth consent screen: add scopes
+
+https://www.googleapis.com/auth/gmail.readonly
+
+https://www.googleapis.com/auth/gmail.metadata
+
+Add our test user email.
+
+Authorized redirect URIs include local + prod.
+
+5) Quick test paths
+
+With a logged-in user (who has completed Google OAuth granting Gmail scopes):
+
+GET /api/gmail/threads?q=newer_than:7d → returns thread ids.
+
+GET /api/gmail/threads/<threadId> → returns normalized messages.
+
+MCP:
+
+Call gmail_search_threads (q like from:champion@acme.com newer_than:30d).
+
+Then gmail_read_thread with returned id.
+
+Notes
+
+Reuse the same encrypted token store you used for Calendar (AES-256-GCM).
+
+If our user object path for tokens differs, update the accessor in requireTokens() and MCP invoke contexts.
+
+Keep scopes read-only; do not add send/modify.

@@ -15,6 +15,11 @@ import {
   callHistoryLookup 
 } from './database-tools.js';
 
+import { 
+  gmailSearchThreads, 
+  gmailReadThread 
+} from './gmail-tools.js';
+
 export {
   salesforceContactLookup, 
   salesforceOpportunityLookup, 
@@ -22,7 +27,9 @@ export {
   calendarMeetingContext, 
   calendarAttendeeHistory,
   prepNotesSearch, 
-  callHistoryLookup
+  callHistoryLookup,
+  gmailSearchThreads, 
+  gmailReadThread
 };
 
 // Tool execution mapping
@@ -33,5 +40,7 @@ export const MCP_TOOL_HANDLERS = {
   calendar_meeting_context: calendarMeetingContext,
   calendar_attendee_history: calendarAttendeeHistory,
   prep_notes_search: prepNotesSearch,
-  call_history_lookup: callHistoryLookup
+  call_history_lookup: callHistoryLookup,
+  gmail_search_threads: gmailSearchThreads,
+  gmail_read_thread: gmailReadThread
 } as const;

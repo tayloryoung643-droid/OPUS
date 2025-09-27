@@ -1,9 +1,11 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import SettingsModal from "@/components/SettingsModal";
 import OpusCoachPanel from "@/components/OpusCoachPanel";
 
 export default function OpusLandingPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const navigate = useNavigate();
   // --- Mock data (replace with real services) ---
   const agenda = [
     { time: "9:00 AM", title: "Momentum AI", subtitle: "Discovery call" },
@@ -28,16 +30,22 @@ export default function OpusLandingPage() {
 
         <nav className="hidden md:flex items-center gap-6 text-sm text-zinc-300">
           {["Overview", "Agenda", "Pipeline", "Tasks", "Coach", "Insights"].map((tab) => (
-            <a
+            <button
               key={tab}
-              href="#"
-              className={`relative ${tab === "Overview" ? "text-white font-semibold" : "hover:text-white"}`}
+              onClick={() => {
+                if (tab === "Overview") navigate("/overview");
+                else if (tab === "Agenda") navigate("/agenda");
+                // Other tabs are disabled for now
+              }}
+              disabled={!["Overview", "Agenda"].includes(tab)}
+              className={`relative ${tab === "Overview" ? "text-white font-semibold" : !["Overview", "Agenda"].includes(tab) ? "text-zinc-600 cursor-not-allowed" : "hover:text-white cursor-pointer"}`}
+              data-testid={`nav-${tab.toLowerCase()}`}
             >
               {tab}
               {tab === "Overview" && (
                 <span className="absolute left-0 -bottom-1 h-0.5 w-full bg-purple-500 animate-pulse rounded-full" />
               )}
-            </a>
+            </button>
           ))}
         </nav>
 

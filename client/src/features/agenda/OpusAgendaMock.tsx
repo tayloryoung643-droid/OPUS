@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 // ===== Helpers (small components) =====
 function Section({ title, children }) {
@@ -142,6 +143,8 @@ function EditableObjections({ items = [], onChange }) {
 }
 
 export default function OpusAgendaMock() {
+  const navigate = useNavigate();
+  
   // ===== Mock agenda =====
   const mockAgenda = useMemo(
     () => ({
@@ -335,13 +338,29 @@ export default function OpusAgendaMock() {
         </div>
         <nav className="hidden md:flex items-center gap-6 text-sm">
           {["Overview", "Agenda", "Pipeline", "Tasks", "Coach", "Insights"].map((tab) => (
-            <a key={tab} href="#" className={`relative ${tab === "Agenda" ? "text-white font-semibold" : "text-zinc-400 hover:text-white"}`}>
+            <button 
+              key={tab} 
+              onClick={() => {
+                if (tab === "Overview") navigate("/overview");
+                else if (tab === "Agenda") navigate("/agenda");
+                // Other tabs are disabled for now
+              }}
+              disabled={!["Overview", "Agenda"].includes(tab)}
+              className={`relative ${tab === "Agenda" ? "text-white font-semibold" : !["Overview", "Agenda"].includes(tab) ? "text-zinc-600 cursor-not-allowed" : "text-zinc-400 hover:text-white cursor-pointer"}`}
+              data-testid={`nav-${tab.toLowerCase()}`}
+            >
               {tab}
               {tab === "Agenda" && <span className="absolute left-0 -bottom-1 h-0.5 w-full bg-purple-500 animate-pulse rounded-full" />}
-            </a>
+            </button>
           ))}
         </nav>
-        <button className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300">Settings</button>
+        <button 
+          onClick={() => navigate("/settings")}
+          className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"
+          data-testid="button-settings"
+        >
+          Settings
+        </button>
       </header>
 
       {/* Body grid */}

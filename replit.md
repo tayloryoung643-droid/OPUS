@@ -6,6 +6,15 @@ Momentum AI is a comprehensive sales call preparation platform that helps sales 
 
 The platform is built as a full-stack web application with a React frontend and Express.js backend, utilizing PostgreSQL for data persistence and OpenAI for AI-powered research generation.
 
+## Recent Changes
+
+**September 27, 2025**
+- **Fixed Navigation Bug**: Resolved agenda button navigation issue by implementing proper React Router v6 navigation
+  - Updated Overview page (OpusLandingPage.tsx) to use useNavigate() instead of hardcoded href="#" links
+  - Updated Agenda page (OpusAgendaMock.tsx) to support bidirectional navigation between /overview and /agenda
+  - Added proper test IDs and disabled styling for unimplemented tabs (Pipeline, Tasks, Coach, Insights)
+  - Verified complete navigation flow: Overview ↔ Agenda ↔ Settings all working correctly
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

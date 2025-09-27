@@ -11,6 +11,7 @@ import { CryptoService } from "./services/crypto";
 import { CoachWebSocketService } from "./services/coachWebSocket";
 import { z } from "zod";
 import gmailRoutes from "./routes/gmail";
+import { generateRhythmInsights, generateOpusFeed } from "./services/insights";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Setup Replit Auth (Google Sign-in support)
@@ -245,6 +246,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Gmail routes - Mount the Gmail router
   app.use("/api/gmail", isAuthenticatedOrGuest, gmailRoutes);
+
+  // Insights routes for Rhythm and Opus feed
+  app.get("/api/insights/rhythm", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const rhythmItems = await generateRhythmInsights(userId);
+      res.json({ items: rhythmItems });
+    } catch (error) {
+      console.error("Error generating rhythm insights:", error);
+      res.json({ items: [] }); // Fail silent as per spec
+    }
+  });
+
+  app.get("/api/insights/opus-feed", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const opusFeedItems = await generateOpusFeed(userId);
+      res.json({ items: opusFeedItems });
+    } catch (error) {
+      console.error("Error generating opus feed:", error);
+      res.json({ items: [] }); // Fail silent as per spec
+    }
+  });
 
   // Salesforce CRM integration routes
   app.get("/api/integrations/salesforce/auth", isAuthenticatedOrGuest, async (req, res) => {

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { CONFIG } from "@/config";
 
 // ===== Helpers (small components) =====
 function Section({ title, children }) {
@@ -145,9 +147,21 @@ function EditableObjections({ items = [], onChange }) {
 export default function OpusAgendaMock() {
   const navigate = useNavigate();
   
-  // ===== Mock agenda =====
+  // Fetch real Google Calendar events
+  const { data: calendarEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
+    queryKey: ['/api/calendar/events'],
+    queryFn: async () => {
+      const response = await fetch('/api/calendar/events');
+      if (!response.ok) throw new Error('Failed to fetch calendar events');
+      return response.json();
+    },
+    staleTime: 60_000,
+    retry: false
+  });
+
+  // Mock data fallback (only when USE_MOCKS is true)
   const mockAgenda = useMemo(
-    () => ({
+    () => CONFIG.USE_MOCKS ? ({
       upcoming: [
         {
           id: "call_001",
@@ -168,9 +182,54 @@ export default function OpusAgendaMock() {
         { id: "call_990", title: "QBR — TechCorp", company: "TechCorp", time: "Yesterday • 3:00 PM" },
         { id: "call_989", title: "Security Review — InnovateLabs", company: "InnovateLabs", time: "Tue • 11:00 AM" },
       ],
-    }),
+    }) : { upcoming: [], previous: [] },
     []
   );
+
+  // Process real calendar events into agenda format
+  const processedAgenda = useMemo(() => {
+    if (CONFIG.USE_MOCKS) return mockAgenda;
+    
+    if (!calendarEvents?.events) return { upcoming: [], previous: [] };
+    
+    const now = new Date();
+    const events = calendarEvents.events.map(event => ({
+      id: event.id,
+      title: event.summary || 'Untitled Event',
+      company: event.location || '',
+      time: formatEventTime(event.start),
+      attendees: event.attendees?.map(a => a.email).filter(Boolean) || [],
+      originalEvent: event
+    }));
+
+    const upcoming = events.filter(event => new Date(event.originalEvent.start) >= now);
+    const previous = events.filter(event => new Date(event.originalEvent.start) < now);
+
+    return { upcoming, previous };
+  }, [calendarEvents, mockAgenda]);
+
+  const formatEventTime = (startTime) => {
+    const eventDate = new Date(startTime);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+    const eventDateOnly = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+
+    const timeStr = eventDate.toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    if (eventDateOnly.getTime() === today.getTime()) {
+      return `Today • ${timeStr}`;
+    } else if (eventDateOnly.getTime() === yesterday.getTime()) {
+      return `Yesterday • ${timeStr}`;
+    } else {
+      const dayName = eventDate.toLocaleDateString('en-US', { weekday: 'short' });
+      return `${dayName} • ${timeStr}`;
+    }
+  };
 
   // ===== State =====
   const [selectedId, setSelectedId] = useState(null);
@@ -193,14 +252,14 @@ export default function OpusAgendaMock() {
   };
 
   const selected =
-    mockAgenda.upcoming.find((c) => c.id === selectedId) ||
-    mockAgenda.previous.find((c) => c.id === selectedId) ||
-    mockAgenda.upcoming[0];
+    processedAgenda.upcoming.find((c) => c.id === selectedId) ||
+    processedAgenda.previous.find((c) => c.id === selectedId) ||
+    processedAgenda.upcoming[0];
 
   // Select first upcoming on mount
   useEffect(() => {
-    if (!selectedId && mockAgenda.upcoming.length) setSelectedId(mockAgenda.upcoming[0].id);
-  }, [mockAgenda, selectedId]);
+    if (!selectedId && processedAgenda.upcoming.length) setSelectedId(processedAgenda.upcoming[0].id);
+  }, [processedAgenda, selectedId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -372,17 +431,50 @@ export default function OpusAgendaMock() {
           </div>
 
           <Section title="Upcoming">
-            {mockAgenda.upcoming.map((c) => (
-              <CallItem key={c.id} active={selected?.id === c.id} title={c.title} subtitle={c.company} time={c.time} onClick={() => setSelectedId(c.id)} />
-            ))}
+            {eventsLoading ? (
+              [...Array(3)].map((_, i) => (
+                <div key={i} className="animate-pulse px-3 py-3 mb-2">
+                  <div className="h-4 bg-zinc-800 rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-zinc-800 rounded w-1/2"></div>
+                </div>
+              ))
+            ) : eventsError ? (
+              <div className="px-3 py-6 text-center">
+                <div className="text-zinc-500 text-sm mb-2">Unable to load calendar events</div>
+                <button className="text-purple-400 hover:text-purple-300 text-sm" onClick={() => window.location.reload()}>
+                  Reconnect Google Calendar
+                </button>
+              </div>
+            ) : processedAgenda.upcoming.length > 0 ? (
+              processedAgenda.upcoming.map((c) => (
+                <CallItem key={c.id} active={selected?.id === c.id} title={c.title} subtitle={c.company} time={c.time} onClick={() => setSelectedId(c.id)} />
+              ))
+            ) : (
+              <div className="px-3 py-4 text-center text-zinc-500 text-sm">
+                No upcoming events
+              </div>
+            )}
           </Section>
 
           <div className="h-px bg-zinc-900/60 mx-4" />
 
           <Section title="Previous">
-            {mockAgenda.previous.map((c) => (
-              <CallItem key={c.id} active={selected?.id === c.id} title={c.title} subtitle={c.company} time={c.time} onClick={() => setSelectedId(c.id)} />
-            ))}
+            {eventsLoading ? (
+              [...Array(2)].map((_, i) => (
+                <div key={i} className="animate-pulse px-3 py-3 mb-2">
+                  <div className="h-4 bg-zinc-800 rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-zinc-800 rounded w-1/2"></div>
+                </div>
+              ))
+            ) : processedAgenda.previous.length > 0 ? (
+              processedAgenda.previous.map((c) => (
+                <CallItem key={c.id} active={selected?.id === c.id} title={c.title} subtitle={c.company} time={c.time} onClick={() => setSelectedId(c.id)} />
+              ))
+            ) : (
+              <div className="px-3 py-4 text-center text-zinc-500 text-sm">
+                No previous events
+              </div>
+            )}
           </Section>
         </aside>
 
@@ -390,7 +482,7 @@ export default function OpusAgendaMock() {
         <section className="relative p-6 md:p-8">
           {/* Orb */}
           <div className="hidden lg:block fixed right-6 top-24 z-50">
-            <div className="h-32 w-32 rounded-full border-2 border-purple-500/70 animate-pulse shadow-[0_0_160px_-20px_rgba(168,85,247,0.8)]" />
+            <div className="h-32 w-32 rounded-full border-2 border-purple-500/70 animate-pulse opus-orb" />
           </div>
 
           {/* Floating actions beside the Orb (desktop) */}

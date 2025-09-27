@@ -1,17 +1,62 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import SettingsModal from "@/components/SettingsModal";
 import OpusCoachPanel from "@/components/OpusCoachPanel";
+import { CONFIG } from "@/config";
 
 export default function OpusLandingPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
-  // --- Mock data (replace with real services) ---
-  const agenda = [
+
+  // Fetch today's calendar events
+  const { data: todaysEvents, isLoading: eventsLoading } = useQuery({
+    queryKey: ['/api/calendar/events', 'today'],
+    queryFn: async () => {
+      const today = new Date();
+      const timeMin = new Date(today.setHours(0, 0, 0, 0)).toISOString();
+      const timeMax = new Date(today.setHours(23, 59, 59, 999)).toISOString();
+      const response = await fetch(`/api/calendar/events?timeMin=${timeMin}&timeMax=${timeMax}`);
+      if (!response.ok) throw new Error('Failed to fetch calendar events');
+      return response.json();
+    },
+    staleTime: 60_000,
+  });
+
+  // Fetch rhythm insights
+  const { data: rhythmData } = useQuery({
+    queryKey: ['/api/insights/rhythm'],
+    queryFn: async () => {
+      const response = await fetch('/api/insights/rhythm');
+      if (!response.ok) throw new Error('Failed to fetch rhythm insights');
+      return response.json();
+    },
+    staleTime: 300_000, // 5 minutes
+  });
+
+  // Mock data fallback (only when USE_MOCKS is true)
+  const mockAgenda = CONFIG.USE_MOCKS ? [
     { time: "9:00 AM", title: "Momentum AI", subtitle: "Discovery call" },
     { time: "11:45 AM", title: "Jamie's Birthday", subtitle: "Jamie's Birthday" },
     { time: "3:00 PM", title: "Orthodontist", subtitle: "Orthodontist" },
-  ];
+  ] : [];
+
+  // Process real events into agenda format
+  const agenda = CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents?.events || []).map(event => ({
+    time: new Date(event.start).toLocaleTimeString('en-US', { 
+      hour: 'numeric', 
+      minute: '2-digit',
+      hour12: true 
+    }),
+    title: event.summary || 'Untitled Event',
+    subtitle: event.location || '',
+  }));
+
+  const rhythmItems = CONFIG.USE_MOCKS ? [
+    "Back-to-back meetings from 10–4 — grab a snack before",
+    "3 calls prepped — keep the streak alive", 
+    "1 high-stakes deal at 2 PM — review the risk questions"
+  ] : (rhythmData?.items || []);
 
 
   return (
@@ -82,37 +127,54 @@ export default function OpusLandingPage() {
               {/* Agenda */}
               <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
                 <h2 className="text-xl font-semibold mb-4">Today's Agenda</h2>
-                <div className="space-y-4">
-                  {agenda.map((item, idx) => (
-                    <div key={idx} className="flex items-start gap-4">
-                      <div className="w-16 text-zinc-400 font-medium mt-0.5">{item.time}</div>
-                      <div>
-                        <div className="font-medium text-zinc-100">{item.title}</div>
-                        <div className="text-sm text-zinc-500">{item.subtitle}</div>
+                {eventsLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, idx) => (
+                      <div key={idx} className="flex items-start gap-4 animate-pulse">
+                        <div className="w-16 h-4 bg-zinc-800 rounded"></div>
+                        <div className="flex-1">
+                          <div className="h-4 bg-zinc-800 rounded w-3/4 mb-2"></div>
+                          <div className="h-3 bg-zinc-800 rounded w-1/2"></div>
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : agenda.length > 0 ? (
+                  <div className="space-y-4">
+                    {agenda.map((item, idx) => (
+                      <div key={idx} className="flex items-start gap-4">
+                        <div className="w-16 text-zinc-400 font-medium mt-0.5">{item.time}</div>
+                        <div>
+                          <div className="font-medium text-zinc-100">{item.title}</div>
+                          <div className="text-sm text-zinc-500">{item.subtitle}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                    <div className="text-zinc-500 text-sm">No events scheduled for today</div>
+                    <button className="text-purple-400 hover:text-purple-300 text-sm mt-2">
+                      Connect Google Calendar
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Rhythm */}
-              <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
-                <h2 className="text-xl font-semibold mb-4">Rhythm</h2>
-                <ul className="space-y-3 text-zinc-300">
-                  <li className="flex items-start gap-3">
-                    <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                    <span>Back-to-back meetings from 10–4 — grab a snack before</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                    <span>3 calls prepped — keep the streak alive</span>
-                  </li>
-                  <li className="flex items-start gap-3">
-                    <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                    <span>1 high-stakes deal at 2 PM — review the risk questions</span>
-                  </li>
-                </ul>
-              </div>
+              {(rhythmItems?.length ?? 0) > 0 && (
+                <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
+                  <h2 className="text-xl font-semibold mb-4">Rhythm</h2>
+                  <ul className="space-y-3 text-zinc-300">
+                    {rhythmItems.map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-3">
+                        <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           </section>
 

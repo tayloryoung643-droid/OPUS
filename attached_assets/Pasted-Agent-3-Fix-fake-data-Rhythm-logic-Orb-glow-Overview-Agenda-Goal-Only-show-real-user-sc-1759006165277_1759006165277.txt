@@ -1,0 +1,171 @@
+Agent 3 — Fix fake data + Rhythm logic + Orb glow (Overview & Agenda)
+
+Goal:
+Only show real, user-scoped data. If no insights are available, show nothing (no placeholders). Slightly increase Opus Orb glow.
+
+1) Kill all mock/demo data in prod + dev
+
+Remove any imports/usages of mockDataService (or equivalent) in:
+
+Overview page (Today’s Agenda + Rhythm block)
+
+Agenda page (left “Upcoming/Previous” event lists)
+
+Add a single feature flag and default it OFF:
+
+// src/config.ts
+export const USE_MOCKS = false;
+
+
+Guard every feed with real data first; only allow mocks when USE_MOCKS === true.
+
+Example (Agenda list component):
+
+const { data: events, isLoading } = useQuery({
+  queryKey: ['calendarEvents', user?.id],
+  queryFn: () => api.get('/api/calendar/events').then(r => r.data),
+  staleTime: 60_000,
+});
+
+const items = USE_MOCKS ? mockEvents : (events ?? []);
+
+
+Acceptance: If USE_MOCKS=false, there is no way for the UI to render seeded demo calls.
+
+2) Agenda page → use only real Google Calendar events
+
+Ensure we call our backend with the signed-in user’s Google tokens:
+
+Backend endpoint: GET /api/calendar/events
+
+Must use the user’s stored googleIntegration.refreshToken to fetch a fresh access token and call Google Calendar with https://www.googleapis.com/auth/calendar.readonly.
+
+If token refresh fails, return 401 and surface a reconnect CTA in UI (“Reconnect Google Calendar”).
+
+UI:
+
+Left rail lists only events from the API.
+
+Remove any hardcoded “Discovery/DataFlow/CloudScale/etc.” demo entries.
+
+Keep search + sections (“Upcoming”, “Previous”) but compute buckets from real event start times.
+
+Acceptance:
+
+Logging in with a Google-connected user shows their real events.
+
+Disconnecting Google shows an empty state with a reconnect button.
+
+No fake titles remain.
+
+3) Overview page → “Today’s Agenda” = real calendar; “Rhythm” = generated or empty
+
+“Today’s Agenda” pulls GET /api/calendar/events?timeMin=todayStart&timeMax=todayEnd and shows only today’s events.
+
+“Rhythm” block should call a new endpoint:
+
+GET /api/insights/rhythm
+
+Backend composes optional insights from:
+
+Today’s meeting load (Calendar)
+
+Open opps due this week / slipped opps (Salesforce) — if SF connected
+
+Follow-up backlog count (Gmail/Tasks) — if available
+
+Return an array of strings. If array is empty, render nothing (hide bullets + “Opus → Taylor” label).
+
+No placeholders. Remove “3 calls prepped…”, “high-stakes deal…” etc.
+
+UI rendering guard:
+
+{(rhythm?.length ?? 0) > 0 && (
+  <Card>
+    <ul className="space-y-2">
+      {rhythm.map((line, i) => <li key={i}>• {line}</li>)}
+    </ul>
+  </Card>
+)}
+
+
+Acceptance: If the LLM/service finds nothing, Rhythm block is simply absent—no “mock” text.
+
+4) Opus Orb — increase glow slightly (both pages)
+
+Centralize a CSS class and apply on Overview + Agenda:
+
+/* globals.css */
+.opus-orb {
+  /* existing size/positioning retained */
+  box-shadow:
+    0 0 60px rgba(130, 90, 255, 0.18),
+    0 0 140px rgba(130, 90, 255, 0.12) inset;
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+.opus-orb:hover {
+  box-shadow:
+    0 0 80px rgba(130, 90, 255, 0.26),
+    0 0 160px rgba(130, 90, 255, 0.16) inset;
+  transform: translateZ(0);
+}
+
+
+Replace any hardcoded darker styles with className="opus-orb" so both pages match.
+
+Acceptance: Orb is visibly a touch brighter than current, with a subtle hover glow.
+
+5) Guardrails: never render fake “Opus produced” bullets
+
+The bullet stack under the Orb (“drafted emails…”, “produced prep sheets…”) must be data-driven.
+
+Source endpoint: GET /api/insights/opus-feed → returns array of action strings performed by Opus since last login.
+
+If empty, render nothing (no placeholder items).
+
+6) Error/empty states (both pages)
+
+Calendar errors → show small inline alert with a “Reconnect Google” CTA.
+
+Insights/Rhythm errors → fail silent (do not render the card).
+
+Loading → skeletons for Agenda lists and Today’s Agenda, but never show fake text.
+
+7) Scopes & tokens (backend checklist)
+
+Google OAuth scopes include calendar.readonly.
+
+Token refresh implemented; store new access token per user on each refresh.
+
+All calls are user-scoped (no global demo tenant).
+
+Add X-Debug-User: <userId> logging only in dev, behind NODE_ENV!=='production'.
+
+8) QA checklist
+
+ Login with connected Google → Overview “Today’s Agenda” matches Google Calendar.
+
+ Rhythm shows something when there’s signal; otherwise is hidden.
+
+ Orb glow increased on Overview + Agenda.
+
+ Agenda list uses only real events; no demo entries.
+
+ Disconnect Google → empty states + reconnect CTA.
+
+ No hardcoded strings like “DataFlow, CloudScale, TechCorp” anywhere in UI/fixtures.
+
+If you need sample handlers, use these shapes:
+
+// GET /api/insights/rhythm
+// returns: { items: string[] }
+res.json({ items: rhythmItems }); // [] when nothing
+
+// GET /api/insights/opus-feed
+// returns: { items: string[] }
+// [] when Opus hasn’t done anything for user yet
+
+
+And ensure the UI only renders when items.length > 0.
+
+Thanks!

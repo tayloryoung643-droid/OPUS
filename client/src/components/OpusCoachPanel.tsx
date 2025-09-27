@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { CONFIG } from "@/config";
 
 /**
  * OpusCoachPanel.tsx
@@ -11,7 +13,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
  * Styling: TailwindCSS.
  */
 
-const bullets = [
+const mockBullets = [
   "I reviewed your pipeline — we'll need to do some prospecting today to stay on pace for target",
   "Drafted 4 follow-up emails — please review and send",
   "Produced 5 call prep sheets",
@@ -109,6 +111,25 @@ function ChatPanel() {
 
 // --- Bullet list ---------------------------------------------------------------
 function OpusBullets() {
+  // Fetch real Opus feed data
+  const { data: opusFeedData } = useQuery({
+    queryKey: ['/api/insights/opus-feed'],
+    queryFn: async () => {
+      const response = await fetch('/api/insights/opus-feed');
+      if (!response.ok) throw new Error('Failed to fetch opus feed');
+      return response.json();
+    },
+    staleTime: 300_000, // 5 minutes
+  });
+
+  // Use mock data only when USE_MOCKS is true, otherwise use real data
+  const bullets = CONFIG.USE_MOCKS ? mockBullets : (opusFeedData?.items || []);
+
+  // If no bullets to show, render nothing (as per spec)
+  if (bullets.length === 0) {
+    return null;
+  }
+
   return (
     <div className="mt-6 space-y-3">
       <div className="text-white/60 text-sm italic">Opus → Taylor</div>

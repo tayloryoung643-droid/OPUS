@@ -6,7 +6,7 @@ export default function OpusOrb({ onOpen }: { onOpen: () => void }) {
       <button
         aria-label="Open AI Sales Coach"
         onClick={onOpen}
-        className="relative aspect-square w-[160px] rounded-full border-2 border-transparent bg-gradient-to-tr from-cyan-400 to-purple-500 p-1 transition-transform hover:scale-105"
+        className="relative aspect-square w-[160px] rounded-full border-2 border-transparent bg-gradient-to-tr from-cyan-400 to-purple-500 p-1 transition-transform hover:scale-105 opus-orb"
         data-testid="button-opus-orb"
       >
         {/* Pulsing glow halo */}

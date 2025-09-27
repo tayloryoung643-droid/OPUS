@@ -36,6 +36,9 @@ export default function IntegrationsSettings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/integrations/status"] });
+      // Invalidate calendar queries to refresh events after connection
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar/today"] });
       toast({
         title: "Google Calendar",
         description: "Integration updated successfully",

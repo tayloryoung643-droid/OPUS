@@ -190,10 +190,10 @@ export default function OpusAgendaMock() {
   const processedAgenda = useMemo(() => {
     if (CONFIG.USE_MOCKS) return mockAgenda;
 
-    if (!calendarEvents?.events) return { upcoming: [], previous: [] };
+    if (!calendarEvents || !Array.isArray(calendarEvents)) return { upcoming: [], previous: [] };
 
     const now = new Date();
-    const events = calendarEvents.events.map(event => ({
+    const events = calendarEvents.map(event => ({
       id: event.id,
       title: event.summary || 'Untitled Event',
       company: event.location || '',

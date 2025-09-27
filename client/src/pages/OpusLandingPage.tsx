@@ -11,12 +11,9 @@ export default function OpusLandingPage() {
 
   // Fetch today's calendar events
   const { data: todaysEvents, isLoading: eventsLoading } = useQuery({
-    queryKey: ['/api/calendar/events', 'today'],
+    queryKey: ['/api/calendar/today'],
     queryFn: async () => {
-      const today = new Date();
-      const timeMin = new Date(today.setHours(0, 0, 0, 0)).toISOString();
-      const timeMax = new Date(today.setHours(23, 59, 59, 999)).toISOString();
-      const response = await fetch(`/api/calendar/events?timeMin=${timeMin}&timeMax=${timeMax}`);
+      const response = await fetch('/api/calendar/today');
       if (!response.ok) throw new Error('Failed to fetch calendar events');
       return response.json();
     },
@@ -42,7 +39,7 @@ export default function OpusLandingPage() {
   ] : [];
 
   // Process real events into agenda format
-  const agenda = CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents?.events || []).map(event => ({
+  const agenda = CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents || []).map(event => ({
     time: new Date(event.start).toLocaleTimeString('en-US', { 
       hour: 'numeric', 
       minute: '2-digit',

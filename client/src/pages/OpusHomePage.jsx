@@ -1,17 +1,20 @@
 import React from "react";
 
 export default function OpusHomePage() {
-  // Button handlers - placeholder implementations
+  // Button handlers - integrated with existing auth system
   const handleSignIn = () => {
-    /* TODO: wire to existing Google OAuth */
+    // Redirect to Google Sign-in via Replit Auth
+    window.location.href = "/api/login";
   };
   
   const handleSeeDemo = () => {
-    /* TODO: route to /demo if exists */
+    // TODO: route to /demo if exists or implement demo flow
+    console.log("See Demo clicked");
   };
   
   const handleGetStarted = () => {
-    /* TODO: route to /signup or invoke OAuth */
+    // Same as sign in for now
+    window.location.href = "/api/login";
   };
 
   return (
@@ -29,12 +32,14 @@ export default function OpusHomePage() {
           <button 
             onClick={handleSignIn}
             className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-semibold shadow-lg"
+            data-testid="button-signin-google"
           >
             Sign in with Google
           </button>
           <button 
             onClick={handleSeeDemo}
             className="border border-purple-500 text-purple-400 hover:bg-purple-900 px-6 py-3 rounded-xl font-semibold"
+            data-testid="button-see-demo"
           >
             See Demo
           </button>
@@ -85,6 +90,7 @@ export default function OpusHomePage() {
         <button 
           onClick={handleGetStarted}
           className="bg-purple-600 hover:bg-purple-700 text-white px-8 py-4 rounded-xl font-semibold text-lg shadow-lg"
+          data-testid="button-get-started"
         >
           Get Started Free
         </button>

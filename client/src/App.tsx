@@ -4,51 +4,54 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SalesCoachProvider } from "@/contexts/SalesCoachContext";
-import { Switch, Route, useLocation } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
+import { Switch, Route } from "wouter";
 import OpusAgenda from "@/pages/OpusAgenda";
-import Landing from "@/pages/landing";
 import Settings from "@/pages/settings";
-import NotFound from "@/pages/not-found";
 import LegacyApp from "./LegacyApp";
 import OpusOrb from "@/components/OpusOrb";
 import SalesCoachModal from "@/components/SalesCoachModal";
-import OpusHomePage from "@/components/OpusHomePage";
+import OpusHomePage from "@/pages/OpusHomePage";
+import { ProtectedRoute, PublicGate } from "@/routes/guards";
 
 const ENABLE_OPUS = import.meta.env.VITE_ENABLE_OPUS_UI === "true";
-
-function OpusMainDashboard() {
-  const { isAuthenticated, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
-
-  // Redirect unauthenticated users to landing
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-black via-indigo-900/80 to-violet-900/60 text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
-          <p>Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    setLocation("/");
-    return null;
-  }
-
-  return <OpusAgenda />;
-}
 
 function OpusRouter() {
   return (
     <Switch>
-      <Route path="/" component={Landing} />
-      <Route path="/opus" component={OpusHomePage} />
-      <Route path="/dashboard" component={OpusMainDashboard} />
-      <Route path="/settings" component={Settings} />
-      <Route component={NotFound} />
+      {/* Public landing: logged-in users get bounced to /dashboard */}
+      <Route path="/">
+        <PublicGate>
+          <OpusHomePage />
+        </PublicGate>
+      </Route>
+
+      {/* Optional: logged-in users shouldn't see /login */}
+      <Route path="/login">
+        <PublicGate>
+          <OpusHomePage />
+        </PublicGate>
+      </Route>
+
+      {/* Auth-only dashboard (Agenda) */}
+      <Route path="/dashboard">
+        <ProtectedRoute>
+          <OpusAgenda />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Auth-only settings */}
+      <Route path="/settings">
+        <ProtectedRoute>
+          <Settings />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Fallback: anything unknown -> home gate (which will auto-redirect if authed) */}
+      <Route path="/:rest*">
+        <PublicGate>
+          <OpusHomePage />
+        </PublicGate>
+      </Route>
     </Switch>
   );
 }

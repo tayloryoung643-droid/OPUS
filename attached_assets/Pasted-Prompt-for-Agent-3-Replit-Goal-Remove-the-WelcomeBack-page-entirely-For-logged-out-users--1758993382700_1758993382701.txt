@@ -1,0 +1,163 @@
+Prompt for Agent 3 (Replit):
+
+Goal:
+
+Remove the “WelcomeBack” page entirely.
+
+For logged-out users, / should render OpusHomePage.jsx.
+
+For authenticated users, / should immediately redirect to /dashboard (Agenda).
+
+Authenticated users landing on /login should also be bounced to /dashboard.
+
+Unauthenticated users trying /dashboard should be redirected to / (OpusHomePage).
+
+Project context: React + Vite + React Router v6+, Node/Express backend with /api/auth/me for current user. Keep existing styles/components, and do not change unrelated UI.
+
+Make these edits:
+
+Remove WelcomeBack page + imports
+
+Delete file (if present):
+
+Front End/momentum-ai/src/pages/WelcomeBack.{tsx,jsx}
+
+Remove any WelcomeBack imports/usages from router files (App.tsx, routes.tsx, or wherever routes live).
+
+Ensure OpusHomePage is available
+
+Confirm Front End/momentum-ai/src/pages/OpusHomePage.jsx exists and has a default export. If it’s under a different path, standardize it to /src/pages/OpusHomePage.jsx. Do not change its design.
+
+Auth state helper (minimal)
+
+If there is already an AuthContext/useAuth, use it. Otherwise create a lightweight auth hook at src/hooks/useAuth.ts that pings /api/auth/me once and caches state:
+
+// Front End/momentum-ai/src/hooks/useAuth.ts
+import { useEffect, useState } from "react";
+
+export function useAuth() {
+  const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me", { credentials: "include" });
+        if (!mounted) return;
+        setIsAuthenticated(res.ok);
+      } catch {
+        if (!mounted) return;
+        setIsAuthenticated(false);
+      } finally {
+        if (!mounted) return;
+        setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  return { loading, isAuthenticated };
+}
+
+
+ProtectedRoute + PublicGate components
+
+Add two tiny wrappers at src/routes/guards.tsx:
+
+// Front End/momentum-ai/src/routes/guards.tsx
+import { Navigate } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth";
+
+export function ProtectedRoute({ children }: { children: JSX.Element }) {
+  const { loading, isAuthenticated } = useAuth();
+  if (loading) return null; // or a spinner
+  return isAuthenticated ? children : <Navigate to="/" replace />;
+}
+
+export function PublicGate({ children }: { children: JSX.Element }) {
+  // For routes that should be inaccessible when logged in (/, /login)
+  const { loading, isAuthenticated } = useAuth();
+  if (loading) return null;
+  return isAuthenticated ? <Navigate to="/dashboard" replace /> : children;
+}
+
+
+Router updates
+
+In Front End/momentum-ai/src/App.tsx (or wherever the <Routes> live), replace the routes with this structure (adjust imports to actual component locations — Agenda can be your Dashboard/Agenda component):
+
+// Front End/momentum-ai/src/App.tsx
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import OpusHomePage from "./pages/OpusHomePage";
+import Agenda from "./pages/Agenda"; // your Dashboard (Agenda) page
+import Login from "./pages/Login";   // if you have a separate login
+import { ProtectedRoute, PublicGate } from "./routes/guards";
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Public landing: logged-in users get bounced to /dashboard */}
+        <Route
+          path="/"
+          element={
+            <PublicGate>
+              <OpusHomePage />
+            </PublicGate>
+          }
+        />
+
+        {/* Optional: logged-in users shouldn't see /login */}
+        <Route
+          path="/login"
+          element={
+            <PublicGate>
+              <Login />
+            </PublicGate>
+          }
+        />
+
+        {/* Auth-only dashboard (Agenda) */}
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Agenda />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Fallback: anything unknown -> home gate (which will auto-redirect if authed) */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+
+Clean up any lingering references
+
+Search the repo for "WelcomeBack" and remove leftover imports/routes/links.
+
+If CI or tests refer to WelcomeBack, update them.
+
+Do not break SPA behavior on Vercel
+
+Keep the Vercel SPA fallback config as-is (all routes to index.html). No changes needed.
+
+Acceptance criteria (must pass):
+
+Visiting / while logged out shows OpusHomePage (no flicker to any “welcome back” view).
+
+Visiting / while logged in immediately redirects to /dashboard.
+
+Visiting /login while logged in immediately redirects to /dashboard.
+
+Visiting /dashboard while logged out redirects to /.
+
+No WelcomeBack component, route, or import remains in the codebase.
+
+Existing styles/components are untouched except for routing.
+
+Please implement exactly as above and confirm with a quick route test matrix.

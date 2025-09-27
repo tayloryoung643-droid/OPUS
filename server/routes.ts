@@ -75,7 +75,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Integration routes for Outlook
-  app.get("/api/integrations/outlook/setup", isAuthenticated, async (req, res) => {
+  app.get("/api/integrations/outlook/setup", isAuthenticatedOrGuest, async (req, res) => {
     try {
       // For now, we'll show a coming soon message for Outlook
       // This would normally redirect to the Outlook OAuth flow
@@ -89,7 +89,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/outlook/status", isAuthenticated, async (req, res) => {
+  app.get("/api/integrations/outlook/status", isAuthenticatedOrGuest, async (req, res) => {
     try {
       // For now, always return not connected
       res.json({ 
@@ -102,7 +102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/outlook", isAuthenticated, async (req, res) => {
+  app.delete("/api/integrations/outlook", isAuthenticatedOrGuest, async (req, res) => {
     try {
       // For now, just return success
       res.json({ 
@@ -116,7 +116,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Google Calendar and Gmail integration routes
-  app.get("/api/integrations/google/auth", isAuthenticated, async (req, res) => {
+  app.get("/api/integrations/google/auth", isAuthenticatedOrGuest, async (req, res) => {
     try {
       if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
         return res.status(501).json({
@@ -182,7 +182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/google/status", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/google/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const googleIntegration = await storage.getGoogleIntegration(userId);
@@ -199,7 +199,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/google", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/integrations/google", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       await storage.deleteGoogleIntegration(userId);
@@ -215,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Salesforce CRM integration routes
-  app.get("/api/integrations/salesforce/auth", isAuthenticated, async (req, res) => {
+  app.get("/api/integrations/salesforce/auth", isAuthenticatedOrGuest, async (req, res) => {
     try {
       if (!process.env.SALESFORCE_CLIENT_ID || !process.env.SALESFORCE_CLIENT_SECRET) {
         return res.status(501).json({
@@ -294,7 +294,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/salesforce/status", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const salesforceIntegration = await storage.getSalesforceIntegration(userId);
@@ -312,7 +312,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/salesforce", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/integrations/salesforce", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       await storage.deleteSalesforceIntegration(userId);
@@ -328,7 +328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Salesforce CRM data routes
-  app.get("/api/integrations/salesforce/leads", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/leads", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');
@@ -341,7 +341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/salesforce/opportunities", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/opportunities", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');
@@ -354,7 +354,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/salesforce/contacts", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/contacts", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');
@@ -368,7 +368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Google Calendar data routes
-  app.get("/api/calendar/events", isAuthenticated, async (req: any, res) => {
+  app.get("/api/calendar/events", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { googleCalendarService } = await import('./services/googleCalendar');
@@ -381,7 +381,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/calendar/today", isAuthenticated, async (req: any, res) => {
+  app.get("/api/calendar/today", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { googleCalendarService } = await import('./services/googleCalendar');
@@ -394,7 +394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/calendar/events/:eventId/ensure-call", isAuthenticated, async (req: any, res) => {
+  app.post("/api/calendar/events/:eventId/ensure-call", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { eventId } = req.params;
@@ -1098,7 +1098,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
 
   // Sales Coach routes
   // Create a new coach session
-  app.post("/api/coach/sessions", isAuthenticated, async (req: any, res) => {
+  app.post("/api/coach/sessions", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionData = insertCoachSessionSchema.parse({
@@ -1120,7 +1120,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Get a specific coach session
-  app.get("/api/coach/sessions/:id", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/sessions/:id", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1143,7 +1143,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Update a coach session (e.g., change status, end session)
-  app.patch("/api/coach/sessions/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/coach/sessions/:id", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1173,7 +1173,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // End a coach session (convenience endpoint)
-  app.post("/api/coach/sessions/:id/end", isAuthenticated, async (req: any, res) => {
+  app.post("/api/coach/sessions/:id/end", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1202,7 +1202,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Get transcripts for a session
-  app.get("/api/coach/sessions/:id/transcripts", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/sessions/:id/transcripts", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1226,7 +1226,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Get suggestions for a session
-  app.get("/api/coach/sessions/:id/suggestions", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/sessions/:id/suggestions", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1250,7 +1250,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Get or create session for a specific event
-  app.get("/api/coach/sessions/event/:eventId", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/sessions/event/:eventId", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const eventId = req.params.eventId;
@@ -1264,7 +1264,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // WebSocket status endpoint
-  app.get("/api/coach/ws/status", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/ws/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       // This will be available after the server is created
       res.json({
@@ -1383,7 +1383,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Enhanced Methodology-Aware Call Prep Generation
-  app.post("/api/calls/:id/generate-enhanced-prep", isAuthenticated, async (req: any, res) => {
+  app.post("/api/calls/:id/generate-enhanced-prep", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const callId = req.params.id;
       const userId = req.user.claims.sub;

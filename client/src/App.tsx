@@ -9,6 +9,7 @@ import Settings from "@/pages/settings";
 import LegacyApp from "./LegacyApp";
 import OpusHomePage from "@/pages/OpusHomePage";
 import OpusLandingPage from "@/pages/OpusLandingPage";
+import OpusAgendaMock from "@/features/agenda/OpusAgendaMock";
 import { ProtectedRoute, PublicGate } from "@/routes/guards";
 
 const ENABLE_OPUS = import.meta.env.VITE_ENABLE_OPUS_UI === "true";
@@ -52,6 +53,13 @@ function OpusRouter() {
       <Route path="/app/overview">
         <ProtectedRoute>
           <OpusLandingPage />
+        </ProtectedRoute>
+      </Route>
+
+      {/* Auth-only agenda */}
+      <Route path="/agenda">
+        <ProtectedRoute>
+          <OpusAgendaMock />
         </ProtectedRoute>
       </Route>
 

@@ -39,7 +39,7 @@ export function PublicGate({ children }: { children: JSX.Element }) {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      setLocation("/app/overview");
+      setLocation("/agenda");
     }
   }, [isLoading, isAuthenticated, setLocation]);
 

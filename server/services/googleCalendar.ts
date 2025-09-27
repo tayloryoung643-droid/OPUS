@@ -54,9 +54,22 @@ export class GoogleCalendarService {
         orderBy: 'startTime',
       });
 
-      return (response.data.items || [])
-        .filter(event => !!event?.id)
-        .map(event => this.mapGoogleEvent(event));
+      const events = (response.data.items || [])
+        .filter(event => !!event?.id);
+      
+      console.log('DEBUG getCalendarEvents - Total events found:', events.length);
+      events.forEach((event, i) => {
+        console.log(`DEBUG All Events ${i}:`, {
+          id: event.id,
+          summary: event.summary,
+          startDateTime: event.start?.dateTime,
+          startDate: event.start?.date,
+          endDateTime: event.end?.dateTime,
+          endDate: event.end?.date
+        });
+      });
+
+      return events.map(event => this.mapGoogleEvent(event));
 
     } catch (error) {
       console.error('Error fetching calendar events:', error);

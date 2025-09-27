@@ -2,7 +2,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink } from "lucide-react";
+import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -12,6 +12,10 @@ export default function Settings() {
   const { user } = useAuth();
   const typedUser = user as User | undefined;
   const [connectingId, setConnectingId] = useState<string | null>(null);
+
+  const handleLogout = () => {
+    window.location.href = "/api/logout";
+  };
 
   // Fetch integration statuses
   const { data: outlookStatus, refetch: refetchOutlook } = useQuery({
@@ -217,6 +221,16 @@ export default function Settings() {
                 : typedUser?.email
               }
             </span>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleLogout} 
+              className="flex items-center space-x-2" 
+              data-testid="button-logout"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
+            </Button>
           </div>
         </div>
       </nav>

@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { User, Upload } from "lucide-react";
+import { User, Upload, LogOut } from "lucide-react";
 
 export default function ProfileSettings() {
   const { user } = useAuth();
@@ -11,6 +11,10 @@ export default function ProfileSettings() {
   const email = (user as any)?.claims?.email || (user as any)?.email || "";
   const displayName = firstName && lastName ? `${firstName} ${lastName}` : firstName || "User";
   const avatarUrl = (user as any)?.claims?.picture || (user as any)?.avatar;
+
+  const handleLogout = () => {
+    window.location.href = "/api/logout";
+  };
 
   return (
     <div className="space-y-6">
@@ -55,6 +59,22 @@ export default function ProfileSettings() {
         
         <div className="text-sm text-white/50">
           Profile information is synced from your Google account.
+        </div>
+      </div>
+
+      {/* Account Actions */}
+      <div className="space-y-4 pt-4 border-t border-white/10">
+        <div>
+          <label className="block text-sm font-medium text-white/70 mb-3">Account Actions</label>
+          <Button 
+            variant="outline" 
+            onClick={handleLogout}
+            className="border-red-500/50 hover:bg-red-500/10 text-red-400 hover:text-red-300"
+            data-testid="button-logout"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
+          </Button>
         </div>
       </div>
     </div>

@@ -227,8 +227,14 @@ export default function OpusAgendaMock() {
       originalEvent: event
     }));
 
-    const upcoming = events.filter(event => new Date(event.originalEvent.start) >= now);
-    const previous = events.filter(event => new Date(event.originalEvent.start) < now);
+    const upcoming = events.filter(event => {
+      const startTime = event.originalEvent.start?.dateTime || event.originalEvent.start?.date;
+      return startTime && new Date(startTime) >= now;
+    });
+    const previous = events.filter(event => {
+      const startTime = event.originalEvent.start?.dateTime || event.originalEvent.start?.date;
+      return startTime && new Date(startTime) < now;
+    });
 
     return { upcoming, previous };
   }, [calendarEvents, mockAgenda]);

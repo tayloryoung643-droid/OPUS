@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Brain } from "lucide-react";
+import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Zap } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { safeFmt } from "@/utils/date";
 import ExecutiveSummary from "@/components/call-prep/executive-summary";
 import CrmHistory from "@/components/call-prep/crm-history";
 import CompetitiveLandscape from "@/components/call-prep/competitive-landscape";
@@ -164,16 +165,7 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
   const { toast } = useToast();
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    return safeFmt(dateString, "EEEE, MMMM d, yyyy 'at' h:mm a");
   };
 
   // Fetch call details when event is selected
@@ -456,7 +448,7 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
                     className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                     data-testid="button-enhance-prep"
                   >
-                    <Brain className="h-4 w-4" />
+                    <Zap className="h-4 w-4" />
                     <span>{generateEnhancedPrepMutation.isPending ? "Enhancing..." : "Enhance with Methodologies"}</span>
                   </Button>
                 </>

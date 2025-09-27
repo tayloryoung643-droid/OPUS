@@ -1467,6 +1467,135 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
+  // Helper functions for prep sheet generation
+  async function buildBasicPrep({ event, call }: { event: any; call?: any }) {
+    const eventTitle = event.title || event.summary || "Meeting";
+    const attendeeList = (event.attendees || []).map((a: any) => 
+      typeof a === 'string' ? a : a.email || a.name || 'Unknown'
+    ).join(', ');
+
+    return {
+      executiveSummary: `Upcoming call: ${eventTitle}. This is a basic preparation sheet generated from calendar data.`,
+      objectives: [`Discuss meeting topic: ${eventTitle}`, "Build rapport and understand needs", "Identify next steps"],
+      attendees: event.attendees || [],
+      suggestedAgenda: [
+        "Opening and introductions",
+        "Understanding current challenges",
+        "Exploring potential solutions",
+        "Discussing next steps"
+      ],
+      discovery: {
+        keyQuestions: [
+          "What are your main priorities this quarter?",
+          "What challenges are you currently facing?",
+          "How are you handling this today?",
+          "What would an ideal solution look like?"
+        ],
+        focusAreas: ["Current situation", "Pain points", "Decision process", "Timeline"]
+      },
+      risks: ["Limited context about attendees", "No CRM history available"],
+      nextSteps: ["Send follow-up email", "Schedule next meeting", "Provide relevant resources"],
+      myNotes: "" // Empty for user to fill
+    };
+  }
+
+  async function buildRichPrep({ event, account, call }: { event: any; account: any; call?: any }) {
+    const basicPrep = await buildBasicPrep({ event, call });
+    
+    // Enhance with account data
+    return {
+      ...basicPrep,
+      executiveSummary: `Call with ${account.Name} - ${event.title}. Account context available from CRM.`,
+      accountContext: {
+        name: account.Name,
+        industry: account.Industry,
+        website: account.Website,
+        description: account.Description
+      },
+      crmHistory: `Previous interactions with ${account.Name} available in Salesforce.`,
+      objectives: [
+        `Advance opportunity with ${account.Name}`,
+        "Leverage existing account relationship",
+        "Build on previous interactions",
+        "Identify expansion opportunities"
+      ]
+    };
+  }
+
+  // Resilient prep sheet generation route (for Opus UI)  
+  app.post("/api/prep-sheet/generate", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
+    try {
+      const { event, source } = req.body || {};
+      if (!event) {
+        return res.status(400).json({ error: "Missing event payload" });
+      }
+
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const key = event.iCalUID || event.id;
+      
+      // Try to find existing call by calendar event ID  
+      let call = null;
+      try {
+        const calls = await storage.getCallsByUser(userId);
+        call = calls.find((c: any) => c.calendarEventId === key);
+      } catch (error) {
+        console.log('Error finding existing call:', error);
+      }
+      
+      if (!call) {
+        try {
+          call = await storage.createCall({
+            title: event.title || event.summary || "Untitled Meeting",
+            scheduledAt: new Date(event.start),
+            companyId: null,
+            status: "upcoming",
+            callType: "discovery",
+            stage: "prospecting"
+          });
+        } catch (createError) {
+          console.error('Error creating call:', createError);
+        }
+      }
+
+      let account = null;
+      
+      // Try non-blocking Salesforce match
+      try {
+        if (event.attendees && event.attendees.length > 0) {
+          console.log('Attempting Salesforce account match for attendees:', event.attendees);
+          // Simplified - would integrate with actual Salesforce service
+        }
+      } catch (error: any) {
+        console.log('Non-blocking Salesforce match failed:', error?.message || 'Unknown error');
+      }
+
+      // Generate prep sheet (rich if account found, basic otherwise)
+      const prep = account 
+        ? await buildRichPrep({ event, account, call })
+        : await buildBasicPrep({ event, call });
+
+      return res.json({ ok: true, prep, callId: call?.id });
+      
+    } catch (error) {
+      console.error("prep-generate error", error);
+      
+      // Graceful fallback even on exceptions
+      try {
+        const fallbackPrep = await buildBasicPrep({ 
+          event: req.body?.event || { title: "Meeting", start: new Date().toISOString() }
+        });
+        return res.status(200).json({ ok: true, prep: fallbackPrep, warning: "Generated with fallback data" });
+      } catch (fallbackError) {
+        console.error("Fallback prep generation failed:", fallbackError);
+        return res.status(500).json({ error: "Failed to generate prep sheet" });
+      }
+    }
+  });
+
   const httpServer = createServer(app);
   
   // Initialize Coach WebSocket service

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Brain } from "lucide-react";
+import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Zap } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/ui/navigation";
@@ -513,7 +513,7 @@ export default function CallPrep() {
                       className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                       data-testid="button-enhance-prep"
                     >
-                      <Brain className="h-4 w-4" />
+                      <Zap className="h-4 w-4" />
                       <span>{generateEnhancedPrepMutation.isPending ? "Enhancing..." : "Enhance with Methodologies"}</span>
                     </Button>
                   </>
@@ -664,7 +664,7 @@ export default function CallPrep() {
           {callPrep?.methodologyData && (
             <div className="mb-8">
               <div className="flex items-center space-x-2 mb-6">
-                <Brain className="h-6 w-6 text-purple-600" />
+                <Zap className="h-6 w-6 text-purple-600" />
                 <h2 className="text-2xl font-bold text-foreground">Multi-Methodology Sales Strategy</h2>
                 <Badge variant="default" className="bg-gradient-to-r from-purple-600 to-blue-600">
                   Enhanced

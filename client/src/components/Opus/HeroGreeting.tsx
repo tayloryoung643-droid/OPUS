@@ -1,12 +1,12 @@
 export default function OpusHeroGreeting({ firstName }: { firstName: string }) {
   return (
-    <section className="my-6 rounded-2xl border border-white/5 bg-slate-900/40 p-6 backdrop-blur shadow-card">
+    <section className="my-6 rounded-2xl bg-white/5 hover:bg-white/8 transition p-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight">
+          <h1 className="text-6xl leading-[1.05] font-bold text-white">
             Good morning,<br />{firstName}
           </h1>
-          <p className="mt-3 text-slate-300/80">
+          <p className="mt-3 text-white/70">
             Review your agenda and jump into prep when you're ready.
           </p>
         </div>

@@ -1,0 +1,175 @@
+Agent 3 — “Opus Parity + Orb + Settings + Reliable Prep”
+
+Scope guard: Only touch shell UI, coach components, Agenda click handler, and /api/prep-sheet/generate. Do not modify auth, env, or unrelated logic. Maintain VITE_ENABLE_OPUS_UI flag behavior.
+
+Goals
+
+Match the provided mock exactly: dark gradient, no silver outlines/glows, modern cards/typography.
+
+Replace current small coach circle + brain icon with one persistent Opus Orb (breathing ring, dark center) anchored top-right across all views.
+
+Top-right Settings opens a modal with Profile and Integrations tabs.
+
+Clicking any calendar event always generates/loads a prep sheet (graceful fallback if SF match fails).
+
+Fix all “Invalid Date” renderings.
+
+Frontend tasks
+
+A. Global theme (visual parity)
+
+In the root layout (e.g., App.tsx or main page shell), set:
+
+Container classes: min-h-screen bg-gradient-to-br from-[#071222] via-[#0b1530] to-[#0d1738] text-white antialiased.
+
+Replace card styles app-wide:
+
+Cards: rounded-2xl bg-white/5 hover:bg-white/8 transition p-4 (no borders, no rings, no outer glow shadows).
+
+Headings: main greeting text-6xl leading-[1.05] font-bold text-white; secondary copy text-white/70.
+
+Remove any ring-*, border, heavy shadow-* outlines used for the old look.
+
+B. Persistent Opus Orb
+
+Add components/OpusOrb.tsx:
+
+import { motion } from "framer-motion";
+export default function OpusOrb({ onOpen }: { onOpen: () => void }) {
+  return (
+    <button
+      aria-label="Open AI Sales Coach"
+      onClick={onOpen}
+      className="fixed right-8 top-24 z-40 aspect-square w-[132px] rounded-full
+                 bg-[radial-gradient(closest-side,rgba(1,8,20,0.9),rgba(1,8,20,0.6)_70%,transparent_71%),conic-gradient(from_0deg,rgba(56,189,248,0.9),rgba(168,85,247,0.9))]"
+    >
+      <motion.span
+        className="absolute inset-0 rounded-full"
+        initial={{ boxShadow: "0 0 0 0 rgba(56,189,248,0.25)" }}
+        animate={{ boxShadow: ["0 0 0 0 rgba(56,189,248,0.25)","0 0 0 16px rgba(56,189,248,0)"] }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+      />
+      <span className="absolute inset-[18%] rounded-full bg-[#0a1224]/90" />
+    </button>
+  );
+}
+
+
+Mount once in the root (outside route switches) so it persists across views, e.g. in App.tsx:
+
+const [coachOpen, setCoachOpen] = useState(false);
+<OpusOrb onOpen={()=>setCoachOpen(true)} />
+{coachOpen && <CoachPanel onClose={()=>setCoachOpen(false)} />}
+
+
+Remove the existing small coach circle and any “brain” icon components/exports/usages.
+
+C. Settings (top-right)
+
+In TopNav.tsx, the gear opens a modal with two tabs: Profile and Integrations.
+
+Modal shell: center, rounded-2xl bg-[#0f1b34] p-6 text-white, tab buttons with active state.
+
+ProfileSettings.tsx: show/display name + email, allow avatar upload later (stub).
+
+IntegrationsSettings.tsx: show Google + Salesforce statuses and connect/disconnect buttons calling existing routes.
+
+D. Agenda click → prep sheet
+
+In the Agenda list item click handler (e.g., AgendaList.tsx), POST the full event payload to /api/prep-sheet/generate (not just an id):
+
+await api.post('/api/prep-sheet/generate', {
+  source: 'google-calendar',
+  event: {
+    id: ev.id,
+    iCalUID: ev.iCalUID,
+    title: ev.summary,
+    description: ev.description,
+    start: ev.start?.dateTime || ev.start?.date,
+    end: ev.end?.dateTime || ev.end?.date,
+    attendees: (ev.attendees||[]).map(a=>({ email:a.email, name:a.displayName }))
+  }
+});
+
+
+Render the returned prep in PrepSheetView without full-page navigation.
+
+E. Date safety (eliminate “Invalid Date”)
+
+Create a small util (e.g., utils/date.ts):
+
+import { parseISO, format } from "date-fns";
+export const safeFmt = (s?: string, f="EEE MMM d, h:mma")=>{
+  if (!s) return "—";
+  try { const d = parseISO(s); return isNaN(d.getTime()) ? "—" : format(d,f); }
+  catch { return "—"; }
+};
+
+
+Replace all direct new Date() formatting in Agenda/Prep Sheet with safeFmt(...).
+
+Backend tasks
+
+F. /api/prep-sheet/generate — resilient by design
+
+Behavior: upsert a lightweight Call by iCalUID || id, try non-blocking Salesforce match, always return a prep sheet (fallback “Basic Prep” when no SF account).
+
+Implement (or update) handler:
+
+export default async function handler(req, res) {
+  try {
+    const { event, source } = req.body || {};
+    if (!event) return res.status(400).json({ error: "Missing event payload" });
+
+    const key = event.iCalUID || event.id;
+    let call = await Call.findOne({ key, userId: req.user.id });
+    if (!call) {
+      call = await Call.create({
+        key, userId: req.user.id, title: event.title, start: event.start, end: event.end,
+        attendees: event.attendees || [], source
+      });
+    }
+
+    let account = null;
+    try { account = await salesforce.tryMatchAccount(event.attendees); } catch {}
+
+    const prep = account
+      ? await buildRichPrep({ event, account })
+      : await buildBasicPrep({ event });
+
+    return res.json({ ok: true, prep, callId: call.id });
+  } catch (e) {
+    console.error("prep-generate error", e);
+    // Graceful fallback even on exceptions:
+    const fallback = await buildBasicPrep({ event: req.body?.event });
+    return res.status(200).json({ ok: true, prep: fallback });
+  }
+}
+
+
+buildBasicPrep({event}) must include: Objectives (auto-filled from title/desc), Attendees (names/emails), Suggested Agenda, Discovery (MEDDIC/Sandler mix), Risks, Next Steps, and My Notes (empty—but front end persists edits).
+
+Removal / cleanup
+
+Delete/disable the small coach circle component and the “brain” icon usage.
+
+Remove any “silver” borders/glows (border, ring, heavy shadow) from cards/containers.
+
+Acceptance criteria (verify before commit)
+
+UI visually matches the mock: dark gradient, no outlines, cards are soft translucent, greeting text-6xl, insights and agenda style as specified.
+
+A single Opus Orb is visible at top-right on every screen; clicking it opens the coach panel. No other coach/brain icons exist.
+
+Clicking any agenda event returns a prep sheet (never “call not found”). If SF match fails, a Basic Prep renders.
+
+No “Invalid Date” appears anywhere.
+
+Settings gear opens a modal with working Profile and Integrations tabs.
+
+Feature flag still works: VITE_ENABLE_OPUS_UI=true shows new UI; false cleanly reverts.
+
+Non-regression: Do not alter auth flow, environment variables, or unrelated APIs.
+
+Commit message:
+feat(opus): visual parity with mock, persistent Orb, settings modal, resilient prep generation, date safety

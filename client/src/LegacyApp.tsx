@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Switch, Route } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Brain } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import Settings from "@/pages/settings";
@@ -46,7 +46,7 @@ function MainDashboard() {
               className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 flex items-center space-x-2"
               data-testid="button-ai-sales-coach"
             >
-              <Brain className="h-4 w-4" />
+              <Sparkles className="h-4 w-4" />
               <span>AI Sales Coach</span>
             </Button>
           </header>

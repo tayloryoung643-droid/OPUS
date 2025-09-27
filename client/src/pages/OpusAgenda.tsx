@@ -6,7 +6,6 @@ import OpusHeroGreeting from "../components/Opus/HeroGreeting";
 import OpusAgendaList from "../components/Opus/AgendaList";
 import OpusPrepSheet from "../components/Opus/PrepSheet";
 import OpusInsights from "../components/Opus/Insights";
-import OpusPartnerCircle from "../components/Opus/PartnerCircle";
 
 export type CalendarEvent = {
   id: string;
@@ -25,9 +24,10 @@ export default function OpusAgenda() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
   const onAgendaTabClick = () => setViewMode("AGENDA");
-  const onSelectEvent = (ev: CalendarEvent) => {
+  const onSelectEvent = (ev: CalendarEvent, prepData?: any) => {
     setViewMode("AGENDA");
     setSelectedEvent(ev);
+    // TODO: Use prepData to enhance the prep sheet when available
   };
 
   const firstName = useMemo(() => {
@@ -40,7 +40,7 @@ export default function OpusAgenda() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100">
+    <div className="min-h-screen bg-gradient-to-br from-[#071222] via-[#0b1530] to-[#0d1738] text-white antialiased">
       <div className="mx-auto max-w-7xl px-4 md:px-6">
         <OpusTopNav active="Agenda" onAgendaClick={onAgendaTabClick} />
 
@@ -59,16 +59,15 @@ export default function OpusAgenda() {
 
           {/* Center: Prep sheet when an event is selected, else placeholder */}
           <main className="md:col-span-6">
-            <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-4 backdrop-blur shadow-card">
+            <div className="rounded-2xl bg-white/5 hover:bg-white/8 transition p-4">
               <OpusPrepSheet event={selectedEvent} />
             </div>
           </main>
 
-          {/* Right: Insights + Partner circle (always visible) */}
+          {/* Right: Insights (always visible) */}
           <aside className="md:col-span-2">
             <div className="sticky top-4 space-y-4">
               <OpusInsights />
-              <OpusPartnerCircle />
             </div>
           </aside>
         </div>

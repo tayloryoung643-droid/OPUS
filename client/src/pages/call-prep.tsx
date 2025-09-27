@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle } from "lucide-react";
+import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Brain } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/ui/navigation";
@@ -17,6 +17,12 @@ import CompetitiveLandscape from "@/components/call-prep/competitive-landscape";
 import KeyStakeholders from "@/components/call-prep/key-stakeholders";
 import RecentNews from "@/components/call-prep/recent-news";
 import SuggestedOpportunities from "@/components/call-prep/suggested-opportunities";
+import SPINQuestions from "@/components/call-prep/methodology/SPINQuestions";
+import MEDDICChecklist from "@/components/call-prep/methodology/MEDDICChecklist";
+import BANTAssessment from "@/components/call-prep/methodology/BANTAssessment";
+import ChallengerInsights from "@/components/call-prep/methodology/ChallengerInsights";
+import ObjectionHandling from "@/components/call-prep/methodology/ObjectionHandling";
+import MethodologySummary from "@/components/call-prep/methodology/MethodologySummary";
 import { SalesCoachLauncher } from "@/components/coach/SalesCoachLauncher";
 import { SalesCoachPanel } from "@/components/coach/SalesCoachPanel";
 
@@ -63,6 +69,47 @@ interface CallDetails {
     immediateOpportunities?: string[];
     strategicExpansion?: string[];
     isGenerated: boolean;
+    // Enhanced methodology data
+    methodologyData?: {
+      executiveSummary: string;
+      customerProfile: {
+        industryBackground: string;
+        currentChallenges: string[];
+        stakeholders: string[];
+      };
+      spinQuestions: {
+        situation: string[];
+        problem: string[];
+        implication: string[];
+        needPayoff: string[];
+      };
+      meddicChecklist: {
+        metrics: string;
+        economicBuyer: string;
+        decisionCriteria: string;
+        decisionProcess: string;
+        identifiedPain: string;
+        champion: string;
+        competition: string;
+      };
+      bantAssessment: {
+        budget: string;
+        authority: string;
+        need: string;
+        timeline: string;
+      };
+      challengerInsights: string[];
+      solutionAlignment: string;
+      objectionHandling: Array<{
+        objection: string;
+        response: string;
+        methodology: string;
+      }>;
+      callAgenda: string[];
+      nextSteps: string[];
+      methodologySummary: string;
+      contextAnalysis: string;
+    };
   } | null;
 }
 
@@ -299,6 +346,51 @@ export default function CallPrep() {
     },
   });
 
+  // Enhanced methodology-aware prep generation mutation
+  const generateEnhancedPrepMutation = useMutation({
+    mutationFn: async (callId: string) => {
+      const response = await apiRequest('POST', `/api/calls/${callId}/generate-enhanced-prep`);
+      const json = await response.json();
+      return json as { success: boolean; methodologyData: any; message: string };
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Enhanced AI prep generated",
+        description: "Your call preparation now includes multi-methodology sales strategies.",
+      });
+      // Update the call data with methodology information
+      if (resolvedCallId && data.methodologyData) {
+        queryClient.setQueryData(["/api/calls", resolvedCallId], (oldData: any) => {
+          if (oldData && oldData.callPrep) {
+            return {
+              ...oldData,
+              callPrep: {
+                ...oldData.callPrep,
+                methodologyData: data.methodologyData
+              }
+            };
+          } else if (oldData) {
+            return {
+              ...oldData,
+              callPrep: {
+                isGenerated: true,
+                methodologyData: data.methodologyData
+              }
+            };
+          }
+          return oldData;
+        });
+      }
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to generate enhanced preparation: " + (error as Error).message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const combinedError = (ensureCalendarError as Error | null) || (callDetailsError as Error | null);
   const isLoading =
     (isCalendarSelection && (ensuringCalendarCall || !resolvedCallId)) || callDetailsLoading;
@@ -403,16 +495,28 @@ export default function CallPrep() {
                   </Button>
                 )}
                 {callPrep?.isGenerated && (
-                  <Button
-                    onClick={() => resolvedCallId && generatePrepMutation.mutate(resolvedCallId)}
-                    disabled={generatePrepMutation.isPending || !resolvedCallId}
-                    variant="outline"
-                    className="flex items-center space-x-2"
-                    data-testid="button-regenerate-prep"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    <span>{generatePrepMutation.isPending ? "Regenerating..." : "Regenerate Prep"}</span>
-                  </Button>
+                  <>
+                    <Button
+                      onClick={() => resolvedCallId && generatePrepMutation.mutate(resolvedCallId)}
+                      disabled={generatePrepMutation.isPending || !resolvedCallId}
+                      variant="outline"
+                      className="flex items-center space-x-2"
+                      data-testid="button-regenerate-prep"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      <span>{generatePrepMutation.isPending ? "Regenerating..." : "Regenerate Prep"}</span>
+                    </Button>
+                    <Button
+                      onClick={() => resolvedCallId && generateEnhancedPrepMutation.mutate(resolvedCallId)}
+                      disabled={generateEnhancedPrepMutation.isPending || !resolvedCallId}
+                      variant="default"
+                      className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                      data-testid="button-enhance-prep"
+                    >
+                      <Brain className="h-4 w-4" />
+                      <span>{generateEnhancedPrepMutation.isPending ? "Enhancing..." : "Enhance with Methodologies"}</span>
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -554,6 +658,40 @@ export default function CallPrep() {
                 </Button>
               </CardContent>
             </Card>
+          )}
+
+          {/* Multi-Methodology Section */}
+          {callPrep?.methodologyData && (
+            <div className="mb-8">
+              <div className="flex items-center space-x-2 mb-6">
+                <Brain className="h-6 w-6 text-purple-600" />
+                <h2 className="text-2xl font-bold text-foreground">Multi-Methodology Sales Strategy</h2>
+                <Badge variant="default" className="bg-gradient-to-r from-purple-600 to-blue-600">
+                  Enhanced
+                </Badge>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <MethodologySummary 
+                  methodologySummary={callPrep.methodologyData.methodologySummary}
+                  contextAnalysis={callPrep.methodologyData.contextAnalysis}
+                  callType={call.callType}
+                  dealStage={call.stage}
+                  complexity="medium"
+                />
+                <BANTAssessment bantAssessment={callPrep.methodologyData.bantAssessment} />
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <SPINQuestions spinQuestions={callPrep.methodologyData.spinQuestions} />
+                <MEDDICChecklist meddicChecklist={callPrep.methodologyData.meddicChecklist} />
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                <ChallengerInsights challengerInsights={callPrep.methodologyData.challengerInsights} />
+                <ObjectionHandling objectionHandling={callPrep.methodologyData.objectionHandling} />
+              </div>
+            </div>
           )}
 
           {/* Main Content Grid */}

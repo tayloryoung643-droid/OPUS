@@ -19,17 +19,67 @@ export class GoogleAuthService {
       return;
     }
 
-    // Use proper protocol for redirect URI - match Salesforce implementation
-    const replitDomain = process.env.REPLIT_DOMAINS?.split(',')[0]?.trim() || 'localhost:5000';
-    const isLocalhost = replitDomain.includes('localhost');
-    const protocol = isLocalhost ? 'http' : 'https';
-    this.redirectUri = `${protocol}://${replitDomain}/api/integrations/google/callback`;
-    
+    this.redirectUri = this.resolveRedirectUri();
+
     this.oauth2Client = new OAuth2Client(
       clientId,
       clientSecret,
       this.redirectUri
     );
+  }
+
+  private resolveRedirectUri(): string {
+    const explicitRedirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
+    if (explicitRedirectUri) {
+      return this.ensureCallbackPath(explicitRedirectUri);
+    }
+
+    const normalizedFromEnv = (
+      process.env.REPLIT_PUBLIC_URL ||
+      process.env.REPLIT_DOMAIN ||
+      this.extractFirstDomain(process.env.REPLIT_DOMAINS) ||
+      process.env.PUBLIC_SERVER_URL ||
+      process.env.PUBLIC_URL ||
+      process.env.APP_URL ||
+      process.env.BASE_URL ||
+      ''
+    ).trim();
+
+    if (normalizedFromEnv) {
+      return this.ensureCallbackPath(normalizedFromEnv);
+    }
+
+    const localhostFallback = process.env.HOST?.trim() || 'localhost:5000';
+    const protocol = localhostFallback.includes('localhost') || localhostFallback.includes('127.0.0.1')
+      ? 'http'
+      : 'https';
+    return `${protocol}://${localhostFallback}/api/integrations/google/callback`;
+  }
+
+  private extractFirstDomain(domains?: string): string | undefined {
+    if (!domains) return undefined;
+    const [firstDomain] = domains
+      .split(',')
+      .map((domain) => domain.trim())
+      .filter(Boolean);
+    return firstDomain;
+  }
+
+  private ensureCallbackPath(baseUrl: string): string {
+    let normalizedUrl = baseUrl.trim();
+
+    if (!normalizedUrl.startsWith('http://') && !normalizedUrl.startsWith('https://')) {
+      const prefersHttp = normalizedUrl.includes('localhost') || normalizedUrl.includes('127.0.0.1');
+      normalizedUrl = `${prefersHttp ? 'http' : 'https'}://${normalizedUrl}`;
+    }
+
+    normalizedUrl = normalizedUrl.replace(/\/$/, '');
+
+    if (normalizedUrl.endsWith('/api/integrations/google/callback')) {
+      return normalizedUrl;
+    }
+
+    return `${normalizedUrl}/api/integrations/google/callback`;
   }
 
   // Check if Google OAuth is properly configured

@@ -1295,6 +1295,36 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
+  // Opus chat endpoint - simple coaching suggestions
+  app.post("/api/opus/chat", isAuthenticatedOrGuest, async (req, res) => {
+    try {
+      const { messages } = req.body;
+      const lastMessage = messages?.[messages.length - 1]?.content || "";
+      
+      // Simple coaching suggestions based on message content
+      let suggestion = "Lead with an agenda, confirm success criteria, and secure a time-bound next step.";
+      
+      if (lastMessage.toLowerCase().includes("objection")) {
+        suggestion = "Acknowledge, ask a calibrating question, then reframe with quantified value.";
+      } else if (lastMessage.toLowerCase().includes("follow") || lastMessage.toLowerCase().includes("next")) {
+        suggestion = "Set clear expectations, confirm decision criteria, and schedule a specific next action.";
+      } else if (lastMessage.toLowerCase().includes("price") || lastMessage.toLowerCase().includes("cost")) {
+        suggestion = "Focus on value first, break down ROI, and tie pricing to business outcomes they've shared.";
+      } else if (lastMessage.toLowerCase().includes("competitor") || lastMessage.toLowerCase().includes("competition")) {
+        suggestion = "Acknowledge their research, highlight our unique differentiators, and refocus on their specific needs.";
+      } else if (lastMessage.toLowerCase().includes("decision") || lastMessage.toLowerCase().includes("timeline")) {
+        suggestion = "Understand their decision process, identify all stakeholders, and align on evaluation criteria.";
+      }
+
+      res.json({ 
+        reply: `Got it. Here's a quick suggestion: ${suggestion}` 
+      });
+    } catch (error) {
+      console.error("Error in Opus chat:", error);
+      res.status(500).json({ reply: "Sorry—chat is unavailable right now." });
+    }
+  });
+
   // Create sample data endpoint for demo
   app.post("/api/demo/setup", async (req, res) => {
     try {

@@ -96,12 +96,13 @@ export class GoogleCalendarService {
       });
 
       const today = new Date();
-      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+      // Expand date range to account for all possible timezones (UTC-12 to UTC+14)
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 12, 0, 0, 0);
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 14, 0, 0, 0);
 
       console.log('DEBUG getTodaysEvents - Today:', today.toISOString());
-      console.log('DEBUG getTodaysEvents - StartOfDay:', startOfDay.toISOString());
-      console.log('DEBUG getTodaysEvents - EndOfDay:', endOfDay.toISOString());
+      console.log('DEBUG getTodaysEvents - StartOfDay (timezone-aware):', startOfDay.toISOString());
+      console.log('DEBUG getTodaysEvents - EndOfDay (timezone-aware):', endOfDay.toISOString());
 
       const response = await calendar.events.list({
         calendarId: 'primary',
@@ -111,9 +112,41 @@ export class GoogleCalendarService {
         orderBy: 'startTime',
       });
 
-      console.log('DEBUG getTodaysEvents - Events found:', response.data.items?.length || 0);
-      response.data.items?.forEach((event, i) => {
-        console.log(`DEBUG Event ${i}:`, {
+      console.log('DEBUG getTodaysEvents - Raw events found:', response.data.items?.length || 0);
+      
+      // Filter events to only include those that are actually "today"
+      // Use local system date (not UTC) for comparison
+      const today = new Date();
+      const todayString = today.getFullYear() + '-' + 
+                         String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+                         String(today.getDate()).padStart(2, '0');
+      
+      console.log('DEBUG - Local today date string:', todayString);
+      
+      const filteredEvents = (response.data.items || [])
+        .filter(event => {
+          if (!event?.id) return false;
+          
+          // Handle events with dateTime (specific times) 
+          if (event.start?.dateTime) {
+            // Extract date part from the original timestamp (preserves timezone)
+            const eventDateString = event.start.dateTime.split('T')[0];
+            console.log(`DEBUG - Event ${event.summary} dateTime: ${event.start.dateTime}, extracted date: ${eventDateString}`);
+            return eventDateString === todayString;
+          }
+          
+          // Handle all-day events with date only
+          if (event.start?.date) {
+            console.log(`DEBUG - Event ${event.summary} date: ${event.start.date}`);
+            return event.start.date === todayString;
+          }
+          
+          return false;
+        });
+
+      console.log('DEBUG getTodaysEvents - Events filtered for today:', filteredEvents.length);
+      filteredEvents.forEach((event, i) => {
+        console.log(`DEBUG Today Event ${i}:`, {
           id: event.id,
           summary: event.summary,
           startDateTime: event.start?.dateTime,
@@ -123,9 +156,7 @@ export class GoogleCalendarService {
         });
       });
 
-      return (response.data.items || [])
-        .filter(event => !!event?.id)
-        .map(event => this.mapGoogleEvent(event));
+      return filteredEvents.map(event => this.mapGoogleEvent(event));
 
     } catch (error) {
       console.error('Error fetching today\'s calendar events:', error);

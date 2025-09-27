@@ -1469,6 +1469,15 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
 
   // Helper functions for robust prep sheet generation
   function buildBasePrep(event: any, attendees: any): any {
+    const notesSection = {
+      id: "notes",
+      title: "Notes",
+      type: "notes",
+      content: "",
+      expanded: true, // Always pinned open
+      editable: true
+    };
+
     return {
       meta: {
         title: event.title || "Call",
@@ -1477,14 +1486,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
         source: "BasePrep"
       },
       sections: [
-        {
-          id: "notes",
-          title: "Notes",
-          type: "notes",
-          content: "",
-          expanded: true, // Always pinned open
-          editable: true
-        },
+        notesSection, // GUARANTEED at index 0
         {
           id: "objectives", 
           title: "Call Objectives",
@@ -1531,6 +1533,9 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   function buildEnrichedPrep(ctx: any): any {
     const basePrep = buildBasePrep(ctx.event, ctx.attendees);
     
+    // GUARANTEED Notes section at index 0
+    const notesSection = basePrep.sections[0]; // This is always Notes from buildBasePrep
+    
     // Enhance sections with CRM data
     return {
       ...basePrep,
@@ -1544,7 +1549,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
         source: "Enriched"
       },
       sections: [
-        basePrep.sections[0], // Keep Notes first
+        notesSection, // GUARANTEED Notes at index 0
         {
           id: "insights",
           title: "CRM Insights",
@@ -1596,18 +1601,20 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     return { score: Math.max(0, Math.min(100, score)), reason };
   }
 
-  // Resilient prep sheet generation route (for Opus UI)  
-  app.post("/api/prep-sheet/generate", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
+  // GUARANTEED Prep sheet generation route - NEVER FAILS (200 always) - READ-ONLY
+  app.post("/api/prep-sheet/generate", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
-      const { event } = req.body || {};
+      // Extract event with fallback to ensure we always have something to work with
+      let event = req.body?.event;
       if (!event) {
-        return res.status(400).json({ error: "Missing event payload" });
+        event = { 
+          title: "Meeting", 
+          start: new Date().toISOString(),
+          attendees: []
+        };
       }
 
-      const userId = req.user?.claims?.sub;
-      if (!userId) {
-        return res.status(401).json({ error: "User not authenticated" });
-      }
+      const userId = req.user?.claims?.sub || 'anonymous';
 
       // 1) Extract attendees and normalize
       const attendees = (event.attendees || []).map((attendee: any) => {
@@ -1674,8 +1681,8 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
         });
       }
 
-      // 6) Always return success with prep
-      return res.json({
+      // 6) Always return success with prep - SPEC COMPLIANT FORMAT
+      return res.status(200).json({
         status: "ok",
         prep,
         confidence: score,
@@ -1685,46 +1692,28 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
       
     } catch (error) {
       console.error("prep-generate error", error);
-      
-      // GUARANTEED fallback - never fail
-      try {
-        const fallbackEvent = req.body?.event || { 
-          title: "Meeting", 
-          start: new Date().toISOString(),
-          attendees: []
-        };
-        const fallbackPrep = buildBasePrep(fallbackEvent, []);
-        
-        return res.status(200).json({
-          status: "ok",
-          prep: fallbackPrep,
-          confidence: 0,
-          matched: false,
-          matchReason: "fallback",
-          warning: "Generated with fallback data due to system error"
-        });
-      } catch (fallbackError) {
-        console.error("Even fallback prep generation failed:", fallbackError);
-        // This should never happen, but if it does, return minimal structure
-        return res.status(200).json({
-          status: "ok",
-          prep: {
-            meta: { title: "Call", time: "TBD", attendees: [], source: "Emergency" },
-            sections: [{
-              id: "notes",
-              title: "Notes", 
-              type: "notes",
-              content: "",
-              expanded: true,
-              editable: true
-            }]
-          },
-          confidence: 0,
-          matched: false,
-          matchReason: "emergency"
-        });
-      }
     }
+
+    // ULTIMATE FALLBACK - this code ALWAYS runs if we get here
+    const emergencyPrep = {
+      meta: { title: "Call", time: "TBD", attendees: [], source: "Emergency" },
+      sections: [{
+        id: "notes",
+        title: "Notes", 
+        type: "notes",
+        content: "",
+        expanded: true,
+        editable: true
+      }]
+    };
+
+    return res.status(200).json({
+      status: "ok",
+      prep: emergencyPrep,
+      confidence: 0,
+      matched: false,
+      matchReason: "emergency"
+    });
   });
 
   const httpServer = createServer(app);

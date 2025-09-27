@@ -201,10 +201,26 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
   const saveNotesMutation = useMutation({
     mutationFn: async ({ eventId, text }: { eventId: string; text: string }) => {
       const response = await apiRequest("PUT", "/api/prep-notes", { eventId, text });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to save notes");
+      }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prep-notes", event?.id] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not save notes",
+        description: error.message,
+        variant: "destructive",
+      });
+      // Revert the text to the last successfully saved state
+      setNotesState(prev => ({
+        ...prev,
+        text: prev.lastSavedText
+      }));
     },
   });
 

@@ -34,9 +34,21 @@ export async function ensureGuestUser(): Promise<void> {
   }
 
   try {
-    // Check if guest user already exists
+    // Check if guest user already exists by ID
     const existingUser = await storage.getUser(GUEST_USER.id);
     if (existingUser) {
+      return;
+    }
+
+    // Check if a user with the guest email already exists (from OAuth)
+    // If so, don't create another one to avoid unique constraint violation
+    const db = await import('../db');
+    const users = await import('../../shared/schema');
+    const { eq } = await import('drizzle-orm');
+    
+    const existingEmailUser = await db.db.select().from(users.users).where(eq(users.users.email, GUEST_USER.email));
+    if (existingEmailUser.length > 0) {
+      console.log('Guest user already exists with OAuth ID:', existingEmailUser[0].id);
       return;
     }
 

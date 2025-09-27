@@ -53,13 +53,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Enhanced auth middleware that supports both Replit auth and guest users
   const isAuthenticatedOrGuest = (req: any, res: any, next: any) => {
-    // Check if this is a guest user session
-    if (req.user?.claims?.sub === "usr_guest_momentum_ai") {
+    // Check if this is a guest user session (either by ID or email)
+    if (req.user?.claims?.sub === "usr_guest_momentum_ai" || req.user?.claims?.email === "guest@momentum.ai") {
       return next();
     }
     
     // Otherwise use standard authentication
     return isAuthenticated(req, res, next);
+  };
+
+  // Read-only middleware for guest users - blocks write operations
+  const requireWriteAccess = (req: any, res: any, next: any) => {
+    const userId = req.user?.claims?.sub;
+    const userEmail = req.user?.claims?.email;
+    
+    // Check if this is a guest user (either by ID or email)
+    if (userId === "usr_guest_momentum_ai" || userEmail === "guest@momentum.ai") {
+      return res.status(403).json({ 
+        message: "Demo mode: Write operations are not allowed. Please sign up for full access.",
+        readOnly: true 
+      });
+    }
+    
+    return next();
   };
 
   // Auth routes
@@ -102,7 +118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/outlook", isAuthenticatedOrGuest, async (req, res) => {
+  app.delete("/api/integrations/outlook", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       // For now, just return success
       res.json({ 
@@ -199,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/google", isAuthenticatedOrGuest, async (req: any, res) => {
+  app.delete("/api/integrations/google", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       await storage.deleteGoogleIntegration(userId);
@@ -312,7 +328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/salesforce", isAuthenticatedOrGuest, async (req: any, res) => {
+  app.delete("/api/integrations/salesforce", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       await storage.deleteSalesforceIntegration(userId);
@@ -394,7 +410,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/calendar/events/:eventId/ensure-call", isAuthenticatedOrGuest, async (req: any, res) => {
+  app.post("/api/calendar/events/:eventId/ensure-call", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { eventId } = req.params;
@@ -577,7 +593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new company
-  app.post("/api/companies", async (req, res) => {
+  app.post("/api/companies", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       const data = insertCompanySchema.parse(req.body);
       
@@ -610,7 +626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new contact
-  app.post("/api/contacts", async (req, res) => {
+  app.post("/api/contacts", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);
       const contact = await storage.createContact(data);
@@ -624,7 +640,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new call
-  app.post("/api/calls", async (req, res) => {
+  app.post("/api/calls", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       const data = insertCallSchema.parse(req.body);
       const call = await storage.createCall(data);
@@ -647,7 +663,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Generate AI call prep
-  app.post("/api/calls/:id/generate-prep", async (req, res) => {
+  app.post("/api/calls/:id/generate-prep", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       console.log(`[MCP-Route] Starting call prep generation for call: ${req.params.id}`);
       
@@ -910,7 +926,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Prep notes API endpoints
-  app.get("/api/prep-notes", async (req: any, res) => {
+  app.get("/api/prep-notes", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -934,7 +950,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
-  app.put("/api/prep-notes", async (req: any, res) => {
+  app.put("/api/prep-notes", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -1098,7 +1114,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
 
   // Sales Coach routes
   // Create a new coach session
-  app.post("/api/coach/sessions", isAuthenticatedOrGuest, async (req: any, res) => {
+  app.post("/api/coach/sessions", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionData = insertCoachSessionSchema.parse({
@@ -1143,7 +1159,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Update a coach session (e.g., change status, end session)
-  app.patch("/api/coach/sessions/:id", isAuthenticatedOrGuest, async (req: any, res) => {
+  app.patch("/api/coach/sessions/:id", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1173,7 +1189,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // End a coach session (convenience endpoint)
-  app.post("/api/coach/sessions/:id/end", isAuthenticatedOrGuest, async (req: any, res) => {
+  app.post("/api/coach/sessions/:id/end", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1383,7 +1399,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Enhanced Methodology-Aware Call Prep Generation
-  app.post("/api/calls/:id/generate-enhanced-prep", isAuthenticatedOrGuest, async (req: any, res) => {
+  app.post("/api/calls/:id/generate-enhanced-prep", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const callId = req.params.id;
       const userId = req.user.claims.sub;

@@ -1,13 +1,33 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import { getToken } from "./services/authService";
+import { useAuth } from "./hooks/useAuth";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Overview from "./pages/Overview";
 import Agenda from "./pages/Agenda";
 import Settings from "./pages/Settings";
 
-const Protected = ({ element }: { element: JSX.Element }) =>
-  getToken() ? element : <Navigate to="/login" replace />;
+const LoadingSpinner = () => (
+  <div className="min-h-screen bg-gradient-to-br from-black via-indigo-900/80 to-violet-900/60 text-white flex items-center justify-center">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto mb-4"></div>
+      <p>Loading...</p>
+    </div>
+  </div>
+);
+
+const Protected = ({ element }: { element: JSX.Element }) => {
+  const { isLoading, isAuthenticated } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSpinner />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return element;
+};
 
 export const router = createBrowserRouter([
   { path: "/", element: <Home /> },

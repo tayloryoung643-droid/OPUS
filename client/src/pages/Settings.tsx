@@ -16,14 +16,9 @@ export default function Settings() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } finally {
-      clearSession();
-      queryClient.clear(); // Clear all query cache
-      navigate("/", { replace: true });
-    }
+  const handleLogout = () => {
+    // Use the existing Replit auth logout mechanism
+    window.location.href = "/api/logout";
   };
 
   // Fetch integration statuses

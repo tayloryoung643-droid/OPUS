@@ -601,9 +601,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate AI call prep
   app.post("/api/calls/:id/generate-prep", async (req, res) => {
     try {
+      console.log(`[MCP-Route] Starting call prep generation for call: ${req.params.id}`);
+      
       const call = await storage.getCall(req.params.id);
       if (!call) {
         return res.status(404).json({ message: "Call not found" });
+      }
+
+      // Create MCP server with context early for use in both partial and full modes
+      let mcpServer = null;
+      try {
+        const userId = req.user?.claims?.sub;
+        if (userId) {
+          mcpServer = createMCPServer({
+            userId,
+            storage,
+            googleCalendarService: undefined, // Will be imported dynamically by tools
+            salesforceCrmService: undefined   // Will be imported dynamically by tools
+          });
+          
+          console.log('[MCP-Route] Created MCP server for call prep generation');
+        } else {
+          console.log('[MCP-Route] No user ID found, MCP server not created');
+        }
+      } catch (mcpError) {
+        console.warn('[MCP-Route] Failed to create MCP server, continuing with static generation:', mcpError);
       }
 
       const company = call.companyId ? await storage.getCompany(call.companyId) : null;
@@ -688,24 +710,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           needsSelection: candidates.length > 0,
           candidates: candidates
         });
-      }
-
-      // Create MCP server with context for dynamic data access
-      let mcpServer = null;
-      try {
-        const userId = req.user?.claims?.sub;
-        if (userId) {
-          mcpServer = createMCPServer({
-            userId,
-            storage,
-            googleCalendarService: undefined, // Will be imported dynamically by tools
-            salesforceCrmService: undefined   // Will be imported dynamically by tools
-          });
-          
-          console.log('[MCP] Created MCP server for call prep generation');
-        }
-      } catch (mcpError) {
-        console.warn('[MCP] Failed to create MCP server, continuing with static generation:', mcpError);
       }
 
       // Generate AI-powered research with MCP tools for dynamic data access

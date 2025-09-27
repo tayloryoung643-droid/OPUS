@@ -1,5 +1,9 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { 
+  CallToolRequestSchema,
+  ListToolsRequestSchema
+} from '@modelcontextprotocol/sdk/types.js';
+import { 
   MCP_TOOL_DEFINITIONS, 
   type MCPToolContext, 
   type MCPToolName 
@@ -38,59 +42,62 @@ export class MomentumMCPServer {
    * Set up tool handlers for all MCP tools
    */
   private setupToolHandlers(): void {
-    // Register all tools
-    Object.entries(MCP_TOOL_DEFINITIONS).forEach(([toolName, toolDef]) => {
-      this.server.setRequestHandler(
-        { method: 'tools/call', params: { name: toolName } },
-        async (request) => {
-          try {
-            console.log(`[MCP-Server] Executing tool: ${toolName}`);
-            
-            const handler = MCP_TOOL_HANDLERS[toolName as MCPToolName];
-            if (!handler) {
-              throw new Error(`Tool handler not found: ${toolName}`);
-            }
-
-            const result = await handler(request.params.arguments, this.context);
-            
-            console.log(`[MCP-Server] Tool ${toolName} completed successfully`);
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify(result, null, 2)
-                }
-              ]
-            };
-          } catch (error) {
-            console.error(`[MCP-Server] Tool ${toolName} failed:`, error);
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: JSON.stringify({
-                    error: error instanceof Error ? error.message : 'Unknown error',
-                    toolName
-                  })
-                }
-              ],
-              isError: true
-            };
-          }
-        }
-      );
-    });
-
-    // Register tools list handler
-    this.server.setRequestHandler(
-      { method: 'tools/list' },
-      async () => {
+    try {
+      // Register tools list handler
+      this.server.setRequestHandler(ListToolsRequestSchema, async () => {
         console.log('[MCP-Server] Listing available tools');
         return {
           tools: Object.values(MCP_TOOL_DEFINITIONS)
         };
-      }
-    );
+      });
+
+      // Register tool call handler
+      this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+        try {
+          const toolName = request.params?.name;
+          if (!toolName) {
+            throw new Error('Tool name not provided');
+          }
+
+          console.log(`[MCP-Server] Executing tool: ${toolName}`);
+          
+          const handler = MCP_TOOL_HANDLERS[toolName as MCPToolName];
+          if (!handler) {
+            throw new Error(`Tool handler not found: ${toolName}`);
+          }
+
+          const result = await handler(request.params?.arguments || {}, this.context);
+          
+          console.log(`[MCP-Server] Tool ${toolName} completed successfully`);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(result, null, 2)
+              }
+            ]
+          };
+        } catch (error) {
+          console.error(`[MCP-Server] Tool execution failed:`, error);
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  error: error instanceof Error ? error.message : 'Unknown error'
+                })
+              }
+            ],
+            isError: true
+          };
+        }
+      });
+
+      console.log('[MCP-Server] Tool handlers setup completed');
+    } catch (error) {
+      console.error('[MCP-Server] Error setting up tool handlers:', error);
+      throw error;
+    }
   }
 
   /**

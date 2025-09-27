@@ -86,10 +86,8 @@ export function SalesCoachProvider({ children }: SalesCoachProviderProps) {
   // Session mutations
   const createSessionMutation = useMutation({
     mutationFn: async (eventId?: string) => {
-      return await apiRequest('/api/coach/sessions', {
-        method: 'POST',
-        body: JSON.stringify({ eventId })
-      });
+      const response = await apiRequest('POST', '/api/coach/sessions', { eventId });
+      return await response.json();
     },
     onSuccess: (session: CoachSession) => {
       setActiveSession(session);
@@ -101,9 +99,8 @@ export function SalesCoachProvider({ children }: SalesCoachProviderProps) {
     mutationFn: async () => {
       if (!activeSession) return;
       
-      return await apiRequest(`/api/coach/sessions/${activeSession.id}/end`, {
-        method: 'POST'
-      });
+      const response = await apiRequest('POST', `/api/coach/sessions/${activeSession.id}/end`);
+      return await response.json();
     },
     onSuccess: () => {
       setActiveSession(null);
@@ -117,9 +114,8 @@ export function SalesCoachProvider({ children }: SalesCoachProviderProps) {
 
   const markSuggestionResolvedMutation = useMutation({
     mutationFn: async (suggestionId: string) => {
-      return await apiRequest(`/api/coach/suggestions/${suggestionId}/resolve`, {
-        method: 'POST'
-      });
+      const response = await apiRequest('POST', `/api/coach/suggestions/${suggestionId}/resolve`);
+      return await response.json();
     },
     onSuccess: (updatedSuggestion: CoachSuggestion) => {
       setSuggestions(prev => prev.map(s => 
@@ -134,7 +130,8 @@ export function SalesCoachProvider({ children }: SalesCoachProviderProps) {
 
     try {
       // Get WebSocket connection info
-      const info = await apiRequest('/api/coach/ws/status');
+      const response = await apiRequest('GET', '/api/coach/ws/status');
+      const info = await response.json();
       
       // Build WebSocket URL
       const protocol = info.protocol || (window.location.protocol === 'https:' ? 'wss' : 'ws');

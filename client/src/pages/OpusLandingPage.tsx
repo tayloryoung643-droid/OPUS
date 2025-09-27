@@ -1,6 +1,8 @@
-import React from "react";
+import React, { useState } from "react";
+import SettingsModal from "@/components/SettingsModal";
 
 export default function OpusLandingPage() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   // --- Mock data (replace with real services) ---
   const agenda = [
     { time: "9:00 AM", title: "Momentum AI", subtitle: "Discovery call" },
@@ -45,7 +47,11 @@ export default function OpusLandingPage() {
         </nav>
 
         <div className="flex items-center gap-3 md:gap-4">
-          <button className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300">
+          <button 
+            onClick={() => setSettingsOpen(true)}
+            className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"
+            data-testid="button-settings"
+          >
             Settings
           </button>
         </div>
@@ -190,6 +196,12 @@ export default function OpusLandingPage() {
           </div>
         </section>
       </main>
+      
+      {/* Settings Modal */}
+      <SettingsModal 
+        isOpen={settingsOpen} 
+        onClose={() => setSettingsOpen(false)} 
+      />
     </div>
   );
 }

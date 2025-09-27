@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import Landing from "@/pages/landing";
 import OpusTopNav from "../components/Opus/TopNav";
 import OpusHeroGreeting from "../components/Opus/HeroGreeting";
 import OpusAgendaList from "../components/Opus/AgendaList";
@@ -20,7 +19,7 @@ export type CalendarEvent = {
 };
 
 export default function OpusAgenda() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { user } = useAuth();
   const [viewMode, setViewMode] = useState<"GREETING" | "AGENDA">("GREETING");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
@@ -34,11 +33,6 @@ export default function OpusAgenda() {
   const firstName = useMemo(() => {
     return (user as any)?.claims?.first_name || (user as any)?.firstName || "Taylor";
   }, [user]);
-
-  // Show landing page if not authenticated
-  if (isLoading || !isAuthenticated) {
-    return <Landing />;
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-black via-indigo-900/80 to-violet-900/60 text-white antialiased">

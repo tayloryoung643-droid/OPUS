@@ -1,0 +1,152 @@
+Component Changes
+1. CalendarView.tsx
+
+Current behavior: Clicking a call navigates or reloads to a new page.
+
+Update:
+
+Add a prop onSelectEvent(event: CalendarEvent) that triggers loading the selected call into the prep sheet.
+
+Do not use navigate() or page routing. Instead, update local state in App.tsx with the selected event.
+
+// inside CalendarView.tsx
+<div
+  key={event.id}
+  className="call-item cursor-pointer hover:bg-gray-100"
+  onClick={() => onSelectEvent(event)}
+>
+  <h4 className="font-semibold">{event.title}</h4>
+  <p className="text-sm text-gray-500">{event.company}</p>
+</div>
+
+2. PrepSheetView.tsx
+
+New behavior:
+
+Show when an event is selected (controlled by App.tsx).
+
+Always display a Notes section pinned at the top with saved state (persist notes to DB via backend API).
+
+Show empty sections until Generate Call Prep is clicked. After generation, persist and keep results.
+
+interface PrepSheetProps {
+  event: CalendarEvent | null;
+}
+
+const PrepSheetView: React.FC<PrepSheetProps> = ({ event }) => {
+  const [notes, setNotes] = useState("");
+  const [prepData, setPrepData] = useState<PrepData | null>(null);
+
+  const handleGeneratePrep = async () => {
+    const response = await apiService.generatePrepSheet(event?.id, notes);
+    setPrepData(response);
+  };
+
+  if (!event) return <div className="p-4 text-gray-500">Select a call to view prep</div>;
+
+  return (
+    <div className="prep-sheet p-6">
+      {/* Notes Section */}
+      <div className="mb-6">
+        <label className="block font-semibold mb-2">📝 Notes</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className="w-full border rounded-md p-3 text-sm"
+          placeholder="Type your notes here..."
+        />
+      </div>
+
+      <button
+        onClick={handleGeneratePrep}
+        className="bg-indigo-600 text-white px-4 py-2 rounded-md mb-6"
+      >
+        Generate Call Prep
+      </button>
+
+      {/* Generated Sections */}
+      {prepData && (
+        <div className="grid grid-cols-2 gap-4">
+          <SectionCard title="Stakeholders" content={prepData.stakeholders} />
+          <SectionCard title="Company Info" content={prepData.companyInfo} />
+          <SectionCard title="Key Insights" content={prepData.keyInsights} />
+          <SectionCard title="Next Steps" content={prepData.nextSteps} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+3. ChatModal.tsx → rename to SalesCoachModal.tsx
+
+Rename everywhere: “Ask AI” → “AI Sales Coach.”
+
+Add voice interaction hook (optional future feature).
+
+Keep same modal logic but update title + buttons.
+
+// SalesCoachModal.tsx
+const SalesCoachModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 w-96 h-96 bg-white rounded-lg shadow-xl flex flex-col">
+      <div className="bg-indigo-600 text-white p-3 rounded-t-lg flex justify-between">
+        <span>AI Sales Coach</span>
+        <button onClick={onClose}>✕</button>
+      </div>
+      <div className="flex-1 p-4 overflow-y-auto"> {/* chat stream here */}</div>
+      <div className="p-2 border-t">
+        <input type="text" placeholder="Ask your coach..." className="w-full border rounded-md p-2" />
+      </div>
+    </div>
+  );
+};
+
+4. App.tsx
+
+Manage selected event + modal state here.
+
+Keep calendar pinned right, prep sheet center, AI Coach accessible at top.
+
+const App: React.FC = () => {
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [isCoachOpen, setCoachOpen] = useState(false);
+
+  return (
+    <div className="flex h-screen">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        <header className="flex justify-between items-center p-4 border-b">
+          <h1 className="text-xl font-bold">Momentum AI</h1>
+          <button
+            onClick={() => setCoachOpen(true)}
+            className="bg-indigo-600 text-white px-3 py-2 rounded-md"
+          >
+            AI Sales Coach
+          </button>
+        </header>
+
+        <PrepSheetView event={selectedEvent} />
+      </div>
+
+      {/* Calendar pinned right */}
+      <div className="w-80 border-l">
+        <CalendarView onSelectEvent={setSelectedEvent} />
+      </div>
+
+      {/* Sales Coach Modal */}
+      <SalesCoachModal isOpen={isCoachOpen} onClose={() => setCoachOpen(false)} />
+    </div>
+  );
+};
+
+✅ What Agent 3 Should Do
+
+Modify CalendarView.tsx → pass selected event state up instead of navigating.
+
+Update PrepSheetView.tsx → add Notes section, persist notes, display sections after AI generation.
+
+Rename ChatModal.tsx → SalesCoachModal.tsx and update button labels.
+
+Update App.tsx → manage state for selected event + modal. Keep calendar pinned.

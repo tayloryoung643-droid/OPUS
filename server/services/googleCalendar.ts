@@ -116,7 +116,6 @@ export class GoogleCalendarService {
       
       // Filter events to only include those that are actually "today"
       // Use local system date (not UTC) for comparison
-      const today = new Date();
       const todayString = today.getFullYear() + '-' + 
                          String(today.getMonth() + 1).padStart(2, '0') + '-' + 
                          String(today.getDate()).padStart(2, '0');

@@ -9,6 +9,8 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        '2xl': '1rem',
+        '3xl': '1.25rem',
       },
       colors: {
         background: "var(--background)",
@@ -61,6 +63,21 @@ export default {
           border: "var(--sidebar-border)",
           ring: "var(--sidebar-ring)",
         },
+        slateglass: {
+          800: "rgba(15,23,42,0.6)",
+        },
+        opus: {
+          cyan: "#22d3ee",
+          violet: "#a78bfa",
+        },
+      },
+      boxShadow: {
+        'card': "0 0 0 1px rgba(255,255,255,0.03), 0 10px 30px rgba(0,0,0,0.25)",
+        'ring': "0 0 0 2px rgba(255,255,255,0.08)",
+      },
+      backgroundImage: {
+        'opus-conic': "conic-gradient(from 0deg, #22d3ee, #a78bfa, #22d3ee)",
+        'opus-grad': "linear-gradient(135deg, #0b1020, #0f172a 40%, #0b0f24 70%, #0a0d22)",
       },
       fontFamily: {
         sans: ["var(--font-sans)"],
@@ -88,6 +105,7 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        'spin-slow': 'spin 8s linear infinite',
       },
     },
   },

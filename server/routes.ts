@@ -1335,6 +1335,75 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
+  // Enhanced Methodology-Aware Call Prep Generation
+  app.post("/api/calls/:id/generate-enhanced-prep", isAuthenticated, async (req: any, res) => {
+    try {
+      const callId = req.params.id;
+      const userId = req.user.claims.sub;
+      
+      console.log(`[Enhanced-MCP] Starting enhanced methodology prep for call: ${callId}`);
+      
+      // Get call and company data
+      const call = await storage.getCall(callId);
+      if (!call) {
+        return res.status(404).json({ message: "Call not found" });
+      }
+
+      const company = await storage.getCompany(call.companyId);
+      if (!company) {
+        return res.status(404).json({ message: "Company not found" });
+      }
+
+      // Create MCP server with context
+      const { createMCPServer } = await import('./mcp/mcp-server.js');
+      const mcpServer = await createMCPServer({ userId, storage, callId });
+      
+      // Get additional context data for methodology analysis
+      const contacts = await storage.getContactsByCompany(call.companyId);
+      
+      // Import the enhanced methodology service
+      const { generateMethodologyAwareCallPrep } = await import('./services/methodologyOpenAI');
+      
+      // Prepare enhanced input
+      const enhancedInput = {
+        call: { ...call, company },
+        calendarEvent: null,
+        crmData: {
+          contacts: contacts || [],
+          account: company,
+          opportunity: {
+            amount: 100000,
+            stage: call.stage
+          }
+        },
+        additionalContext: {
+          previousInteractions: [],
+          knownPainPoints: [],
+          competitorIntel: []
+        }
+      };
+
+      // Generate methodology-aware call prep
+      const enhancedPrep = await generateMethodologyAwareCallPrep(enhancedInput, mcpServer);
+
+      console.log(`[Enhanced-MCP] Enhanced methodology prep completed for call ${callId}`);
+      
+      // Return the enhanced structured data
+      res.json({
+        success: true,
+        methodologyData: enhancedPrep,
+        message: "Enhanced call preparation generated successfully"
+      });
+
+    } catch (error) {
+      console.error(`[Enhanced-MCP] Error generating enhanced call prep:`, error);
+      res.status(500).json({ 
+        message: "Failed to generate enhanced call preparation",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   
   // Initialize Coach WebSocket service

@@ -146,7 +146,7 @@ function EditableObjections({ items = [], onChange }) {
 
 export default function OpusAgendaMock() {
   const navigate = useNavigate();
-  
+
   // Fetch real Google Calendar events
   const { data: calendarEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
     queryKey: ['/api/calendar/events'],
@@ -189,9 +189,9 @@ export default function OpusAgendaMock() {
   // Process real calendar events into agenda format
   const processedAgenda = useMemo(() => {
     if (CONFIG.USE_MOCKS) return mockAgenda;
-    
+
     if (!calendarEvents?.events) return { upcoming: [], previous: [] };
-    
+
     const now = new Date();
     const events = calendarEvents.events.map(event => ({
       id: event.id,
@@ -482,7 +482,12 @@ export default function OpusAgendaMock() {
         <section className="relative p-6 md:p-8">
           {/* Orb */}
           <div className="hidden lg:block fixed right-6 top-24 z-50">
-            <div className="h-32 w-32 rounded-full border-2 border-purple-500/70 animate-pulse opus-orb" />
+            <div className="mx-auto h-64 w-64 rounded-full relative group cursor-pointer">
+            <div className="absolute inset-0 rounded-full bg-black ring-1 ring-white/15 transition-all duration-300 group-hover:ring-white/40 group-hover:scale-[1.02] shadow-[0_0_60px_rgba(168,85,247,0.5),0_0_120px_rgba(147,51,234,0.4),0_0_200px_rgba(139,92,246,0.3),0_0_280px_rgba(124,58,237,0.2),0_0_220px_rgba(168,85,247,0.35)_inset] hover:shadow-[0_0_80px_rgba(168,85,247,0.7),0_0_160px_rgba(147,51,234,0.55),0_0_240px_rgba(139,92,246,0.45),0_0_320px_rgba(124,58,237,0.35),0_0_280px_rgba(168,85,247,0.5)_inset]" />
+            <div className="absolute -inset-6 rounded-full blur-3xl bg-purple-500/20 animate-pulse transition-opacity duration-300 group-hover:opacity-80" />
+            {/* extra glow on hover */}
+            <div className="absolute -inset-10 rounded-full blur-[44px] bg-gradient-to-br from-purple-500/30 via-indigo-500/25 to-cyan-400/20 opacity-0 transition-opacity duration-300 group-hover:opacity-70" />
+          </div>
           </div>
 
           {/* Floating actions beside the Orb (desktop) */}

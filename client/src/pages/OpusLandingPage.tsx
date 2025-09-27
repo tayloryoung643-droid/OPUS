@@ -232,7 +232,7 @@ export default function OpusLandingPage() {
           </div>
         </section>
       </main>
-      
+
       {/* Settings Modal */}
       <SettingsModal 
         isOpen={settingsOpen} 

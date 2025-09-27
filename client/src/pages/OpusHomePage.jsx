@@ -21,7 +21,10 @@ export default function OpusHomePage() {
     <div className="min-h-screen bg-black text-white font-sans">
       {/* Hero Section */}
       <section className="flex flex-col items-center justify-center text-center py-24 px-6">
-        <div className="w-32 h-32 rounded-full border-2 border-purple-500 animate-pulse mb-6"></div>
+        <div className="relative mb-6">
+          <div className="w-32 h-32 rounded-full border-2 border-purple-500 animate-pulse relative z-10 bg-black/20 shadow-[0_0_60px_rgba(168,85,247,0.5),0_0_120px_rgba(147,51,234,0.4),0_0_200px_rgba(139,92,246,0.3)]"></div>
+          <div className="absolute inset-0 w-32 h-32 rounded-full bg-purple-500/20 blur-xl animate-pulse"></div>
+        </div>
         <h1 className="text-4xl md:text-6xl font-bold mb-4">
           Your AI Sales Partner
         </h1>

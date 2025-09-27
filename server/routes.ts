@@ -1540,17 +1540,28 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
       // Try to find existing call by calendar event ID  
       let call = null;
       try {
-        const calls = await storage.getCallsByUser(userId);
-        call = calls.find((c: any) => c.calendarEventId === key);
+        const allCalls = await storage.getCallsWithCompany();
+        call = allCalls.find((c: any) => c.calendarEventId === key);
       } catch (error) {
         console.log('Error finding existing call:', error);
       }
       
       if (!call) {
         try {
+          // Parse date safely
+          let scheduledAt: Date;
+          try {
+            scheduledAt = new Date(event.start);
+            if (isNaN(scheduledAt.getTime())) {
+              scheduledAt = new Date(); // Fallback to current time
+            }
+          } catch {
+            scheduledAt = new Date(); // Fallback to current time
+          }
+
           call = await storage.createCall({
             title: event.title || event.summary || "Untitled Meeting",
-            scheduledAt: new Date(event.start),
+            scheduledAt: scheduledAt,
             companyId: null,
             status: "upcoming",
             callType: "discovery",
@@ -1558,6 +1569,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
           });
         } catch (createError) {
           console.error('Error creating call:', createError);
+          // Don't fail the request - we can still return prep without a saved call
         }
       }
 

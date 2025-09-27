@@ -344,39 +344,189 @@ export class CoachWebSocketService {
 
   private async generateCoachingSuggestions(sessionId: string, userId: string, transcript: string) {
     try {
-      // TODO: Implement MCP-based coaching suggestions
-      // For now, create a mock suggestion
-      const mockSuggestion = {
-        title: "Ask about their biggest challenge",
-        body: "Based on their tone, they seem concerned. Ask: 'What's your biggest challenge with your current solution?'",
-        priority: "medium" as const,
-        type: "suggestion" as const
-      };
+      console.log(`[Coach-WS] Generating MCP-powered suggestions for session ${sessionId} based on: "${transcript}"`);
+      
+      // Get the session data for context
+      const session = await storage.getCoachSession(sessionId);
+      if (!session) {
+        console.error(`[Coach-WS] Session ${sessionId} not found for suggestion generation`);
+        return;
+      }
 
-      const suggestion = await storage.createCoachSuggestion({
-        sessionId,
-        at: new Date(),
-        type: mockSuggestion.type,
-        priority: mockSuggestion.priority,
-        title: mockSuggestion.title,
-        body: mockSuggestion.body,
-        resolved: false
-      });
+      // Get recent conversation history for better context
+      const recentTranscripts = await storage.getCoachTranscripts(sessionId, 10);
+      const conversationContext = recentTranscripts
+        .map(t => `${t.speaker}: ${t.text}`)
+        .join('\n');
 
-      console.log(`[Coach-WS] Created suggestion ${suggestion.id} for session ${sessionId}`);
+      // Initialize MCP server for tool access
+      const mcpServer = await createMCPServer();
+      
+      let crmContext = '';
+      let calendarContext = '';
+      let suggestions: any[] = [];
 
-      // Send suggestion to client
-      const ws = this.clients.get(sessionId);
-      if (ws) {
-        this.sendMessage(ws, {
-          type: 'suggestion',
-          payload: suggestion
+      try {
+        // Get CRM context if available
+        try {
+          // Use MCP tools to get Salesforce data
+          const accountsResult = await mcpServer.call_tool({
+            name: 'salesforce_search_accounts',
+            arguments: { query: transcript.substring(0, 50) }
+          });
+          
+          const opportunitiesResult = await mcpServer.call_tool({
+            name: 'salesforce_search_opportunities', 
+            arguments: { query: transcript.substring(0, 50) }
+          });
+
+          crmContext = `CRM Data:\nAccounts: ${JSON.stringify(accountsResult)}\nOpportunities: ${JSON.stringify(opportunitiesResult)}`;
+        } catch (mcpError) {
+          console.log(`[Coach-WS] CRM context unavailable:`, mcpError.message);
+        }
+
+        // Get calendar context
+        try {
+          const calendarResult = await mcpServer.call_tool({
+            name: 'calendar_get_events',
+            arguments: { 
+              timeMin: new Date().toISOString(),
+              maxResults: 5
+            }
+          });
+          calendarContext = `Calendar Context: ${JSON.stringify(calendarResult)}`;
+        } catch (mcpError) {
+          console.log(`[Coach-WS] Calendar context unavailable:`, mcpError.message);
+        }
+
+        // Generate AI-powered coaching suggestions using OpenAI
+        const prompt = `You are an expert sales coach providing real-time guidance during a sales call.
+
+CONVERSATION CONTEXT:
+${conversationContext}
+
+LATEST SPEAKER INPUT:
+${transcript}
+
+CRM CONTEXT:
+${crmContext}
+
+CALENDAR CONTEXT:
+${calendarContext}
+
+Analyze the conversation and provide 1-2 specific, actionable coaching suggestions. For each suggestion, provide:
+1. A clear title (max 50 characters)
+2. A specific action to take (max 150 characters)
+3. The type: "suggestion", "objection", "opportunity", or "warning"
+4. Priority: "high", "medium", or "low"
+
+Respond with a JSON array of suggestions in this format:
+[{
+  "title": "Ask about timeline",
+  "body": "They mentioned budget approval - ask: 'What's your timeline for making this decision?'",
+  "type": "suggestion", 
+  "priority": "high"
+}]`;
+
+        const completion = await this.openai.chat.completions.create({
+          model: 'gpt-4',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.3,
+          max_tokens: 600
         });
+
+        const aiResponse = completion.choices[0]?.message?.content;
+        if (aiResponse) {
+          try {
+            suggestions = JSON.parse(aiResponse);
+          } catch (parseError) {
+            console.error(`[Coach-WS] Failed to parse AI suggestions:`, parseError);
+            // Fallback to a default suggestion
+            suggestions = [{
+              title: "Continue discovery",
+              body: "Listen actively and ask follow-up questions to understand their needs better",
+              type: "suggestion",
+              priority: "medium"
+            }];
+          }
+        }
+
+      } catch (aiError) {
+        console.error(`[Coach-WS] AI suggestion generation failed:`, aiError);
+        // Fallback suggestion based on transcript analysis
+        suggestions = this.generateFallbackSuggestions(transcript);
+      }
+
+      // Store and send each suggestion
+      for (const suggestionData of suggestions.slice(0, 2)) { // Limit to 2 suggestions
+        try {
+          const suggestion = await storage.createCoachSuggestion({
+            sessionId,
+            at: new Date(),
+            type: suggestionData.type || 'suggestion',
+            priority: suggestionData.priority || 'medium',
+            title: suggestionData.title || 'Coaching Suggestion',
+            body: suggestionData.body || 'Continue with active listening and discovery',
+            resolved: false
+          });
+          
+          console.log(`[Coach-WS] Created MCP-powered suggestion ${suggestion.id}: ${suggestion.title}`);
+
+          // Send suggestion to client
+          const ws = this.clients.get(sessionId);
+          if (ws) {
+            this.sendMessage(ws, {
+              type: 'suggestion',
+              payload: suggestion
+            });
+          }
+        } catch (storageError) {
+          console.error(`[Coach-WS] Failed to store suggestion:`, storageError);
+        }
       }
 
     } catch (error) {
-      console.error(`[Coach-WS] Suggestion generation error for session ${sessionId}:`, error);
+      console.error(`[Coach-WS] MCP suggestion generation error for session ${sessionId}:`, error);
     }
+  }
+
+  private generateFallbackSuggestions(transcript: string): any[] {
+    const lowerTranscript = transcript.toLowerCase();
+    
+    // Pattern-based fallback suggestions
+    if (lowerTranscript.includes('price') || lowerTranscript.includes('cost') || lowerTranscript.includes('expensive')) {
+      return [{
+        title: "Handle price objection",
+        body: "Focus on ROI and value, not just price. Ask about their current costs.",
+        type: "objection",
+        priority: "high"
+      }];
+    }
+    
+    if (lowerTranscript.includes('think about it') || lowerTranscript.includes('need time')) {
+      return [{
+        title: "Address delay objection",
+        body: "Identify the real decision criteria and timeline. Ask what needs to happen next.",
+        type: "objection", 
+        priority: "high"
+      }];
+    }
+    
+    if (lowerTranscript.includes('?')) {
+      return [{
+        title: "Follow up on question",
+        body: "Provide a detailed answer and ask a relevant follow-up question.",
+        type: "suggestion",
+        priority: "medium"
+      }];
+    }
+    
+    return [{
+      title: "Continue discovery",
+      body: "Ask an open-ended question to better understand their needs and challenges.",
+      type: "suggestion",
+      priority: "medium"
+    }];
   }
 
   private sendMessage(ws: AuthenticatedWebSocket, message: CoachMessage) {

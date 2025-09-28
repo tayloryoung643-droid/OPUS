@@ -1,6 +1,9 @@
 // Copy the built Opus Orb bundle to the extension directory
-const fs = require('fs');
-const path = require('path');
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const sourceFile = path.resolve(__dirname, '../public/embed/opus-orb.js');
 const targetFile = path.resolve(__dirname, '../extension/opus-orb.js');

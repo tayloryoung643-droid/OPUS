@@ -1,6 +1,9 @@
 // Build script for the shared Opus Orb bundle
-const esbuild = require('esbuild');
-const path = require('path');
+import esbuild from 'esbuild';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function buildOrbBundle() {
   try {
@@ -54,4 +57,4 @@ async function buildOrbBundle() {
 // Run the build
 buildOrbBundle();
 
-module.exports = { buildOrbBundle };
+export { buildOrbBundle };

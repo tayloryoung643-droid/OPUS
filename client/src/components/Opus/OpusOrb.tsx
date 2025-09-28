@@ -139,7 +139,6 @@ export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOr
   }, [toast]);
 
   const handleOrbClick = useCallback(() => {
-    alert('Orb clicked! Testing...');
     console.log('[OpusOrb] Orb clicked! userId:', userId, 'state:', state);
     
     if (!userId) {

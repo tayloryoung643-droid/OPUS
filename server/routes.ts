@@ -105,6 +105,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate WebSocket authentication token
+  app.get('/api/auth/ws-token', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      if (!userId) {
+        return res.status(400).json({ message: "User ID not found" });
+      }
+      
+      // Generate authentication token for WebSocket connection
+      const token = VoiceRecorderWebSocketService.generateAuthToken(userId);
+      const now = Date.now();
+      const expiresAt = now + (5 * 60 * 1000); // 5 minutes from now
+      
+      // Security: Prevent token caching
+      res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+      
+      res.json({ 
+        token,
+        userId,
+        expiresIn: '5 minutes',
+        expiresAt: expiresAt
+      });
+    } catch (error) {
+      console.error("Error generating WebSocket token:", error);
+      res.status(500).json({ message: "Failed to generate authentication token" });
+    }
+  });
+
   // Integration routes for Outlook
   app.get("/api/integrations/outlook/setup", isAuthenticatedOrGuest, async (req, res) => {
     try {

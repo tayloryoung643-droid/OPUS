@@ -95,8 +95,12 @@ export class VoiceRecorderWebSocketService {
         return null;
       }
       
-      // Verify HMAC
-      const secret = process.env.SESSION_SECRET || 'default-secret';
+      // Verify HMAC - CRITICAL: SESSION_SECRET must be set
+      const secret = process.env.SESSION_SECRET;
+      if (!secret) {
+        console.error('[Voice-WS] CRITICAL: SESSION_SECRET environment variable not set');
+        throw new Error('Server configuration error: SESSION_SECRET required');
+      }
       const expectedHmac = crypto
         .createHmac('sha256', secret)
         .update(`${userId}:${timestamp}`)
@@ -117,7 +121,13 @@ export class VoiceRecorderWebSocketService {
   // Public method to generate auth tokens for authenticated users
   public static generateAuthToken(userId: string): string {
     const timestamp = Date.now().toString();
-    const secret = process.env.SESSION_SECRET || 'default-secret';
+    const secret = process.env.SESSION_SECRET;
+    
+    if (!secret) {
+      console.error('[Voice-WS] CRITICAL: SESSION_SECRET environment variable not set');
+      throw new Error('Server configuration error: SESSION_SECRET required');
+    }
+    
     const hmac = crypto
       .createHmac('sha256', secret)
       .update(`${userId}:${timestamp}`)

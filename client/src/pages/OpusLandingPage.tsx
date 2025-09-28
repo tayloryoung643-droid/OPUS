@@ -136,6 +136,16 @@ export default function OpusLandingPage() {
                       </div>
                     ))}
                   </div>
+                ) : eventsError ? (
+                  <div className="text-center py-6">
+                    <div className="text-zinc-500 text-sm mb-2">Unable to load calendar events</div>
+                    <button 
+                      className="text-purple-400 hover:text-purple-300 text-sm"
+                      onClick={() => window.location.href = '/settings'}
+                    >
+                      Check Google Calendar Connection
+                    </button>
+                  </div>
                 ) : agenda.length > 0 ? (
                   <div className="space-y-4">
                     {agenda.map((item, idx) => (
@@ -150,10 +160,10 @@ export default function OpusLandingPage() {
                   </div>
                 ) : (
                   <div className="text-center py-6">
-                    <div className="text-zinc-500 text-sm">No events scheduled for today</div>
-                    <button className="text-purple-400 hover:text-purple-300 text-sm mt-2">
-                      Connect Google Calendar
-                    </button>
+                    <div className="text-zinc-500 text-sm mb-2">No events scheduled for today</div>
+                    <div className="text-zinc-600 text-xs">
+                      Google Calendar connected • Check upcoming events in Agenda
+                    </div>
                   </div>
                 )}
               </div>

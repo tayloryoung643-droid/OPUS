@@ -198,9 +198,9 @@ export default function OpusLandingPage() {
         </div>
 
         {/* Refined bottom strip: Elegant insights */}
-        <section className="-mt-8 md:-mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        <section className="-mt-8 md:-mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 items-start max-w-full overflow-hidden">
           {/* Quarter Overview */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg min-w-0">
             <h3 className="text-lg font-semibold text-zinc-200 mb-2">Quarter Overview</h3>
             <div className="text-3xl font-light tracking-tight">
               $480K <span className="text-zinc-500 text-base">/ $1M target</span>
@@ -225,7 +225,7 @@ export default function OpusLandingPage() {
           </div>
 
           {/* Momentum (less gamey, more elegant) */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg min-w-0">
             <h3 className="text-lg font-semibold text-zinc-200 mb-2">Momentum</h3>
             <ul className="space-y-3 text-sm text-zinc-300">
               <li className="flex items-center justify-between">

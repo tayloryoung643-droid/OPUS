@@ -805,6 +805,35 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     }
   });
 
+  // GET /api/chat/context - get comprehensive context through MCP
+  app.get("/api/chat/context", isAuthenticatedOrJWT, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Import the unified MCP context resolver
+      const { createUnifiedMCPResolver } = await import('./mcp/contextResolver.js');
+      
+      // Create and use the MCP resolver to get context
+      const mcpResolver = await createUnifiedMCPResolver(userId);
+      const context = await mcpResolver.buildComprehensiveContext();
+      
+      console.log(`[Chat API] Provided MCP context for user ${userId}`);
+      res.json(context);
+    } catch (error) {
+      console.error('[Chat API] Error fetching MCP context:', error);
+      res.status(500).json({ 
+        error: 'Failed to fetch context',
+        integrationStatus: { hasGoogle: false, hasSalesforce: false, hasGmail: false },
+        calendarEvents: { events: [], total: 0 },
+        opportunities: { opportunities: [], total: 0 },
+        recentContacts: { contacts: [], total: 0 }
+      });
+    }
+  });
+
   // Insights routes for Rhythm and Opus feed
   app.get("/api/insights/rhythm", isAuthenticatedOrGuest, async (req: any, res) => {
     try {

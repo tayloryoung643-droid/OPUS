@@ -56,3 +56,27 @@ export function extractMessageParts(msg: any) {
     body,
   };
 }
+
+export class GmailService {
+  async listRecentThreads(tokens: GoogleTokens, q = "newer_than:7d -category:promotions") {
+    return listRecentThreads(tokens, q);
+  }
+
+  async readThread(tokens: GoogleTokens, threadId: string) {
+    return readThread(tokens, threadId);
+  }
+
+  extractMessageParts(msg: any) {
+    return extractMessageParts(msg);
+  }
+
+  decodeBody(b64?: string) {
+    return decodeBody(b64);
+  }
+
+  createClient(tokens: GoogleTokens) {
+    return gmailClient(tokens);
+  }
+}
+
+export const gmailService = new GmailService();

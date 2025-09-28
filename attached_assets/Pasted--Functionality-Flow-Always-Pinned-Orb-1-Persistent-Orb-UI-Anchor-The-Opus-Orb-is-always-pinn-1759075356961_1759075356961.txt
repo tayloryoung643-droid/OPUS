@@ -1,0 +1,137 @@
+⚙️ Functionality Flow — Always-Pinned Orb
+1. Persistent Orb (UI Anchor)
+
+The Opus Orb is always pinned to the right-hand side of the user’s screen (desktop/web app, optionally via Chrome extension).
+
+It’s small, subtle, glowing (pulse animation when there’s context ready).
+
+Hover → slight glow / tooltip (“Opus is ready for your next call”).
+
+Click → expands into the chat box or sidebar panel.
+
+2. Context Awareness
+
+When a meeting is live (detected via:
+
+Calendar event start time,
+
+Zoom/Teams/Meet integration → API or browser extension),
+
+Opus Orb shifts state → “live mode.”
+
+In live mode, it shows:
+
+Call title + participants (from calendar/CRM).
+
+Key prep sheet bullets (“Company: ACME | Contact: Jane CTO | Agenda: Security concerns”).
+
+Small prompt: “Tap me if you need help.”
+
+3. User Interaction
+
+During the call:
+
+If clicked, the Orb opens chat/voice panel:
+
+“Ask: What’s her role again?” → instant answer.
+
+“Draft objection response” → suggested reply.
+
+Keeps chat history tied to the meeting context.
+
+After the call:
+
+Orb shifts again → “Follow-up ready” with auto-generated notes + email draft.
+
+4. Tech Plumbing Needed
+
+Orb State Machine (3 states):
+
+Idle (between calls, general chat available).
+
+Pre-call (30 mins before, show prep context).
+
+Live-call (meeting in progress, show context + “tap me”).
+
+Integrations:
+
+Google/Outlook calendar for call detection.
+
+Zoom/Teams/Meet SDKs (or browser extension) for “on call” signal.
+
+Data Flow:
+
+Orb requests context → MCP pipes in CRM + calendar + last transcripts.
+
+Chat always pinned, but “call context” only appears when call event is active.
+
+5. UX Benefits
+
+No jarring pop-ups (avoids the “annoying coach” problem).
+
+Always accessible, but never intrusive → user chooses when to expand.
+
+Contextual states make it feel intelligent and alive.
+
+💡 Optional upgrade later:
+
+Orb could auto-whisper (subtle text bubble or voice prompt): “Taylor, they just asked about timeline, want me to pull project history?” — but that’s long-term “in-call AI” once trust is built.
+
+Would you like me to sketch this pinned-orb UX flow (with the 3 orb states: idle, pre-call, live-call) so you can show your devs/designers exactly how it should behave?
+
+You said:
+How do we build an extension like this 
+ChatGPT said:
+Thought for 7s
+
+Love it. You want a Chrome (MV3) extension that pins the Opus Orb on the right edge, becomes context-aware on meeting pages, and opens a chat/voice panel. Here’s a tight blueprint + starter code you can hand to your devs.
+
+What we’re building
+
+Always-on Orb (content script overlay via Shadow DOM) on any tab.
+
+Three states: Idle → Pre-call (T-30) → Live call (meeting detected).
+
+Context brain: pulls calendar/CRM/transcripts via your backend/MCP with the user’s OAuth.
+
+Optional: also ship a Chrome side panel (native MV3 feature) that mirrors the chat UI.
+
+High-level architecture
+
+Service worker (background)
+
+Monitors active tab URLs and time.
+
+Knows user auth state (opustoken) and next calendar events (via your API).
+
+Sends messages to the content script to switch Orb states.
+
+Content script (overlay UI)
+
+Injects a fixed, glowing Orb + slide-out chat panel into the page in an isolated Shadow DOM.
+
+Listens for opustoken + meeting context; renders prep bullets and “tap me if you need help”.
+
+Side panel (optional)
+
+Chrome’s side_panel shows a full React app (same UI as your web chat).
+
+Opens when user clicks the Orb or a browser action.
+
+Auth
+
+Easiest path: user signs into your web app first; extension receives opustoken via postMessage or pulls it from chrome.storage after a hand-shake.
+
+Alternative: use chrome.identity for Google, but you’ll still need your backend to exchange tokens.
+
+Meeting detection (MVP)
+
+URL heuristics + lightweight DOM checks:
+
+Google Meet: https://meet.google.com/* + DOM node div[data-meeting-code] or presence of mic button.
+
+Zoom: https://*.zoom.us/j/* or /wc/*.
+
+Teams: https://teams.microsoft.com/*/meet/*.
+
+Background keeps a list of active meetings; pushes “live-call” to the content script.

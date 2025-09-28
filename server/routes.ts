@@ -1504,8 +1504,11 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
         storage: storage
       };
 
-      // Prepare OpenAI function definitions from MCP tools
-      const functions = Object.values(MCP_TOOL_DEFINITIONS);
+      // Prepare OpenAI tool definitions from MCP tools - using new tools format
+      const tools = Object.values(MCP_TOOL_DEFINITIONS).map(tool => ({
+        type: "function",
+        function: tool
+      }));
 
       // System prompt for Opus as ultimate sales partner
       const systemPrompt = `You are Opus, the ultimate AI sales partner and coach. You have access to real-time data about:
@@ -1520,8 +1523,10 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
 
 PERSONALITY: You're an experienced sales veteran, direct but supportive. You provide specific, actionable insights based on real data. Always use available tools to get current information before giving advice.
 
-GUIDELINES:
-- Always check for real-time data when asked about meetings, contacts, opportunities, or accounts
+CRITICAL RULES:
+- NEVER provide sample, mock, or placeholder data
+- ALWAYS use available tools to get real information when asked about meetings, contacts, opportunities, or accounts
+- If you can't get real data, say "I couldn't access that information right now" instead of making up data
 - Provide specific insights based on actual data, not generic advice
 - Help with call preparation, objection handling, and sales strategy
 - Be proactive - if someone asks about a meeting, look up attendees, company info, and previous interactions
@@ -1538,24 +1543,25 @@ RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, th
         }))
       ];
 
-      console.log('[OpusChat] Processing message with', functions.length, 'available tools');
+      console.log('[OpusChat] Processing message with', tools.length, 'available tools');
 
-      // Call OpenAI with function calling
+      // Call OpenAI with NEW tools parameter (not deprecated functions)
       const completion = await openai.chat.completions.create({
         model: 'gpt-4o',
         messages: openaiMessages,
-        functions: functions,
-        function_call: 'auto',
+        tools: tools,
+        tool_choice: 'auto',
         temperature: 0.7,
         max_tokens: 1000
       });
 
       const responseMessage = completion.choices[0]?.message;
 
-      // Handle function calls
-      if (responseMessage?.function_call) {
-        const functionName = responseMessage.function_call.name;
-        const functionArgs = JSON.parse(responseMessage.function_call.arguments || '{}');
+      // Handle tool calls (new format)
+      if (responseMessage?.tool_calls && responseMessage.tool_calls.length > 0) {
+        const toolCall = responseMessage.tool_calls[0]; // Handle first tool call
+        const functionName = toolCall.function.name;
+        const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
         
         console.log(`[OpusChat] Executing function: ${functionName}`);
         
@@ -1565,17 +1571,17 @@ RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, th
           try {
             const toolResult = await toolHandler(functionArgs, mcpContext);
             
-            // Create follow-up messages with function result
+            // Create follow-up messages with tool result
             const followUpMessages = [
               ...openaiMessages,
               {
                 role: 'assistant',
                 content: responseMessage.content || '',
-                function_call: responseMessage.function_call
+                tool_calls: responseMessage.tool_calls
               },
               {
-                role: 'function',
-                name: functionName,
+                role: 'tool',
+                tool_call_id: toolCall.id,
                 content: JSON.stringify(toolResult)
               }
             ];

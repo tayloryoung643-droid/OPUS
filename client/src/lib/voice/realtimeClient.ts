@@ -153,13 +153,15 @@ export async function startRealtimeVoice(audioEl: HTMLAudioElement): Promise<Rea
         };
 
         // Try to send via data channel if available
-        const dataChannel = pc.createDataChannel('messages');
-        if (dataChannel.readyState === 'open') {
-          dataChannel.send(JSON.stringify(greetingMessage));
-          console.log('[Realtime] Sent automatic greeting via data channel');
-        } else {
-          // Fallback: the greeting will happen naturally through conversation
-          console.log('[Realtime] Data channel not ready, greeting will happen naturally');
+        if (pc) {
+          const dataChannel = pc.createDataChannel('messages');
+          if (dataChannel.readyState === 'open') {
+            dataChannel.send(JSON.stringify(greetingMessage));
+            console.log('[Realtime] Sent automatic greeting via data channel');
+          } else {
+            // Fallback: the greeting will happen naturally through conversation
+            console.log('[Realtime] Data channel not ready, greeting will happen naturally');
+          }
         }
       } catch (error) {
         console.warn('[Realtime] Failed to send automatic greeting:', error);

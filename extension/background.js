@@ -30,6 +30,44 @@ async function getBootstrap() {
       
       // Create bootstrap data from stored auth
       const authData = (await chrome.storage.local.get(['opus.auth']))['opus.auth'];
+      
+      // Fetch real integration status through MCP context endpoint
+      let integrationStatus = {
+        google: { connected: false, scopes: [] },
+        salesforce: { connected: false, scopes: [] }
+      };
+      
+      try {
+        const contextResponse = await fetch(`${CONFIG.API_ORIGIN}/api/chat/context`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${storedToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (contextResponse.ok) {
+          const context = await contextResponse.json();
+          // Map MCP integration status to extension format
+          integrationStatus = {
+            google: { 
+              connected: context.integrationStatus?.hasGoogle || false, 
+              scopes: context.integrationStatus?.hasGoogle ? ['calendar', 'gmail'] : [] 
+            },
+            salesforce: { 
+              connected: context.integrationStatus?.hasSalesforce || false, 
+              scopes: context.integrationStatus?.hasSalesforce ? ['api'] : []
+            }
+          };
+          console.log('[OpusOrb] Fetched real integration status via MCP:', integrationStatus);
+        } else {
+          console.warn('[OpusOrb] Failed to fetch integration status, using defaults');
+        }
+      } catch (error) {
+        console.warn('[OpusOrb] Error fetching MCP context for integrations:', error);
+        // Keep default values on error
+      }
+      
       return {
         jwt: storedToken,
         apiBaseUrl: `${CONFIG.API_ORIGIN}/api`,
@@ -37,10 +75,7 @@ async function getBootstrap() {
         user: {
           id: authData.userId
         },
-        integrations: {
-          google: { connected: false, scopes: [] },
-          salesforce: { connected: false, scopes: [] }
-        }
+        integrations: integrationStatus
       };
     }
 

@@ -89,6 +89,11 @@
           try {
             let result;
             
+            // Validate event origin for security
+            if (event.origin !== window.location.origin) {
+              throw new Error('Unauthorized origin');
+            }
+
             switch (operation) {
               case 'createSession':
                 result = await this.handleCreateSession(jwt, apiBaseUrl, userId);
@@ -99,34 +104,28 @@
               case 'saveMessage':
                 result = await this.handleSaveMessage(jwt, apiBaseUrl, userId, payload.conversationId, payload.message);
                 break;
-              case 'secureNetworkCall':
-                const response = await secureNetworkCall(jwt, payload.url, payload.options);
-                result = { 
-                  ok: response.ok, 
-                  status: response.status,
-                  data: response.ok ? await response.json() : null
-                };
-                break;
+              // REMOVED: Dangerous generic secureNetworkCall operation
+              // This prevented JWT exfiltration via arbitrary URL requests
               default:
                 throw new Error(`Unknown operation: ${operation}`);
             }
 
-            // Send success response
+            // Send success response with proper origin targeting
             window.postMessage({
               type: 'OPUS_RPC_RESPONSE',
               requestId,
               success: true,
               result
-            }, '*');
+            }, window.location.origin);
 
           } catch (error) {
-            // Send error response
+            // Send error response with proper origin targeting
             window.postMessage({
               type: 'OPUS_RPC_RESPONSE',
               requestId,
               success: false,
               error: error.message
-            }, '*');
+            }, window.location.origin);
           }
         }
       });
@@ -392,9 +391,9 @@
         conversationId: conversationId,
         persistence: rpcPersistence,
         userId: userId,
-        userName: bootstrapData.user.name,
-        // Provide RPC-based network proxy instead of direct function
-        secureNetworkProxy: (url, options) => rpcPersistence.makeRPCCall('secureNetworkCall', { url, options })
+        userName: bootstrapData.user.name
+        // REMOVED: secureNetworkProxy to prevent JWT exfiltration
+        // The Orb bundle should only use persistence operations, not arbitrary network calls
       });
 
       console.log('[OpusOrb] Successfully mounted on page');

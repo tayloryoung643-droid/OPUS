@@ -3,6 +3,11 @@ let bootstrapData = null;
 let reconnectAttempts = 0;
 const maxReconnectAttempts = 3;
 
+const CONFIG = {
+  APP_ORIGIN: 'http://localhost:5000',
+  API_ORIGIN: 'http://localhost:5000'
+};
+
 // Host allowlist - don't inject on these domains
 const BLOCKED_HOSTS = [
   'localhost:5000',
@@ -27,8 +32,8 @@ async function getBootstrap() {
       const authData = (await chrome.storage.local.get(['opus.auth']))['opus.auth'];
       return {
         jwt: storedToken,
-        apiBaseUrl: 'http://localhost:5000/api',
-        mcpWsUrl: 'ws://localhost:5000/mcp',
+        apiBaseUrl: `${CONFIG.API_ORIGIN}/api`,
+        mcpWsUrl: CONFIG.API_ORIGIN.replace('http://', 'ws://').replace('https://', 'wss://') + '/mcp',
         user: {
           id: authData.userId
         },
@@ -40,7 +45,7 @@ async function getBootstrap() {
     }
 
     // Fallback to cookie-based bootstrap (original method)
-    const response = await fetch("http://localhost:5000/api/orb/extension/bootstrap", {
+    const response = await fetch(`${CONFIG.API_ORIGIN}/api/orb/extension/bootstrap`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -139,7 +144,7 @@ async function sendBootstrapToTab(tabId) {
  */
 async function exchangeCodeForToken(code) {
   try {
-    const response = await fetch("http://localhost:5000/api/auth/extension/mint", {
+    const response = await fetch(`${CONFIG.API_ORIGIN}/api/auth/extension/mint`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

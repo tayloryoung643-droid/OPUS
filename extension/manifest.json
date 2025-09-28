@@ -7,7 +7,10 @@
   "permissions": ["storage", "activeTab", "scripting", "alarms", "tabs"],
   "host_permissions": [
     "http://localhost:5000/*",
-    "https://localhost:5000/*"
+    "https://localhost:5000/*",
+    "https://*.opus.ai/*",
+    "https://app.opus.ai/*",
+    "https://api.opus.ai/*"
   ],
   "background": { "service_worker": "background.js" },
   "content_scripts": [

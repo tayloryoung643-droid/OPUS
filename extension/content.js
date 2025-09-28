@@ -4,6 +4,11 @@
   if (window.__OPUS_ORB_INJECTED__) return;
   window.__OPUS_ORB_INJECTED__ = true;
 
+  const CONFIG = {
+  APP_ORIGIN: 'http://localhost:5000',
+  API_ORIGIN: 'http://localhost:5000'
+};
+
   console.log('[OpusOrb] Content script loaded on:', window.location.href);
 
   let orbMountInstance = null;
@@ -476,7 +481,7 @@
     });
 
     cta.addEventListener('click', () => {
-      window.open('http://localhost:5000', '_blank');
+      window.open(`${CONFIG.APP_ORIGIN}/login?source=extension`, '_blank');
     });
 
     document.documentElement.appendChild(cta);

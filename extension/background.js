@@ -17,6 +17,29 @@ const BLOCKED_HOSTS = [
  */
 async function getBootstrap() {
   try {
+    // First try to use stored token if available
+    const storedToken = await getStoredToken();
+    
+    if (storedToken) {
+      console.log('[OpusOrb] Using stored token for bootstrap');
+      
+      // Create bootstrap data from stored auth
+      const authData = (await chrome.storage.local.get(['opus.auth']))['opus.auth'];
+      return {
+        jwt: storedToken,
+        apiBaseUrl: 'http://localhost:5000/api',
+        mcpWsUrl: 'ws://localhost:5000/mcp',
+        user: {
+          id: authData.userId
+        },
+        integrations: {
+          google: { connected: false, scopes: [] },
+          salesforce: { connected: false, scopes: [] }
+        }
+      };
+    }
+
+    // Fallback to cookie-based bootstrap (original method)
     const response = await fetch("http://localhost:5000/api/orb/extension/bootstrap", {
       method: 'POST',
       credentials: 'include',
@@ -110,6 +133,67 @@ async function sendBootstrapToTab(tabId) {
 }
 
 /**
+ * Exchange one-time code for JWT token
+ * @param {string} code - One-time session code from web app
+ * @returns {Promise<Object>} Token data with JWT, expiration, etc.
+ */
+async function exchangeCodeForToken(code) {
+  try {
+    const response = await fetch("http://localhost:5000/api/auth/extension/mint", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ code })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Token exchange failed: ${response.status}`);
+    }
+
+    const tokenData = await response.json();
+    
+    // Store the JWT in chrome.storage.local for secure access
+    const authData = {
+      jwt: tokenData.jwt,
+      expiresAt: Date.now() + (60 * 60 * 1000), // 60 minutes from now
+      scopes: tokenData.scopes,
+      userId: tokenData.user.id,
+      lastRefresh: Date.now()
+    };
+
+    await chrome.storage.local.set({ 'opus.auth': authData });
+    
+    console.log('[OpusOrb] Token exchanged and stored successfully for user:', tokenData.user.id);
+    
+    return tokenData;
+  } catch (error) {
+    console.error('[OpusOrb] Code exchange error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get stored JWT token if valid
+ * @returns {Promise<string|null>} JWT token or null if expired/missing
+ */
+async function getStoredToken() {
+  try {
+    const result = await chrome.storage.local.get(['opus.auth']);
+    const authData = result['opus.auth'];
+    
+    if (authData && authData.jwt && authData.expiresAt > Date.now()) {
+      return authData.jwt;
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn('[OpusOrb] Failed to get stored token:', error);
+    return null;
+  }
+}
+
+/**
  * Handle messages from content scripts
  */
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -143,6 +227,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     console.log('[OpusOrb] Chat message:', msg.message);
     sendResponse({ ok: true });
     return false;
+  }
+
+  if (msg.type === "OPUS_EXCHANGE_CODE") {
+    // Exchange one-time code for JWT token
+    exchangeCodeForToken(msg.code)
+      .then(tokenData => {
+        sendResponse({ success: true, ...tokenData });
+      })
+      .catch(error => {
+        console.error('[OpusOrb] Code exchange failed:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    
+    return true; // Keep message channel open for async response
   }
 });
 

@@ -543,6 +543,59 @@
   });
 
   /**
+   * Listen for session offers from web app
+   */
+  function setupSessionOfferListener() {
+    window.addEventListener('message', async (event) => {
+      // Only accept messages from same origin (the web app we're on)
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+
+      const { type, code } = event.data;
+
+      if (type === 'OPUS_SESSION_OFFER' && code) {
+        console.log('[OpusOrb] Received session offer from web app');
+        
+        try {
+          // Check if we already have a valid token
+          const result = await new Promise((resolve) => {
+            chrome.storage.local.get(['opus.auth'], resolve);
+          });
+          
+          const storedAuth = result['opus.auth'];
+          if (storedAuth && storedAuth.jwt && storedAuth.expiresAt > Date.now()) {
+            console.log('[OpusOrb] Already have valid token, skipping exchange');
+            return;
+          }
+
+          // Exchange the code for a JWT
+          chrome.runtime.sendMessage({ 
+            type: 'OPUS_EXCHANGE_CODE', 
+            code 
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('[OpusOrb] Code exchange error:', chrome.runtime.lastError.message);
+              return;
+            }
+
+            if (response?.success) {
+              console.log('[OpusOrb] Successfully exchanged code for token');
+              // Trigger bootstrap now that we have a token
+              setTimeout(requestBootstrap, 500);
+            } else {
+              console.warn('[OpusOrb] Code exchange failed:', response?.error);
+            }
+          });
+
+        } catch (error) {
+          console.error('[OpusOrb] Session offer handling error:', error);
+        }
+      }
+    });
+  }
+
+  /**
    * Initialize when DOM is ready
    */
   function initialize() {
@@ -554,7 +607,10 @@
 
     console.log('[OpusOrb] Initializing on:', window.location.href);
     
-    // Small delay to ensure page is settled
+    // Set up session offer listener
+    setupSessionOfferListener();
+    
+    // Small delay to ensure page is settled, then try bootstrap
     setTimeout(() => {
       requestBootstrap();
     }, 500);

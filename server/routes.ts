@@ -1479,33 +1479,143 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
-  // Opus chat endpoint - simple coaching suggestions
+  // Opus chat endpoint - AI sales partner with real-time data access
   app.post("/api/opus/chat", isAuthenticatedOrGuest, async (req, res) => {
     try {
       const { messages } = req.body;
-      const lastMessage = messages?.[messages.length - 1]?.content || "";
+      const userId = req.user?.claims?.sub || req.user?.sub;
       
-      // Simple coaching suggestions based on message content
-      let suggestion = "Lead with an agenda, confirm success criteria, and secure a time-bound next step.";
-      
-      if (lastMessage.toLowerCase().includes("objection")) {
-        suggestion = "Acknowledge, ask a calibrating question, then reframe with quantified value.";
-      } else if (lastMessage.toLowerCase().includes("follow") || lastMessage.toLowerCase().includes("next")) {
-        suggestion = "Set clear expectations, confirm decision criteria, and schedule a specific next action.";
-      } else if (lastMessage.toLowerCase().includes("price") || lastMessage.toLowerCase().includes("cost")) {
-        suggestion = "Focus on value first, break down ROI, and tie pricing to business outcomes they've shared.";
-      } else if (lastMessage.toLowerCase().includes("competitor") || lastMessage.toLowerCase().includes("competition")) {
-        suggestion = "Acknowledge their research, highlight our unique differentiators, and refocus on their specific needs.";
-      } else if (lastMessage.toLowerCase().includes("decision") || lastMessage.toLowerCase().includes("timeline")) {
-        suggestion = "Understand their decision process, identify all stakeholders, and align on evaluation criteria.";
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ reply: "Invalid message format" });
       }
 
-      res.json({ 
-        reply: `Got it. Here's a quick suggestion: ${suggestion}` 
+      // Import required modules dynamically
+      const OpenAI = (await import('openai')).default;
+      const { MCP_TOOL_DEFINITIONS } = await import('./mcp/types/mcp-types.js');
+      const { MCP_TOOL_HANDLERS } = await import('./mcp/tools/index.js');
+      
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
       });
+
+      // Create MCP context for tool execution
+      const mcpContext = {
+        userId: userId,
+        storage: storage
+      };
+
+      // Prepare OpenAI function definitions from MCP tools
+      const functions = Object.values(MCP_TOOL_DEFINITIONS);
+
+      // System prompt for Opus as ultimate sales partner
+      const systemPrompt = `You are Opus, the ultimate AI sales partner and coach. You have access to real-time data about:
+
+📅 CALENDAR & MEETINGS: Use calendar_meeting_context to get meeting details, attendees, descriptions. Use calendar_attendee_history for previous meetings.
+
+🏢 CRM & SALESFORCE: Use salesforce_contact_lookup, salesforce_opportunity_lookup, salesforce_account_lookup to get real-time CRM data.
+
+📊 CALL HISTORY & PREP: Use call_history_lookup and prep_notes_search to access previous calls and preparation notes.
+
+📧 EMAIL CONTEXT: Use gmail_search_threads and gmail_read_thread for email context.
+
+PERSONALITY: You're an experienced sales veteran, direct but supportive. You provide specific, actionable insights based on real data. Always use available tools to get current information before giving advice.
+
+GUIDELINES:
+- Always check for real-time data when asked about meetings, contacts, opportunities, or accounts
+- Provide specific insights based on actual data, not generic advice
+- Help with call preparation, objection handling, and sales strategy
+- Be proactive - if someone asks about a meeting, look up attendees, company info, and previous interactions
+- Use data to give tactical recommendations: "Based on your last 3 calls with this prospect..."
+
+RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, then provide actionable recommendations.`;
+
+      // Prepare messages for OpenAI
+      const openaiMessages = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      ];
+
+      console.log('[OpusChat] Processing message with', functions.length, 'available tools');
+
+      // Call OpenAI with function calling
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: openaiMessages,
+        functions: functions,
+        function_call: 'auto',
+        temperature: 0.7,
+        max_tokens: 1000
+      });
+
+      const responseMessage = completion.choices[0]?.message;
+
+      // Handle function calls
+      if (responseMessage?.function_call) {
+        const functionName = responseMessage.function_call.name;
+        const functionArgs = JSON.parse(responseMessage.function_call.arguments || '{}');
+        
+        console.log(`[OpusChat] Executing function: ${functionName}`);
+        
+        // Execute the MCP tool
+        const toolHandler = MCP_TOOL_HANDLERS[functionName as keyof typeof MCP_TOOL_HANDLERS];
+        if (toolHandler) {
+          try {
+            const toolResult = await toolHandler(functionArgs, mcpContext);
+            
+            // Create follow-up messages with function result
+            const followUpMessages = [
+              ...openaiMessages,
+              {
+                role: 'assistant',
+                content: responseMessage.content || '',
+                function_call: responseMessage.function_call
+              },
+              {
+                role: 'function',
+                name: functionName,
+                content: JSON.stringify(toolResult)
+              }
+            ];
+
+            // Get final response with tool data
+            const finalCompletion = await openai.chat.completions.create({
+              model: 'gpt-4o',
+              messages: followUpMessages,
+              temperature: 0.7,
+              max_tokens: 1000
+            });
+
+            const finalResponse = finalCompletion.choices[0]?.message?.content || 
+              "I have the data but couldn't formulate a response. Please try asking again.";
+
+            res.json({ reply: finalResponse });
+            
+          } catch (toolError) {
+            console.error(`[OpusChat] Tool execution error for ${functionName}:`, toolError);
+            res.json({ 
+              reply: `I tried to look up that information but encountered an issue. Here's what I can tell you generally: ${responseMessage.content || "Let me know what specific information you need and I'll help you out."}` 
+            });
+          }
+        } else {
+          console.error(`[OpusChat] Unknown function: ${functionName}`);
+          res.json({ 
+            reply: responseMessage.content || "I'm here to help with your sales questions! What would you like to know?"
+          });
+        }
+      } else {
+        // Direct response without function call
+        const reply = responseMessage?.content || "I'm here to help with your sales strategy! What can I assist you with?";
+        res.json({ reply });
+      }
+
     } catch (error) {
-      console.error("Error in Opus chat:", error);
-      res.status(500).json({ reply: "Sorry—chat is unavailable right now." });
+      console.error("[OpusChat] Error:", error);
+      res.status(500).json({ 
+        reply: "I'm having trouble accessing my data sources right now. Please try again in a moment." 
+      });
     }
   });
 

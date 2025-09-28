@@ -23,6 +23,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.error('FATAL: OPUS_JWT_SECRET environment variable is required');
     process.exit(1);
   }
+  
+  // Validate encryption key is set for production security
+  if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY === 'default-dev-key-change-in-production-32-chars') {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('FATAL: ENCRYPTION_KEY must be set to a secure value in production');
+      process.exit(1);
+    } else {
+      console.warn('WARNING: Using default encryption key in development. Set ENCRYPTION_KEY for production.');
+    }
+  }
+
+  // Validate feature flags for production safety  
+  const { validateProductionFlags } = await import('./config/flags.js');
+  validateProductionFlags();
 
   // Setup Replit Auth (Google Sign-in support)
   await setupAuth(app);

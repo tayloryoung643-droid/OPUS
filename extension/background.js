@@ -11,9 +11,11 @@ const CONFIG = {
 // Host allowlist - don't inject on these domains
 const BLOCKED_HOSTS = [
   'localhost:5000',
-  'your-domain.com', // Replace with your production domain
+  'localhost:3000', 
   'opus.dev',
-  'opus.ai'
+  'opus.ai',
+  'app.opus.ai',
+  'api.opus.ai'
 ];
 
 /**

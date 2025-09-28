@@ -397,10 +397,7 @@ export default function OpusAgendaMock() {
       <header className="flex items-center justify-between px-6 md:px-10 py-4 border-b border-zinc-900/60 sticky top-0 bg-black/70 backdrop-blur z-40">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 select-none">
-            <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-cyan-400 to-purple-500 grid place-items-center">
-              <div className="h-3 w-3 rounded-sm bg-black/60" />
-            </div>
-            <span className="text-lg font-semibold">Opus</span>
+            <img src="/opus-logo.svg" alt="Opus" className="h-7" />
           </div>
           <span className="text-sm text-zinc-400">Agenda</span>
         </div>

@@ -1,5 +1,6 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { useAuth } from "./hooks/useAuth";
+import RootLayout from "./components/RootLayout";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Overview from "./pages/Overview";
@@ -30,10 +31,16 @@ const Protected = ({ element }: { element: JSX.Element }) => {
 };
 
 export const router = createBrowserRouter([
-  { path: "/", element: <Home /> },
-  { path: "/login", element: <Login /> },
-  { path: "/overview", element: <Protected element={<Overview />} /> },
-  { path: "/agenda", element: <Protected element={<Agenda />} /> },
-  { path: "/settings", element: <Protected element={<Settings />} /> },
-  { path: "*", element: <Navigate to="/" replace /> },
+  {
+    path: "/",
+    element: <RootLayout />,
+    children: [
+      { index: true, element: <Home /> },
+      { path: "login", element: <Login /> },
+      { path: "overview", element: <Protected element={<Overview />} /> },
+      { path: "agenda", element: <Protected element={<Agenda />} /> },
+      { path: "settings", element: <Protected element={<Settings />} /> },
+      { path: "*", element: <Navigate to="/" replace /> },
+    ]
+  }
 ]);

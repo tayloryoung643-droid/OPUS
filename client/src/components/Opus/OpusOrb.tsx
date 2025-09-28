@@ -32,6 +32,8 @@ export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOr
   const audioRef = useRef<HTMLAudioElement>(null);
   const realtimeHandleRef = useRef<RealtimeHandle | null>(null);
   const { toast } = useToast();
+  
+  console.log('[OpusOrb] Component rendered - userId:', userId, 'state:', state);
 
   // Get user's name from auth
   useEffect(() => {
@@ -137,6 +139,7 @@ export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOr
   }, [toast]);
 
   const handleOrbClick = useCallback(() => {
+    alert('Orb clicked! Testing...');
     console.log('[OpusOrb] Orb clicked! userId:', userId, 'state:', state);
     
     if (!userId) {

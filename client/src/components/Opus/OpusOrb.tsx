@@ -137,7 +137,10 @@ export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOr
   }, [toast]);
 
   const handleOrbClick = useCallback(() => {
+    console.log('[OpusOrb] Orb clicked! userId:', userId, 'state:', state);
+    
     if (!userId) {
+      console.log('[OpusOrb] No userId, showing auth error');
       toast({
         title: "Authentication Required",
         description: "Please sign in to chat with Opus",
@@ -147,10 +150,13 @@ export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOr
     }
 
     const isActive = realtimeHandleRef.current?.isActive() || state === 'listening';
+    console.log('[OpusOrb] isActive:', isActive, 'current state:', state);
     
     if (isActive) {
+      console.log('[OpusOrb] Stopping voice mode');
       stopVoiceMode();
     } else {
+      console.log('[OpusOrb] Starting voice mode');
       startVoiceMode();
     }
   }, [userId, state, startVoiceMode, stopVoiceMode, toast]);
@@ -238,7 +244,7 @@ export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOr
       {/* Status text */}
       <div className="text-center">
         <div className="text-xs text-white/60">
-          {state === 'listening' ? 'Listening… (tap to end)' : 'Tap to speak with Opus'}
+          {state === 'listening' ? 'Listening… (tap to end)' : ''}
         </div>
       </div>
 

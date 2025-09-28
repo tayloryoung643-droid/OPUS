@@ -109,7 +109,7 @@ export default function OpusLandingPage() {
       </header>
 
       {/* Hero grid */}
-      <main className="px-6 md:px-16 lg:px-20 py-2 md:py-4 max-w-7xl mx-auto">
+      <main className="px-6 md:px-16 lg:px-20 py-2 md:py-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:gap-6 items-start">
           {/* Left: Greeting, Agenda, Rhythm */}
           <section className="space-y-3 lg:space-y-4">
@@ -198,52 +198,50 @@ export default function OpusLandingPage() {
         </div>
 
         {/* Refined bottom strip: Elegant insights */}
-        <section className="-mt-8 md:-mt-10 w-full">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-            {/* Quarter Overview */}
-            <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg w-full">
-              <h3 className="text-lg font-semibold text-zinc-200 mb-2">Quarter Overview</h3>
-              <div className="text-3xl font-light tracking-tight">
-                $480K <span className="text-zinc-500 text-base">/ $1M target</span>
+        <section className="-mt-8 md:-mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 items-start max-w-full overflow-hidden">
+          {/* Quarter Overview */}
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg min-w-0">
+            <h3 className="text-lg font-semibold text-zinc-200 mb-2">Quarter Overview</h3>
+            <div className="text-3xl font-light tracking-tight">
+              $480K <span className="text-zinc-500 text-base">/ $1M target</span>
+            </div>
+            <div className="mt-4 h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-600" style={{ width: "48%" }} />
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-zinc-400">
+              <div>
+                <div className="text-zinc-200 font-medium">20%</div>
+                <div className="mt-0.5">Segment rank</div>
               </div>
-              <div className="mt-4 h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-600" style={{ width: "48%" }} />
+              <div>
+                <div className="text-zinc-200 font-medium">7</div>
+                <div className="mt-0.5">Active opps</div>
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-zinc-400">
-                <div>
-                  <div className="text-zinc-200 font-medium">20%</div>
-                  <div className="mt-0.5">Segment rank</div>
-                </div>
-                <div>
-                  <div className="text-zinc-200 font-medium">7</div>
-                  <div className="mt-0.5">Active opps</div>
-                </div>
-                <div>
-                  <div className="text-zinc-200 font-medium">$1.9M</div>
-                  <div className="mt-0.5">Pipeline</div>
-                </div>
+              <div>
+                <div className="text-zinc-200 font-medium">$1.9M</div>
+                <div className="mt-0.5">Pipeline</div>
               </div>
             </div>
+          </div>
 
-            {/* Momentum (less gamey, more elegant) */}
-            <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg w-full">
-              <h3 className="text-lg font-semibold text-zinc-200 mb-2">Momentum</h3>
-              <ul className="space-y-3 text-sm text-zinc-300">
-                <li className="flex items-center justify-between">
-                  <span>Win rate (QTD)</span>
-                  <span className="text-zinc-100 font-medium">28%</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span>Avg. cycle length</span>
-                  <span className="text-zinc-100 font-medium">32 days</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span>Next step recommendations</span>
-                  <span className="text-zinc-100 font-medium">2 ready</span>
-                </li>
-              </ul>
-              <div className="mt-4 text-xs text-zinc-500">Curated by Opus from CRM + calendar signals</div>
-            </div>
+          {/* Momentum (less gamey, more elegant) */}
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg min-w-0">
+            <h3 className="text-lg font-semibold text-zinc-200 mb-2">Momentum</h3>
+            <ul className="space-y-3 text-sm text-zinc-300">
+              <li className="flex items-center justify-between">
+                <span>Win rate (QTD)</span>
+                <span className="text-zinc-100 font-medium">28%</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Avg. cycle length</span>
+                <span className="text-zinc-100 font-medium">32 days</span>
+              </li>
+              <li className="flex items-center justify-between">
+                <span>Next step recommendations</span>
+                <span className="text-zinc-100 font-medium">2 ready</span>
+              </li>
+            </ul>
+            <div className="mt-4 text-xs text-zinc-500">Curated by Opus from CRM + calendar signals</div>
           </div>
         </section>
       </main>

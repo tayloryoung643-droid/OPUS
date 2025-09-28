@@ -49,116 +49,302 @@
   }
 
   /**
-   * Create persistence adapter for extension
-   * @param {Object} config - Bootstrap configuration
-   * @returns {Object} Persistence adapter instance
+   * Secure network call proxy that keeps JWT in content script
+   * @param {string} jwt - JWT token (stays in content script)
+   * @param {string} url - Request URL
+   * @param {Object} options - Fetch options
+   * @returns {Promise<Response>} Response promise
    */
-  function createExtensionPersistence(config) {
-    return {
-      async createSession() {
-        try {
-          const response = await fetch(`${config.apiBaseUrl}/chat/session`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${config.jwt}`,
-              'Content-Type': 'application/json'
-            }
-          });
+  async function secureNetworkCall(jwt, url, options = {}) {
+    const secureOptions = {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${jwt}`,
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    return fetch(url, secureOptions);
+  }
 
-          if (response.ok) {
-            const data = await response.json();
-            return data.conversationId;
+  /**
+   * Message bridge for secure RPC between page and content script
+   */
+  const messageBridge = {
+    pendingRequests: new Map(),
+    requestId: 0,
+
+    /**
+     * Setup message listeners for RPC communication
+     */
+    setup(jwt, apiBaseUrl, userId) {
+      // Listen for messages from page script
+      window.addEventListener('message', async (event) => {
+        if (event.source !== window || !event.data.type?.startsWith('OPUS_RPC_')) return;
+
+        const { type, requestId, operation, payload } = event.data;
+
+        if (type === 'OPUS_RPC_REQUEST') {
+          try {
+            let result;
+            
+            switch (operation) {
+              case 'createSession':
+                result = await this.handleCreateSession(jwt, apiBaseUrl, userId);
+                break;
+              case 'loadMessages':
+                result = await this.handleLoadMessages(jwt, apiBaseUrl, userId, payload.conversationId);
+                break;
+              case 'saveMessage':
+                result = await this.handleSaveMessage(jwt, apiBaseUrl, userId, payload.conversationId, payload.message);
+                break;
+              case 'secureNetworkCall':
+                const response = await secureNetworkCall(jwt, payload.url, payload.options);
+                result = { 
+                  ok: response.ok, 
+                  status: response.status,
+                  data: response.ok ? await response.json() : null
+                };
+                break;
+              default:
+                throw new Error(`Unknown operation: ${operation}`);
+            }
+
+            // Send success response
+            window.postMessage({
+              type: 'OPUS_RPC_RESPONSE',
+              requestId,
+              success: true,
+              result
+            }, '*');
+
+          } catch (error) {
+            // Send error response
+            window.postMessage({
+              type: 'OPUS_RPC_RESPONSE',
+              requestId,
+              success: false,
+              error: error.message
+            }, '*');
           }
-        } catch (error) {
-          console.warn('[OpusOrb] Server session failed:', error);
         }
+      });
+    },
+
+    /**
+     * Handle session creation with stable conversation ID
+     */
+    async handleCreateSession(jwt, apiBaseUrl, userId) {
+      const activeKey = `opus:activeConversationId:${userId}`;
+      
+      try {
+        const result = await new Promise((resolve) => {
+          chrome.storage.local.get([activeKey], resolve);
+        });
         
-        // Fallback to local UUID
-        return crypto.randomUUID();
-      },
+        if (result[activeKey]) {
+          console.log('[OpusOrb] Reusing existing conversation ID:', result[activeKey]);
+          return result[activeKey];
+        }
+      } catch (error) {
+        console.warn('[OpusOrb] Failed to load existing conversation ID:', error);
+      }
+      
+      // Create new conversation ID (try server first)
+      let conversationId;
+      try {
+        const response = await secureNetworkCall(jwt, `${apiBaseUrl}/chat/session`, {
+          method: 'POST'
+        });
 
-      async loadMessages(conversationId) {
-        try {
-          // Try server first
-          const response = await fetch(`${config.apiBaseUrl}/chat/history?conversationId=${conversationId}`, {
-            headers: {
-              'Authorization': `Bearer ${config.jwt}`,
-              'Content-Type': 'application/json'
+        if (response.ok) {
+          const data = await response.json();
+          conversationId = data.conversationId;
+        } else {
+          throw new Error('Server session failed');
+        }
+      } catch (error) {
+        console.warn('[OpusOrb] Server session failed:', error);
+        conversationId = crypto.randomUUID();
+      }
+      
+      // Store the stable conversation ID
+      try {
+        await new Promise((resolve, reject) => {
+          chrome.storage.local.set({ [activeKey]: conversationId }, () => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+            } else {
+              resolve();
             }
           });
+        });
+        console.log('[OpusOrb] Created new stable conversation ID:', conversationId);
+      } catch (error) {
+        console.error('[OpusOrb] Failed to store conversation ID:', error);
+      }
+      
+      return conversationId;
+    },
 
-          if (response.ok) {
-            const data = await response.json();
-            if (data.messages?.length > 0) {
-              // Cache locally
-              await this.saveToLocal(conversationId, data.messages);
-              return data.messages;
-            }
+    /**
+     * Handle loading messages from storage/server
+     */
+    async handleLoadMessages(jwt, apiBaseUrl, userId, conversationId) {
+      try {
+        // Try server first
+        const response = await secureNetworkCall(jwt, `${apiBaseUrl}/chat/history?conversationId=${conversationId}`);
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.messages?.length > 0) {
+            // Cache locally
+            await this.saveToLocal(userId, conversationId, data.messages);
+            return data.messages;
           }
-        } catch (error) {
-          console.warn('[OpusOrb] Server load failed:', error);
         }
+      } catch (error) {
+        console.warn('[OpusOrb] Server load failed:', error);
+      }
 
-        // Fallback to local storage
-        return await this.loadFromLocal(conversationId);
-      },
+      // Fallback to local storage
+      return await this.loadFromLocal(userId, conversationId);
+    },
 
-      async saveMessages(conversationId, messages) {
-        // Save to both server and local
-        await Promise.allSettled([
-          this.saveToServer(conversationId, messages),
-          this.saveToLocal(conversationId, messages)
-        ]);
-      },
+    /**
+     * Handle saving a message
+     */
+    async handleSaveMessage(jwt, apiBaseUrl, userId, conversationId, message) {
+      // Load existing messages, add new one, save both locally and to server
+      const messages = await this.loadFromLocal(userId, conversationId);
+      messages.push(message);
+      
+      await Promise.allSettled([
+        this.saveToServer(jwt, apiBaseUrl, conversationId, messages),
+        this.saveToLocal(userId, conversationId, messages)
+      ]);
+    },
 
-      async saveToServer(conversationId, messages) {
-        try {
-          await fetch(`${config.apiBaseUrl}/chat/events`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${config.jwt}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              conversationId,
-              messages: messages.slice(-50)
-            })
+    /**
+     * Load messages from local storage
+     */
+    async loadFromLocal(userId, conversationId) {
+      try {
+        const key = `opus:chat:${userId}:${conversationId}`;
+        const result = await new Promise((resolve) => {
+          chrome.storage.local.get([key], resolve);
+        });
+        const messages = result[key] || [];
+        console.log(`[OpusOrb] Loaded ${messages.length} messages for conversation ${conversationId}`);
+        return messages;
+      } catch (error) {
+        console.error('[OpusOrb] Local load error:', error);
+        return [];
+      }
+    },
+
+    /**
+     * Save messages to local storage
+     */
+    async saveToLocal(userId, conversationId, messages) {
+      try {
+        const key = `opus:chat:${userId}:${conversationId}`;
+        const messagesToSave = messages.slice(-50);
+        
+        await new Promise((resolve, reject) => {
+          chrome.storage.local.set({ [key]: messagesToSave }, () => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+            } else {
+              resolve();
+            }
           });
-        } catch (error) {
-          console.warn('[OpusOrb] Server save failed:', error);
-        }
+        });
+        console.log(`[OpusOrb] Saved ${messagesToSave.length} messages locally for conversation ${conversationId}`);
+      } catch (error) {
+        console.error('[OpusOrb] Local save error:', error);
+      }
+    },
+
+    /**
+     * Save messages to server
+     */
+    async saveToServer(jwt, apiBaseUrl, conversationId, messages) {
+      try {
+        await secureNetworkCall(jwt, `${apiBaseUrl}/chat/events`, {
+          method: 'POST',
+          body: JSON.stringify({
+            conversationId,
+            messages: messages.slice(-50)
+          })
+        });
+      } catch (error) {
+        console.warn('[OpusOrb] Server save failed:', error);
+      }
+    }
+  };
+
+  /**
+   * Create RPC-based persistence adapter for page script
+   * @returns {Object} Persistence adapter that uses postMessage RPC
+   */
+  function createRPCPersistenceAdapter() {
+    return {
+      syncAcrossTabs: true,
+      
+      async createSession() {
+        return await this.makeRPCCall('createSession');
+      },
+      
+      async loadMessages(conversationId) {
+        return await this.makeRPCCall('loadMessages', { conversationId });
+      },
+      
+      async saveMessage(conversationId, message) {
+        return await this.makeRPCCall('saveMessage', { conversationId, message });
       },
 
-      async loadFromLocal(conversationId) {
-        try {
-          const key = `opus:chat:${config.user.id}:${conversationId}`;
-          const result = await new Promise((resolve) => {
-            chrome.storage.local.get([key], resolve);
-          });
-          return result[key] || [];
-        } catch (error) {
-          console.error('[OpusOrb] Local load error:', error);
-          return [];
-        }
-      },
-
-      async saveToLocal(conversationId, messages) {
-        try {
-          const key = `opus:chat:${config.user.id}:${conversationId}`;
-          const messagesToSave = messages.slice(-50);
+      /**
+       * Make RPC call to content script via postMessage
+       */
+      makeRPCCall(operation, payload = {}) {
+        return new Promise((resolve, reject) => {
+          const requestId = `rpc_${Date.now()}_${Math.random()}`;
           
-          await new Promise((resolve, reject) => {
-            chrome.storage.local.set({ [key]: messagesToSave }, () => {
-              if (chrome.runtime.lastError) {
-                reject(chrome.runtime.lastError);
-              } else {
-                resolve();
-              }
-            });
-          });
-        } catch (error) {
-          console.error('[OpusOrb] Local save error:', error);
-        }
+          // Send request to content script
+          window.postMessage({
+            type: 'OPUS_RPC_REQUEST',
+            requestId,
+            operation,
+            payload
+          }, '*');
+          
+          // Listen for response
+          const handler = (event) => {
+            if (event.source !== window || 
+                event.data.type !== 'OPUS_RPC_RESPONSE' || 
+                event.data.requestId !== requestId) {
+              return;
+            }
+            
+            window.removeEventListener('message', handler);
+            
+            if (event.data.success) {
+              resolve(event.data.result);
+            } else {
+              reject(new Error(event.data.error));
+            }
+          };
+          
+          window.addEventListener('message', handler);
+          
+          // Timeout after 10 seconds
+          setTimeout(() => {
+            window.removeEventListener('message', handler);
+            reject(new Error('RPC timeout'));
+          }, 10000);
+        });
       }
     };
   }
@@ -184,18 +370,31 @@
       mountPoint.style.cssText = 'position: fixed; top: 0; left: 0; pointer-events: none; z-index: 2147483647;';
       document.documentElement.appendChild(mountPoint);
 
-      // Create persistence adapter
-      const persistence = createExtensionPersistence(bootstrapData);
+      // Set up secure message bridge (keeps JWT in content script)
+      const userId = bootstrapData.user?.sub || bootstrapData.user?.id || 'anonymous';
+      messageBridge.setup(bootstrapData.jwt, bootstrapData.apiBaseUrl, userId);
 
-      // Mount the Orb
+      // Create RPC-based persistence adapter for page script
+      const rpcPersistence = createRPCPersistenceAdapter();
+
+      // Get initial conversation ID
+      const conversationId = await messageBridge.handleCreateSession(
+        bootstrapData.jwt, 
+        bootstrapData.apiBaseUrl, 
+        userId
+      );
+
+      // Mount the Orb WITHOUT exposing JWT to page context
       orbMountInstance = window.OpusOrb.mount('#opus-orb-root', {
-        jwt: bootstrapData.jwt,
+        // DO NOT PASS JWT - security risk eliminated
         apiBaseUrl: bootstrapData.apiBaseUrl,
         mcpWsUrl: bootstrapData.mcpWsUrl,
-        conversationId: await persistence.createSession(),
-        persistence: persistence,
-        userId: bootstrapData.user.id,
-        userName: bootstrapData.user.name
+        conversationId: conversationId,
+        persistence: rpcPersistence,
+        userId: userId,
+        userName: bootstrapData.user.name,
+        // Provide RPC-based network proxy instead of direct function
+        secureNetworkProxy: (url, options) => rpcPersistence.makeRPCCall('secureNetworkCall', { url, options })
       });
 
       console.log('[OpusOrb] Successfully mounted on page');

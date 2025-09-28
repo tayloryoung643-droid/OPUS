@@ -386,3 +386,45 @@ export type InsertCoachTranscript = z.infer<typeof insertCoachTranscriptSchema>;
 
 export type CoachSuggestion = typeof coachSuggestions.$inferSelect;
 export type InsertCoachSuggestion = z.infer<typeof insertCoachSuggestionSchema>;
+
+// Call Transcripts table for Silent Call Recorder MVP
+export const callTranscripts = pgTable("call_transcripts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  eventId: varchar("event_id").notNull(), // Google Calendar event ID
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: 'set null' }),
+  opportunityId: varchar("opportunity_id").references(() => crmOpportunities.id, { onDelete: 'set null' }),
+  transcript: text("transcript").notNull(), // Final transcript text only
+  eventTitle: text("event_title"), // Cache of event title for easy reference
+  eventStartTime: timestamp("event_start_time"), // Cache of event start time
+  duration: integer("duration"), // Call duration in seconds
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Call Transcripts relations
+export const callTranscriptsRelations = relations(callTranscripts, ({ one }) => ({
+  user: one(users, {
+    fields: [callTranscripts.userId],
+    references: [users.id],
+  }),
+  company: one(companies, {
+    fields: [callTranscripts.companyId],
+    references: [companies.id],
+  }),
+  opportunity: one(crmOpportunities, {
+    fields: [callTranscripts.opportunityId],
+    references: [crmOpportunities.id],
+  }),
+}));
+
+// Call Transcripts insert schema
+export const insertCallTranscriptSchema = createInsertSchema(callTranscripts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Call Transcripts types
+export type CallTranscript = typeof callTranscripts.$inferSelect;
+export type InsertCallTranscript = z.infer<typeof insertCallTranscriptSchema>;

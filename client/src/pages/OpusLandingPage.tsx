@@ -3,11 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import SettingsModal from "@/components/SettingsModal";
 import OpusCoachPanel from "@/components/OpusCoachPanel";
+import OpusOrb from "@/components/Opus/OpusOrb";
+import { useAuth } from "@/hooks/useAuth";
 import { CONFIG } from "@/config";
 
 export default function OpusLandingPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
+  
+  // Get current user for voice recording
+  const { user } = useAuth();
+  const userId = (user as any)?.claims?.sub;
 
   // Fetch upcoming calendar events (including today and future)
   const { data: todaysEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
@@ -72,6 +78,19 @@ export default function OpusLandingPage() {
       subtitle: event.location || '',
     };
   }).slice(0, 5); // Limit to 5 upcoming events
+
+  // Find current active calendar event for voice recording
+  const currentEvent = React.useMemo(() => {
+    if (CONFIG.USE_MOCKS || !todaysEvents) return null;
+    
+    const now = new Date();
+    return todaysEvents.find(event => {
+      if (!event.start?.dateTime || !event.end?.dateTime) return false;
+      const start = new Date(event.start.dateTime);
+      const end = new Date(event.end.dateTime);
+      return now >= start && now <= end;
+    });
+  }, [todaysEvents]);
 
   const rhythmItems = CONFIG.USE_MOCKS ? [
     "Back-to-back meetings from 10–4 — grab a snack before",
@@ -210,7 +229,16 @@ export default function OpusLandingPage() {
           </section>
 
           {/* Right: Opus Coach Panel */}
-          <aside>
+          <aside className="space-y-6">
+            {/* Voice Recording Orb */}
+            <div className="flex justify-center">
+              <OpusOrb 
+                currentEvent={currentEvent}
+                userId={userId}
+                data-testid="voice-recorder-orb"
+              />
+            </div>
+            
             <OpusCoachPanel />
           </aside>
         </div>

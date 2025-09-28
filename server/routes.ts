@@ -9,6 +9,7 @@ import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallP
 import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
 import { CoachWebSocketService } from "./services/coachWebSocket";
+import { VoiceRecorderWebSocketService } from "./services/voiceRecorderWebSocket";
 import { z } from "zod";
 import gmailRoutes from "./routes/gmail";
 import { generateRhythmInsights, generateOpusFeed } from "./services/insights";
@@ -1844,6 +1845,10 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   // Initialize Coach WebSocket service
   const coachWS = new CoachWebSocketService(httpServer);
   console.log('[Coach] WebSocket service initialized');
+  
+  // Initialize Voice Recorder WebSocket service for Silent Call Recorder MVP
+  const voiceRecorderWS = new VoiceRecorderWebSocketService(httpServer);
+  console.log('[Voice-Recorder] WebSocket service initialized');
   
   return httpServer;
 }

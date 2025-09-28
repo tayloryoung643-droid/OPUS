@@ -1,6 +1,6 @@
 import { 
   companies, contacts, calls, callPreps, prepNotes, users, integrations, integrationData, crmOpportunities, googleIntegrations, salesforceIntegrations,
-  coachSessions, coachTranscripts, coachSuggestions,
+  coachSessions, coachTranscripts, coachSuggestions, callTranscripts,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
@@ -14,7 +14,8 @@ import {
   type SalesforceIntegration, type InsertSalesforceIntegration,
   type CoachSession, type InsertCoachSession,
   type CoachTranscript, type InsertCoachTranscript,
-  type CoachSuggestion, type InsertCoachSuggestion
+  type CoachSuggestion, type InsertCoachSuggestion,
+  type CallTranscript, type InsertCallTranscript
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -112,6 +113,15 @@ export interface IStorage {
   createCoachSuggestion(suggestion: InsertCoachSuggestion): Promise<CoachSuggestion>;
   getCoachSuggestions(sessionId: string): Promise<CoachSuggestion[]>;
   updateCoachSuggestion(id: string, updates: Partial<InsertCoachSuggestion>): Promise<CoachSuggestion>;
+
+  // Call Transcript methods (Silent Call Recorder MVP)
+  createCallTranscript(transcript: InsertCallTranscript): Promise<CallTranscript>;
+  getCallTranscript(id: string): Promise<CallTranscript | undefined>;
+  getCallTranscriptsByUser(userId: string): Promise<CallTranscript[]>;
+  getCallTranscriptByEvent(eventId: string): Promise<CallTranscript | undefined>;
+  getCallTranscriptsByCompany(companyId: string): Promise<CallTranscript[]>;
+  updateCallTranscript(id: string, updates: Partial<InsertCallTranscript>): Promise<CallTranscript>;
+  deleteCallTranscript(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -712,6 +722,59 @@ export class DatabaseStorage implements IStorage {
       .where(eq(coachSuggestions.id, id))
       .returning();
     return suggestion;
+  }
+
+  // Call Transcript methods (Silent Call Recorder MVP)
+  async createCallTranscript(insertTranscript: InsertCallTranscript): Promise<CallTranscript> {
+    const [transcript] = await db.insert(callTranscripts).values(insertTranscript).returning();
+    return transcript;
+  }
+
+  async getCallTranscript(id: string): Promise<CallTranscript | undefined> {
+    const [transcript] = await db
+      .select()
+      .from(callTranscripts)
+      .where(eq(callTranscripts.id, id));
+    return transcript || undefined;
+  }
+
+  async getCallTranscriptsByUser(userId: string): Promise<CallTranscript[]> {
+    return await db
+      .select()
+      .from(callTranscripts)
+      .where(eq(callTranscripts.userId, userId))
+      .orderBy(desc(callTranscripts.createdAt));
+  }
+
+  async getCallTranscriptByEvent(eventId: string): Promise<CallTranscript | undefined> {
+    const [transcript] = await db
+      .select()
+      .from(callTranscripts)
+      .where(eq(callTranscripts.eventId, eventId));
+    return transcript || undefined;
+  }
+
+  async getCallTranscriptsByCompany(companyId: string): Promise<CallTranscript[]> {
+    return await db
+      .select()
+      .from(callTranscripts)
+      .where(eq(callTranscripts.companyId, companyId))
+      .orderBy(desc(callTranscripts.createdAt));
+  }
+
+  async updateCallTranscript(id: string, updates: Partial<InsertCallTranscript>): Promise<CallTranscript> {
+    const [transcript] = await db
+      .update(callTranscripts)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(callTranscripts.id, id))
+      .returning();
+    return transcript;
+  }
+
+  async deleteCallTranscript(id: string): Promise<void> {
+    await db
+      .delete(callTranscripts)
+      .where(eq(callTranscripts.id, id));
   }
 }
 

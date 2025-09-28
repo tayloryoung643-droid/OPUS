@@ -1,0 +1,16 @@
+Unexpected Application Error!
+eventsError is not defined
+ReferenceError: eventsError is not defined
+    at OpusLandingPage (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/src/pages/OpusLandingPage.tsx:221:26)
+    at renderWithHooks (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:11548:26)
+    at updateFunctionComponent (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:14582:28)
+    at beginWork (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:15924:22)
+    at beginWork$1 (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:19753:22)
+    at performUnitOfWork (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:19198:20)
+    at workLoopSync (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:19137:13)
+    at renderRootSync (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:19116:15)
+    at recoverFromConcurrentError (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:18736:28)
+    at performSyncWorkOnRoot (https://fb676604-3b82-44ff-9e88-3fae6bc77138-00-1my8i9ylext48.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-RPCDYKBN.js?v=df67cbf0:18879:28)
+💿 Hey developer 👋
+
+You can provide a way better UX than this when your app throws errors by providing your own ErrorBoundary or errorElement prop on your route.

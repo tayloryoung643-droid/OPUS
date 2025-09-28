@@ -10,7 +10,7 @@ export default function OpusLandingPage() {
   const navigate = useNavigate();
 
   // Fetch today's calendar events
-  const { data: todaysEvents, isLoading: eventsLoading } = useQuery({
+  const { data: todaysEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
     queryKey: ['/api/calendar/today'],
     queryFn: async () => {
       const response = await fetch('/api/calendar/today');

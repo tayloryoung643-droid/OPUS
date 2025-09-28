@@ -848,6 +848,109 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     }
   });
 
+  // POST /api/chat - send message and get AI response
+  app.post("/api/chat", isAuthenticatedOrJWT, requireWriteAccess, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { message, conversationId } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: "Message is required and must be a string" });
+      }
+
+      if (!conversationId || typeof conversationId !== 'string') {
+        return res.status(400).json({ error: "conversationId is required" });
+      }
+
+      // Ensure session exists
+      const session = await storage.upsertChatSession(userId, conversationId);
+
+      // Get MCP context for the AI
+      const { createUnifiedMCPResolver } = await import('./mcp/contextResolver.js');
+      const mcpResolver = await createUnifiedMCPResolver(userId);
+      const context = await mcpResolver.buildComprehensiveContext();
+
+      // Load existing conversation history
+      const existingMessages = await storage.getChatMessagesByConversationId(conversationId, 50, 0);
+
+      // Format messages for OpenAI
+      const formattedMessages = existingMessages.map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      }));
+
+      // Add current user message
+      formattedMessages.push({ role: 'user', content: message });
+
+      // Prepare system message with context
+      const systemMessage = {
+        role: 'system' as const,
+        content: `You are Opus, an emotional, personal AI partner. Use the provided context to give helpful, personalized responses.
+
+Integration Status:
+- Google Calendar: ${context.integrationStatus.hasGoogle ? 'Connected' : 'Not Connected'}
+- Salesforce CRM: ${context.integrationStatus.hasSalesforce ? 'Connected' : 'Not Connected'}  
+- Gmail: ${context.integrationStatus.hasGmail ? 'Connected' : 'Not Connected'}
+
+Available Data:
+- Calendar Events: ${context.calendarEvents.total} events
+- CRM Opportunities: ${context.opportunities.total} opportunities
+- Recent Contacts: ${context.recentContacts.total} contacts
+
+IMPORTANT: Only use real data from the context above. Never fabricate or use sample data like "Acme Corp", "DataFlow Systems", etc.`
+      };
+
+      // Call OpenAI
+      const { OpenAI } = await import('openai');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [systemMessage, ...formattedMessages],
+        temperature: 0.7,
+        max_tokens: 1000
+      });
+
+      const assistantMessage = completion.choices[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
+
+      // Save both user and assistant messages with proper chronological timestamps
+      const userTimestamp = new Date();
+      const assistantTimestamp = new Date(userTimestamp.getTime() + 1); // Ensure assistant is 1ms later
+      
+      const messagesToSave = [
+        {
+          messageId: crypto.randomUUID(),
+          role: 'user' as const,
+          content: message,
+          timestamp: userTimestamp
+        },
+        {
+          messageId: crypto.randomUUID(),
+          role: 'assistant' as const,
+          content: assistantMessage,
+          timestamp: assistantTimestamp
+        }
+      ];
+
+      await storage.saveChatMessages(session.id, messagesToSave);
+
+      // Return the AI response
+      res.json({
+        message: assistantMessage,
+        conversationId,
+        timestamp: Date.now()
+      });
+
+    } catch (error) {
+      console.error("Error processing chat message:", error);
+      res.status(500).json({ error: "Failed to process chat message" });
+    }
+  });
+
   // Insights routes for Rhythm and Opus feed
   app.get("/api/insights/rhythm", isAuthenticatedOrGuest, async (req: any, res) => {
     try {

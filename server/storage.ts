@@ -20,7 +20,7 @@ import {
   type ChatMessage, type InsertChatMessage
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { CryptoService } from "./services/crypto";
 
 export interface IStorage {
@@ -836,7 +836,7 @@ export class DatabaseStorage implements IStorage {
       .from(chatMessages)
       .innerJoin(chatSessions, eq(chatMessages.sessionId, chatSessions.id))
       .where(eq(chatSessions.conversationId, conversationId))
-      .orderBy(chatMessages.timestamp, chatMessages.messageId);
+      .orderBy(chatMessages.timestamp, chatMessages.createdAt, chatMessages.messageId);
     
     // Apply pagination if provided
     if (offset !== undefined) {

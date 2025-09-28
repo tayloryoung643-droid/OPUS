@@ -138,6 +138,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // OpenAI Realtime API - Generate ephemeral tokens for WebRTC voice sessions
+  app.post('/api/openai/realtime/token', isAuthenticated, async (req: any, res) => {
+    try {
+      const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+      const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview-2024-12-17";
+
+      if (!OPENAI_API_KEY) {
+        console.error('[OpenAI-Realtime] OPENAI_API_KEY environment variable not set');
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+
+      // Create an ephemeral session (valid ~1 min). Model must be a Realtime-capable model.
+      const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: REALTIME_MODEL,
+          voice: "verse", // Default voice for Opus
+          modalities: ["audio", "text"],
+          instructions: "You are Opus, an AI assistant helping with sales call preparation and business insights. Be concise, helpful, and professional in your responses."
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[OpenAI-Realtime] Failed to create session:', errorText);
+        return res.status(500).json({ 
+          error: "Failed to create OpenAI Realtime session", 
+          details: errorText 
+        });
+      }
+
+      const sessionData = await response.json();
+      console.log('[OpenAI-Realtime] Session created successfully');
+      
+      // Return the session data including client_secret.value for WebRTC
+      res.json(sessionData);
+    } catch (error) {
+      console.error('[OpenAI-Realtime] Error creating session:', error);
+      res.status(500).json({ 
+        error: "Internal server error", 
+        message: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
   // Integration routes for Outlook
   app.get("/api/integrations/outlook/setup", isAuthenticatedOrGuest, async (req, res) => {
     try {

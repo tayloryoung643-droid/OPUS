@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "description": "Shared Opus Orb with chat persistence and MCP data access",
   "action": { "default_title": "Opus" },
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "alarms", "tabs"],
   "host_permissions": [
     "http://localhost:5000/*",
     "https://localhost:5000/*"

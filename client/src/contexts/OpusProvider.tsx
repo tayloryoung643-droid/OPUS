@@ -141,7 +141,8 @@ export function OpusProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const audioRef = useRef<HTMLAudioElement>(null);
   
-  const userId = (user as any)?.claims?.sub;
+  // Handle different user data structures (claims vs direct properties)
+  const userId = (user as any)?.claims?.sub || (user as any)?.sub || (user as any)?.id;
 
   // Load chat history from localStorage on mount
   useEffect(() => {
@@ -268,7 +269,10 @@ export function OpusProvider({ children }: { children: React.ReactNode }) {
 
   // Voice actions
   const startVoice = useCallback(async () => {
+    console.log('[OpusProvider] StartVoice called. User:', user, 'UserId:', userId);
+    
     if (!userId) {
+      console.log('[OpusProvider] No userId found, blocking voice');
       toast({
         title: "Authentication Required",
         description: "Please sign in to use voice chat",
@@ -276,6 +280,8 @@ export function OpusProvider({ children }: { children: React.ReactNode }) {
       });
       return;
     }
+    
+    console.log('[OpusProvider] User authenticated, proceeding with voice');
 
     if (state.voice.handle?.isActive()) {
       return; // Already active

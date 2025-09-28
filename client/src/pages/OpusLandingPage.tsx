@@ -109,7 +109,7 @@ export default function OpusLandingPage() {
       </header>
 
       {/* Hero grid */}
-      <main className="px-6 md:px-16 lg:px-20 py-10 md:py-14">
+      <main className="px-6 md:px-16 lg:px-20 py-6 md:py-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 xl:gap-12 items-start">
           {/* Left: Greeting, Agenda, Rhythm */}
           <section className="space-y-6 lg:space-y-8">
@@ -198,7 +198,7 @@ export default function OpusLandingPage() {
         </div>
 
         {/* Refined bottom strip: Elegant insights */}
-        <section className="mt-10 md:mt-14 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <section className="mt-6 md:mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Quarter Overview */}
           <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
             <h3 className="text-lg font-semibold text-zinc-200 mb-2">Quarter Overview</h3>

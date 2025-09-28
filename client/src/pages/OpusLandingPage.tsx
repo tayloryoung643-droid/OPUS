@@ -2,8 +2,6 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import SettingsModal from "@/components/SettingsModal";
-import OpusCoachPanel from "@/components/OpusCoachPanel";
-import OpusOrb from "@/components/Opus/OpusOrb";
 import { useAuth } from "@/hooks/useAuth";
 import { CONFIG } from "@/config";
 
@@ -228,18 +226,26 @@ export default function OpusLandingPage() {
             </div>
           </section>
 
-          {/* Right: Opus Coach Panel */}
+          {/* Right: Opus insights and content now that global OpusDock handles interaction */}
           <aside className="space-y-6">
-            {/* Voice Recording Orb */}
-            <div className="flex justify-center">
-              <OpusOrb 
-                currentEvent={currentEvent}
-                userId={userId}
-                data-testid="voice-recorder-orb"
-              />
+            {/* Global OpusDock handles all Opus interaction now */}
+            <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
+              <h3 className="text-lg font-semibold text-zinc-200 mb-4">Today's Focus</h3>
+              <div className="space-y-3 text-zinc-300 text-sm">
+                <div className="flex items-start gap-3">
+                  <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                  <span>Pipeline review complete — 3 new opportunities identified</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-purple-400" />
+                  <span>Call prep ready for Discovery calls</span>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                  <span>Click the Opus orb for voice chat or assistance</span>
+                </div>
+              </div>
             </div>
-            
-            <OpusCoachPanel />
           </aside>
         </div>
 

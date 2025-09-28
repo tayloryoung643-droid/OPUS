@@ -6,6 +6,9 @@ export default function OpusHeroGreeting({ firstName }: { firstName: string }) {
           <h1 className="text-6xl leading-[1.05] font-bold text-white">
             Good morning,<br />{firstName}
           </h1>
+          <p className="mt-2 text-lg text-white/90 font-medium">
+            Opus... Your AI Sales Partner
+          </p>
           <p className="mt-3 text-white/70">
             Review your agenda and jump into prep when you're ready.
           </p>

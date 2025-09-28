@@ -9,11 +9,11 @@ export default function OpusLandingPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
 
-  // Fetch today's calendar events
+  // Fetch upcoming calendar events (including today and future)
   const { data: todaysEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
-    queryKey: ['/api/calendar/today'],
+    queryKey: ['/api/calendar/events'],
     queryFn: async () => {
-      const response = await fetch('/api/calendar/today');
+      const response = await fetch('/api/calendar/events');
       if (!response.ok) throw new Error('Failed to fetch calendar events');
       return response.json();
     },
@@ -42,18 +42,36 @@ export default function OpusLandingPage() {
   const agenda = CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents || []).map(event => {
     // Handle the nested start time structure
     const startTime = event.start?.dateTime || event.start?.date;
-    const time = startTime ? new Date(startTime).toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: true 
-    }) : 'Time TBD';
+    let time = 'Time TBD';
+    
+    if (startTime) {
+      const eventDate = new Date(startTime);
+      const today = new Date();
+      const isToday = eventDate.toDateString() === today.toDateString();
+      const isTomorrow = eventDate.toDateString() === new Date(today.getTime() + 86400000).toDateString();
+      
+      const timeStr = eventDate.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+      
+      if (isToday) {
+        time = timeStr;
+      } else if (isTomorrow) {
+        time = `Tomorrow • ${timeStr}`;
+      } else {
+        const dayName = eventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        time = `${dayName} • ${timeStr}`;
+      }
+    }
 
     return {
       time,
       title: event.summary || 'Untitled Event',
       subtitle: event.location || '',
     };
-  });
+  }).slice(0, 5); // Limit to 5 upcoming events
 
   const rhythmItems = CONFIG.USE_MOCKS ? [
     "Back-to-back meetings from 10–4 — grab a snack before",
@@ -129,7 +147,7 @@ export default function OpusLandingPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Agenda */}
               <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
-                <h2 className="text-xl font-semibold mb-4">Today's Agenda</h2>
+                <h2 className="text-xl font-semibold mb-4">Upcoming Agenda</h2>
                 {eventsLoading ? (
                   <div className="space-y-4">
                     {[...Array(3)].map((_, idx) => (

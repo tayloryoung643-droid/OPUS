@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { storage } from '../storage.js';
 import { isAuthenticated } from '../replitAuth.js';
+import { ENV } from '../config/env.js';
 
 const router = Router();
 
@@ -37,8 +38,8 @@ router.post('/bootstrap', isAuthenticated, async (req, res) => {
 
     const response = {
       jwt: extensionJwt,
-      apiBaseUrl: process.env.NODE_ENV === 'production' ? 'https://your-domain.com/api' : 'http://localhost:5000/api',
-      mcpWsUrl: process.env.NODE_ENV === 'production' ? 'wss://your-domain.com/mcp' : 'ws://localhost:5000/mcp',
+      apiBaseUrl: `${ENV.API_ORIGIN}/api`,
+      mcpWsUrl: ENV.API_ORIGIN.replace('http://', 'ws://').replace('https://', 'wss://') + '/mcp',
       user: {
         id: userId,
         name: userName,

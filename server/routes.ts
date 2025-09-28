@@ -91,6 +91,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // In-memory store for one-time session codes (in production, use Redis)
+  const sessionCodes = new Map<string, { userId: string; createdAt: number }>();
+  
+  // Clean up expired codes every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [code, data] of sessionCodes.entries()) {
+      if (now - data.createdAt > 5 * 60 * 1000) { // 5 minutes
+        sessionCodes.delete(code);
+      }
+    }
+  }, 5 * 60 * 1000);
+
+  // New token mint endpoint for unified session between web app and extension
+  app.post('/api/auth/extension/mint', async (req, res) => {
+    try {
+      let userId: string | undefined;
+      
+      // Method 1: Try session-based authentication (user logged into web app)
+      if (req.isAuthenticated && req.isAuthenticated()) {
+        userId = req.user?.claims?.sub;
+        console.log(`[ExtensionMint] Session auth for user: ${userId}`);
+      }
+      
+      // Method 2: Try one-time code exchange
+      if (!userId && req.body.code) {
+        const codeData = sessionCodes.get(req.body.code);
+        if (codeData && Date.now() - codeData.createdAt < 5 * 60 * 1000) {
+          userId = codeData.userId;
+          sessionCodes.delete(req.body.code); // One-time use
+          console.log(`[ExtensionMint] Code exchange for user: ${userId}`);
+        }
+      }
+      
+      if (!userId) {
+        return res.status(401).json({
+          error: 'Authentication required',
+          message: 'Please provide valid session cookies or exchange code'
+        });
+      }
+
+      // Import here to avoid circular dependencies
+      const { ENV } = await import('./config/env.js');
+      
+      // Generate 60-minute JWT with expanded scopes for extension
+      const extensionJwt = jwt.sign(
+        {
+          userId,
+          orgId: userId, // For future multi-org support
+          scopes: ['chat', 'mcp:calendar', 'mcp:salesforce'],
+          type: 'extension',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + (60 * 60) // 60 minutes
+        },
+        process.env.OPUS_JWT_SECRET!,
+        { algorithm: 'HS256' }
+      );
+
+      console.log(`[ExtensionMint] Generated JWT for user ${userId}`);
+
+      // Set CORS headers for chrome-extension origins
+      const origin = req.headers.origin;
+      if (origin && (origin.startsWith('chrome-extension://') || origin === ENV.APP_ORIGIN)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+
+      res.json({
+        jwt: extensionJwt,
+        expiresIn: '60m',
+        scopes: ['chat', 'mcp:calendar', 'mcp:salesforce'],
+        user: {
+          id: userId
+        }
+      });
+
+    } catch (error) {
+      console.error('[ExtensionMint] Error:', error);
+      res.status(500).json({
+        error: 'Token generation failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Generate one-time session codes for extension token exchange
+  app.post('/api/auth/extension/session-code', isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ 
+          error: 'User ID not found',
+          message: 'Unable to identify user for code generation'
+        });
+      }
+
+      // Generate cryptographically secure one-time code
+      const crypto = await import('crypto');
+      const code = crypto.randomBytes(32).toString('hex');
+      
+      // Store code with expiration (5 minutes)
+      sessionCodes.set(code, {
+        userId,
+        createdAt: Date.now()
+      });
+      
+      console.log(`[ExtensionMint] Generated session code for user: ${userId}`);
+      
+      res.json({ 
+        code,
+        expiresIn: '5m',
+        message: 'Use this code to authenticate the extension'
+      });
+      
+    } catch (error) {
+      console.error('[ExtensionMint] Session code error:', error);
+      res.status(500).json({ 
+        error: 'Code generation failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Enhanced auth middleware that supports both Replit auth and guest users
   const isAuthenticatedOrGuest = (req: any, res: any, next: any) => {
     // Check if this is a guest user session (either by ID or email)

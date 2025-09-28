@@ -124,6 +124,52 @@ export async function startRealtimeVoice(audioEl: HTMLAudioElement): Promise<Rea
 
     console.log('[Realtime] WebRTC connection established');
 
+    // Send automatic greeting after connection is ready
+    const sendAutoGreeting = async () => {
+      try {
+        // Wait a moment for the connection to stabilize
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Get user name from auth for personalized greeting
+        let userName = 'there';
+        try {
+          const response = await fetch('/api/auth/user');
+          if (response.ok) {
+            const userData = await response.json();
+            userName = userData.name?.split(' ')[0] || userData.email?.split('@')[0] || 'there';
+          }
+        } catch (error) {
+          console.warn('[Realtime] Could not fetch user name for greeting:', error);
+        }
+
+        // Send greeting message over the data channel (if available) or through the session
+        // This triggers OpenAI to generate speech for the greeting
+        const greetingMessage = {
+          type: 'response.create',
+          response: {
+            modalities: ['audio'],
+            instructions: `Say a brief, friendly greeting to ${userName}. Something like "Hey ${userName}! I'm Opus, your AI companion. How can I help you today?" Keep it short and natural.`
+          }
+        };
+
+        // Try to send via data channel if available
+        const dataChannel = pc.createDataChannel('messages');
+        if (dataChannel.readyState === 'open') {
+          dataChannel.send(JSON.stringify(greetingMessage));
+          console.log('[Realtime] Sent automatic greeting via data channel');
+        } else {
+          // Fallback: the greeting will happen naturally through conversation
+          console.log('[Realtime] Data channel not ready, greeting will happen naturally');
+        }
+      } catch (error) {
+        console.warn('[Realtime] Failed to send automatic greeting:', error);
+        // Not critical - the conversation can still proceed
+      }
+    };
+
+    // Send the greeting asynchronously
+    sendAutoGreeting();
+
     // Return control interface
     const stop = () => {
       try {

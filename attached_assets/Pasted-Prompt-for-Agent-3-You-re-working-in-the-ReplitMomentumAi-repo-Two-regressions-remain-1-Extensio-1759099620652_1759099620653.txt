@@ -1,0 +1,33 @@
+Prompt for Agent 3
+You’re working in the ReplitMomentumAi repo. Two regressions remain:
+
+1. Extension iframe keeps asking for login, then bounces to localhost: the express-session cookie that Replit auth sets is `Secure` but relies on the browser default `SameSite=Lax`, so third-party iframes drop it and we never reuse the main-site session.
+
+   • Update `getSession()` in `server/replitAuth.ts` so the `cookie` block explicitly sets `sameSite: "none"` (cast to satisfy TypeScript) while keeping `secure: true`. The block should end up like:
+
+     cookie: {
+       httpOnly: true,
+       secure: true,
+       sameSite: "none" as const,
+       maxAge: sessionTtl,
+     }
+
+     That change makes the session usable inside cross-site contexts and lets the orb reuse the logged-in state.​:codex-file-citation[codex-file-citation]{line_range_start=35 line_range_end=44 path=server/replitAuth.ts git_url="https://github.com/tayloryoung643-droid/ReplitMomentumAi/blob/main/server/replitAuth.ts#L35-L44"}​
+
+2. The orb still can’t answer MCP-backed calendar questions because the WebSocket never authenticates: `CoachWebSocketService` refuses connections that don’t supply both `sessionId` and `userId`. Our frontend `connect()` helper only appends `sessionId`, so the socket closes with code 1008 before any MCP data streams.
+
+   • In `client/src/contexts/SalesCoachContext.tsx`, update the WebSocket URL builder to include the user id from the active session, and guard against missing data. Example:
+
+     if (!activeSession?.userId) {
+       console.warn('[SalesCoach] Cannot connect: missing userId on session');
+       return;
+     }
+     const wsUrl = `${protocol}://${host}${info.wsPath}?sessionId=${encodeURIComponent(activeSession.id)}&userId=${encodeURIComponent(activeSession.userId)}`;
+
+     Keep the rest of the connection logic intact so transcripts/suggestions continue to flow.​:codex-file-citation[codex-file-citation]{line_range_start=127 line_range_end=166 path=client/src/contexts/SalesCoachContext.tsx git_url="https://github.com/tayloryoung643-droid/ReplitMomentumAi/blob/main/client/src/contexts/SalesCoachContext.tsx#L127-L166"}​​:codex-file-citation[codex-file-citation]{line_range_start=37 line_range_end=89 path=server/services/coachWebSocket.ts git_url="https://github.com/tayloryoung643-droid/ReplitMomentumAi/blob/main/server/services/coachWebSocket.ts#L37-L89"}​
+
+3. After coding:
+   • Redeploy locally, log into the main app, then open the extension/orb on another site. Confirm it no longer shows a login button and the network tab sends `/api/coach/ws/status` without a 401.
+   • Start a Sales Coach session in the app, let the orb connect, and verify the WebSocket stays open (no 1008 close). Ask “What calls do I have tomorrow?” and confirm the response includes real calendar data sourced from MCP.
+
+Please implement, test, and push.

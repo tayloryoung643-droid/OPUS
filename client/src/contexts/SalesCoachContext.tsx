@@ -129,6 +129,12 @@ export function SalesCoachProvider({ children }: SalesCoachProviderProps) {
     if (!activeSession || wsRef.current) return;
 
     try {
+      // Check for required userId
+      if (!activeSession?.userId) {
+        console.warn('[SalesCoach] Cannot connect: missing userId on session');
+        return;
+      }
+
       // Get WebSocket connection info
       const response = await apiRequest('GET', '/api/coach/ws/status');
       const info = await response.json();
@@ -136,7 +142,7 @@ export function SalesCoachProvider({ children }: SalesCoachProviderProps) {
       // Build WebSocket URL with sessionId and userId for authentication
       const protocol = info.protocol || (window.location.protocol === 'https:' ? 'wss' : 'ws');
       const host = info.host || window.location.host;
-      const wsUrl = `${protocol}://${host}${info.wsPath}?sessionId=${activeSession.id}&userId=${activeSession.userId}`;
+      const wsUrl = `${protocol}://${host}${info.wsPath}?sessionId=${encodeURIComponent(activeSession.id)}&userId=${encodeURIComponent(activeSession.userId)}`;
       
       console.log('[SalesCoach] Connecting to WebSocket:', wsUrl);
       

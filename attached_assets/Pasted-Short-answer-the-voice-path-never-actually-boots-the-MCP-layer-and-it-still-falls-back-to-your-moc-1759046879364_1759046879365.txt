@@ -1,0 +1,165 @@
+Short answer: the voice path never actually boots the MCP layer (and it still falls back to your mock/demo data). So when you click the Orb, the realtime/voice session spins up a plain LLM without the MCP clients (Salesforce, Google, Gmail, etc.), and because mocks are still enabled in places, you’re seeing “sample information.” Your own tech doc even calls out that MCP/context and token plumbing are still pending for the realtime path.
+
+Here’s the concrete, fix-fast plan (with paste-ready snippets):
+
+1) Wire the Voice WS to MCP (server)
+
+Create a shared MCP client factory and attach it to each /ws/voice session.
+
+// server/mcp/client.ts
+import { createGoogleClient, createGmailClient } from "../services/googleAuth";
+import { createSalesforceClient } from "../services/sfAuth";
+
+export type McpContext = {
+  gcal: ReturnType<typeof createGoogleClient>;
+  gmail: ReturnType<typeof createGmailClient>;
+  sf: ReturnType<typeof createSalesforceClient>;
+};
+
+export async function createMcpContext(userId: string): Promise<McpContext> {
+  // Load encrypted tokens for the user from DB
+  const { googleTokens, sfTokens } = await getUserIntegrationTokens(userId);
+
+  const gcal = await createGoogleClient(googleTokens);
+  const gmail = await createGmailClient(googleTokens);
+  const sf = await createSalesforceClient(sfTokens);
+
+  return { gcal, gmail, sf };
+}
+
+// server/ws/voice.ts
+import WebSocket from "ws";
+import { verifyHmacAuthToken } from "../services/auth";
+import { createMcpContext } from "../mcp/client";
+import { buildSalesContext } from "../mcp/contextLoader";
+import { streamRealtimeLLM } from "../services/realtime";
+
+wss.on("connection", async (ws, req) => {
+  try {
+    const token = new URL(req.url!, "http://x").searchParams.get("t")!;
+    const { userId } = verifyHmacAuthToken(token); // your existing HMAC check
+
+    // 🔌 Boot MCP for this session
+    const mcp = await createMcpContext(userId);
+
+    // Preload context once at session start (calendar + CRM + recent email)
+    const context = await buildSalesContext({ mcp, userId });
+
+    // Start the realtime stream with MCP context injected
+    const sys = [
+      "You are Opus. Never fabricate data. If a data source is missing, say so.",
+      "Pull facts from: Google Calendar, Gmail threads, Salesforce records.",
+      "If a field is empty, leave it empty—do not invent examples."
+    ].join("\n");
+
+    streamRealtimeLLM({ ws, system: sys, tools: makeTools(mcp), bootstrapContext: context });
+  } catch (err) {
+    ws.close(1011, "init_failed");
+  }
+});
+
+// server/mcp/contextLoader.ts
+export async function buildSalesContext({ mcp, userId }) {
+  const [events, opps, recentThreads] = await Promise.all([
+    mcp.gcal.listEvents({ timeMin: new Date().toISOString(), maxResults: 5 }),
+    mcp.sf.query("SELECT Id, Name, StageName, Amount, CloseDate FROM Opportunity WHERE OwnerId = :userId ORDER BY LastModifiedDate DESC LIMIT 10", { userId }),
+    mcp.gmail.listThreads({ q: "newer_than:30d category:primary", maxResults: 10 })
+  ]);
+
+  return { events, opps, recentThreads };
+}
+
+
+Why this is needed: your backend already exposes integration endpoints and an integrations status surface, but none of that is invoked inside the voice socket; the realtime route must open the same Google/Salesforce clients and pre-hydrate context before streaming.
+
+2) Kill the mock/demo fallback globally
+
+Make the mock layer opt-in, never implicit.
+
+// server/config/flags.ts
+export const FLAGS = {
+  USE_MOCKS: process.env.USE_MOCKS === "true"
+};
+
+// wherever mockDataService leaks in:
+import { FLAGS } from "../config/flags";
+// ❌ old
+// import { mockDataService } from "../services/mockDataService";
+// ✅ new
+const dataService = FLAGS.USE_MOCKS ? mockDataService : realDataService;
+
+
+And in the UI, do not render placeholders when real data is missing—render empty states. Your demo HTML still shows hardcoded “Upcoming Calls / DataFlow Systems,” etc.—remove those now so “sample info” can never appear in production builds.
+
+3) Propagate identity & tokens to the voice worker
+
+Ensure your WS token includes userId and your server looks up tokens before creating clients.
+
+// server/services/auth.ts
+export function issueVoiceWsToken(userId: string) {
+  return signHmac({ sub: userId, scopes: ["voice","calendar.read","gmail.read","sf.read"] }, { ttlSec: 600 });
+}
+
+
+In the front end, request a fresh token before opening /ws/voice?t=....
+
+4) Add a “no-sample” guardrail in the system prompt + runtime checks
+
+At the model boundary:
+
+const guard = `If you lack data to answer, say "I don't have that yet from Google/Salesforce/Gmail." Do not produce examples or sample content.`;
+// add to system
+
+
+At the response boundary (belt-and-suspenders):
+
+function rejectIfSample(text: string) {
+  const banned = [/sample/i, /placeholder/i, /lorem ipsum/i];
+  if (banned.some(r => r.test(text))) throw new Error("sample_output_blocked");
+}
+
+5) Health checks you can run in 2 minutes
+
+GET /api/integrations/status should show Google + Salesforce = connected for the same user you use in voice.
+
+Temporarily log the first 2 event titles, 2 opp names, and 2 email subjects that buildSalesContext() returns when the socket opens. If any are empty, voice will have nothing to say (and should admit that, not fabricate).
+
+Flip USE_MOCKS=false in both server & client builds.
+
+6) Ready-to-paste Agent-3 prompt
+
+Title: Wire Voice Mode to MCP and Remove Sample Fallback
+
+Context: Voice sessions currently respond with sample/demo info and do not access Google/Salesforce/Gmail via MCP. We must boot MCP inside the /ws/voice handler, preload context, pass tools to the realtime model, and hard-disable mock fallbacks in production.
+
+Tasks (do all):
+
+Create server/mcp/client.ts and server/mcp/contextLoader.ts per the code in this message. createMcpContext(userId) must return Google Calendar, Gmail, and Salesforce clients using the user’s stored tokens.
+
+Update server/ws/voice.ts to:
+
+Verify the HMAC token to get userId.
+
+Call createMcpContext(userId) and buildSalesContext({ mcp, userId }).
+
+Start the realtime stream with a strict system prompt that bans fabrication and references our tools.
+
+Add a runtime safeguard that throws if the model output contains “sample/placeholder/lorem.”
+
+Remove all hardcoded demo items from the UI (Upcoming Calls, sample companies). Show true empty states instead.
+
+Introduce USE_MOCKS flag; set it to false in env for dev/prod by default. Ensure no mock service is imported unless USE_MOCKS === true.
+
+Expose POST /api/voice/token that returns a short-lived HMAC token (10 min) with sub=userId and scopes. Frontend must fetch this before opening /ws/voice?t=....
+
+Add temporary logging in voice init to print counts for events/opps/threads so we can validate context hydration. Remove logs after verification.
+
+Acceptance:
+
+Clicking the Orb → voice connects → first assistant turn can cite real next calendar event, current opps, or admits missing connectors.
+
+No “sample” strings appear anywhere in UI or responses.
+
+/api/integrations/status shows connected; voice path reflects the same account.
+
+If Google or SF is disconnected, the assistant clearly says which source is missing and proceeds with what it has (no fabrication).

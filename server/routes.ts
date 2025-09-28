@@ -138,18 +138,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // OpenAI Realtime API - Generate ephemeral tokens for WebRTC voice sessions
+  // OpenAI Realtime API - Generate ephemeral tokens for WebRTC voice sessions with MCP integration
   app.post('/api/openai/realtime/token', isAuthenticated, async (req: any, res) => {
     try {
       const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
       const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview-2024-12-17";
+      const userId = req.user?.claims?.sub || req.user?.sub;
 
       if (!OPENAI_API_KEY) {
         console.error('[OpenAI-Realtime] OPENAI_API_KEY environment variable not set');
         return res.status(500).json({ error: "OpenAI API key not configured" });
       }
 
-      // Create an ephemeral session (valid ~1 min). Model must be a Realtime-capable model.
+      // Load MCP context for this user
+      const { createMcpContext } = await import('./mcp/client.js');
+      const { buildSalesContext, formatContextForModel } = await import('./mcp/contextLoader.js');
+      const { MCP_TOOL_DEFINITIONS } = await import('./mcp/types/mcp-types.js');
+
+      console.log(`[OpenAI-Realtime] Building MCP context for user: ${userId}`);
+      
+      let salesContext = '';
+      let tools: any[] = [];
+      
+      try {
+        // Create MCP context and load sales data
+        const mcpContext = await createMcpContext(userId);
+        const context = await buildSalesContext({ mcp: mcpContext, userId });
+        salesContext = formatContextForModel(context);
+        
+        // Convert MCP tools to OpenAI Realtime format
+        tools = Object.values(MCP_TOOL_DEFINITIONS).map(tool => ({
+          type: "function",
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters
+        }));
+        
+        console.log(`[OpenAI-Realtime] Loaded context with ${tools.length} tools available`);
+      } catch (contextError) {
+        console.error('[OpenAI-Realtime] Error loading MCP context:', contextError);
+        salesContext = 'Note: Some integrations may not be connected. Check Google Calendar and Salesforce connections.';
+      }
+
+      // Enhanced instructions with real-time context and anti-sample guardrails
+      const instructions = `You are Opus, the ultimate AI sales partner with access to real-time data. 
+
+CURRENT CONTEXT:
+${salesContext}
+
+CRITICAL RULES:
+🚫 NEVER provide sample, mock, or placeholder data
+🚫 NEVER say "Here's a sample..." or give examples as real data
+🚫 If you don't have real data, say "I don't have that information right now" instead of making up data
+✅ ALWAYS use your available tools to access real information from Google Calendar, Salesforce, and Gmail
+✅ Provide specific insights based on actual data from your tools
+✅ Be direct and actionable in your recommendations
+
+AVAILABLE TOOLS: You have ${tools.length} tools for accessing real-time calendar events, CRM opportunities, contacts, call history, and email threads.
+
+RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable recommendations. Keep responses concise for voice interaction.`;
+
+      // Create realtime session with MCP tools and context
       const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
         method: "POST",
         headers: {
@@ -161,7 +210,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           model: REALTIME_MODEL,
           voice: "verse", // Default voice for Opus
           modalities: ["audio", "text"],
-          instructions: "You are Opus, an AI assistant helping with sales call preparation and business insights. Be concise, helpful, and professional in your responses."
+          instructions: instructions,
+          tools: tools.length > 0 ? tools : undefined // Only include tools if available
         }),
       });
 
@@ -175,7 +225,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const sessionData = await response.json();
-      console.log('[OpenAI-Realtime] Session created successfully');
+      console.log('[OpenAI-Realtime] Session created successfully with MCP integration');
       
       // Security: Prevent token caching
       res.set({

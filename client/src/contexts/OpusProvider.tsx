@@ -172,6 +172,43 @@ export function OpusProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userId, state.chat.messages]);
 
+  // Extension token handshake - send token to Chrome extension when user is authenticated
+  useEffect(() => {
+    if (!userId) return;
+    
+    const sendTokenToExtension = async () => {
+      try {
+        // Fetch extension token from our backend
+        const response = await fetch('/api/auth/extension-token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (response.ok) {
+          const { opusToken } = await response.json();
+          
+          // Send token to Chrome extension via postMessage
+          window.postMessage({ 
+            type: 'OPUS_TOKEN_HANDSHAKE', 
+            opusToken 
+          }, window.location.origin);
+          
+          console.log('[OpusProvider] Extension token sent to Chrome extension');
+        } else {
+          console.warn('[OpusProvider] Failed to get extension token:', response.status);
+        }
+      } catch (error) {
+        console.error('[OpusProvider] Extension token handshake error:', error);
+      }
+    };
+    
+    // Send token immediately and then refresh every 25 minutes (tokens expire in 30 minutes)
+    sendTokenToExtension();
+    const tokenRefreshInterval = setInterval(sendTokenToExtension, 25 * 60 * 1000);
+    
+    return () => clearInterval(tokenRefreshInterval);
+  }, [userId]);
+
   // Cleanup voice on unmount
   useEffect(() => {
     return () => {

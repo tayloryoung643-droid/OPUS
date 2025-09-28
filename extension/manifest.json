@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Opus Orb",
+  "version": "0.1.0",
+  "description": "Pinned Opus Orb for call prep & live coaching",
+  "action": { "default_title": "Opus" },
+  "permissions": ["storage", "activeTab", "scripting", "alarms"],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://*.zoom.us/*",
+    "https://teams.microsoft.com/*",
+    "https://calendar.google.com/*",
+    "*://*/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": { "default_path": "panel/index.html" },
+  "web_accessible_resources": [{
+    "resources": ["injected.css"],
+    "matches": ["<all_urls>"]
+  }]
+}

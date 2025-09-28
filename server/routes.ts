@@ -12,6 +12,7 @@ import { CoachWebSocketService } from "./services/coachWebSocket";
 import { VoiceRecorderWebSocketService } from "./services/voiceRecorderWebSocket";
 import { z } from "zod";
 import gmailRoutes from "./routes/gmail";
+import orbRoutes from "./routes/orb";
 import { generateRhythmInsights, generateOpusFeed } from "./services/insights";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -51,6 +52,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error with guest login:", error);
       res.status(500).json({ message: "Failed to login as guest" });
+    }
+  });
+
+  // Extension token endpoint for Chrome extension authentication
+  app.post('/api/auth/extension-token', isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ 
+          error: 'User ID not found',
+          message: 'Unable to identify user for token generation'
+        });
+      }
+
+      // Import here to avoid circular dependencies
+      const { mintOrbToken } = await import('./auth/extensionToken.js');
+      
+      // Generate short-lived token for Chrome extension
+      const opusToken = mintOrbToken(userId);
+      
+      console.log(`[ExtensionAuth] Generated token for user: ${userId}`);
+      
+      res.json({ 
+        opusToken,
+        expiresIn: '30m',
+        scope: 'orb:read'
+      });
+      
+    } catch (error) {
+      console.error('[ExtensionAuth] Error generating token:', error);
+      res.status(500).json({ 
+        error: 'Token generation failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
@@ -428,6 +464,9 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
   // Gmail routes - Mount the Gmail router
   app.use("/api/gmail", isAuthenticatedOrGuest, gmailRoutes);
+
+  // Orb routes - Chrome extension endpoints (uses own auth middleware)
+  app.use("/api/orb", orbRoutes);
 
   // Insights routes for Rhythm and Opus feed
   app.get("/api/insights/rhythm", isAuthenticatedOrGuest, async (req: any, res) => {

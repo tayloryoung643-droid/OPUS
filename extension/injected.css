@@ -1,0 +1,9 @@
+/* Optional injected styles for Opus Orb extension */
+/* Currently not used as all styles are inlined in the shadow DOM */
+
+/* 
+  This file is reserved for future styles that might need to affect 
+  the host page or provide additional theming options.
+  All current styling is contained within the shadow DOM in content.js
+  for better isolation and to prevent conflicts with page styles.
+*/

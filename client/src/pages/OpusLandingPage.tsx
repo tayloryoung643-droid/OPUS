@@ -198,7 +198,7 @@ export default function OpusLandingPage() {
         </div>
 
         {/* Refined bottom strip: Elegant insights */}
-        <section className="mt-1 md:mt-2 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <section className="mt-0 md:mt-1 grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Quarter Overview */}
           <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
             <h3 className="text-lg font-semibold text-zinc-200 mb-2">Quarter Overview</h3>

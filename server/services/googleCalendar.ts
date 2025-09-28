@@ -115,10 +115,11 @@ export class GoogleCalendarService {
       console.log('DEBUG getTodaysEvents - Raw events found:', response.data.items?.length || 0);
       
       // Filter events to only include those that are actually "today"
-      // Use local system date (not UTC) for comparison
-      const todayString = today.getFullYear() + '-' + 
-                         String(today.getMonth() + 1).padStart(2, '0') + '-' + 
-                         String(today.getDate()).padStart(2, '0');
+      // Use Pacific Time (user's timezone) for comparison, not server UTC
+      const pacificTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
+      const todayString = pacificTime.getFullYear() + '-' + 
+                         String(pacificTime.getMonth() + 1).padStart(2, '0') + '-' + 
+                         String(pacificTime.getDate()).padStart(2, '0');
       
       console.log('DEBUG - Local today date string:', todayString);
       

@@ -104,6 +104,8 @@ export async function startRealtimeVoice(audioEl: HTMLAudioElement): Promise<Rea
       headers: {
         Authorization: `Bearer ${EPHEMERAL_KEY}`,
         "Content-Type": "application/sdp",
+        "Accept": "application/sdp",
+        "OpenAI-Beta": "realtime=v1",
       },
       body: offer.sdp,
     });

@@ -155,6 +155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         headers: {
           Authorization: `Bearer ${OPENAI_API_KEY}`,
           "Content-Type": "application/json",
+          "OpenAI-Beta": "realtime=v1",
         },
         body: JSON.stringify({
           model: REALTIME_MODEL,
@@ -175,6 +176,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const sessionData = await response.json();
       console.log('[OpenAI-Realtime] Session created successfully');
+      
+      // Security: Prevent token caching
+      res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
       
       // Return the session data including client_secret.value for WebRTC
       res.json(sessionData);

@@ -1,242 +1,85 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Mic, MicOff, Calendar, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Mic, MicOff, Volume2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
-
-interface CalendarEvent {
-  id: string;
-  summary: string;
-  start?: {
-    dateTime?: string;
-    date?: string;
-  };
-  end?: {
-    dateTime?: string;
-    date?: string;
-  };
-}
+import { startRealtimeVoice, type RealtimeHandle } from '@/lib/voice/realtimeClient';
 
 interface OpusOrbProps {
-  currentEvent?: CalendarEvent;
   userId?: string;
   className?: string;
 }
 
-type OrbState = 'muted' | 'listening' | 'connecting' | 'error';
+type OrbState = 'inactive' | 'connecting' | 'listening' | 'error';
 
-interface VoiceMessage {
-  type: 'status' | 'error';
-  payload?: any;
-  timestamp?: number;
-}
-
-export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOrbProps) {
-  const [state, setState] = useState<OrbState>('muted');
-  const [isRecording, setIsRecording] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+export default function OpusOrb({ userId, className = '' }: OpusOrbProps) {
+  const [state, setState] = useState<OrbState>('inactive');
+  const [isActive, setIsActive] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const handleRef = useRef<RealtimeHandle | null>(null);
   const { toast } = useToast();
-
-  // Check if we're currently during a calendar event
-  const isDuringEvent = useCallback((): boolean => {
-    if (!currentEvent?.start?.dateTime || !currentEvent?.end?.dateTime) {
-      return false;
-    }
-    
-    const now = new Date();
-    const start = new Date(currentEvent.start.dateTime);
-    const end = new Date(currentEvent.end.dateTime);
-    
-    return now >= start && now <= end;
-  }, [currentEvent]);
-
-  // Auto-stop recording when event ends
-  useEffect(() => {
-    if (isRecording && !isDuringEvent()) {
-      console.log('[OpusOrb] Auto-stopping recording - event ended');
-      handleStopRecording();
-    }
-  }, [isRecording, isDuringEvent]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      if (handleRef.current) {
+        handleRef.current.stop();
       }
     };
   }, []);
 
-  const connectWebSocket = useCallback((): Promise<WebSocket> => {
-    return new Promise((resolve, reject) => {
-      if (!currentEvent?.id) {
-        reject(new Error('Missing eventId'));
-        return;
-      }
-
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}/ws/voice?eventId=${currentEvent.id}`;
-      console.log('[OpusOrb] Connecting to WebSocket:', wsUrl);
-      
-      const ws = new WebSocket(wsUrl);
-      
-      ws.onopen = () => {
-        console.log('[OpusOrb] WebSocket connected');
-        resolve(ws);
-      };
-      
-      ws.onmessage = (event) => {
-        try {
-          const message: VoiceMessage = JSON.parse(event.data);
-          console.log('[OpusOrb] Received message:', message);
-          
-          if (message.type === 'status') {
-            const status = message.payload?.status;
-            if (status === 'connected') {
-              setState('muted');
-            } else if (status === 'recording') {
-              setState('listening');
-            } else if (status === 'completed') {
-              setState('muted');
-              setIsRecording(false);
-              toast({
-                title: "Recording completed",
-                description: "Call transcript has been saved.",
-              });
-            }
-          } else if (message.type === 'error') {
-            console.error('[OpusOrb] WebSocket error:', message.payload?.message);
-            setState('error');
-            toast({
-              title: "Recording error",
-              description: message.payload?.message || "Failed to process recording",
-              variant: "destructive",
-            });
-          }
-        } catch (error) {
-          console.error('[OpusOrb] Error parsing WebSocket message:', error);
-        }
-      };
-      
-      ws.onerror = (error) => {
-        console.error('[OpusOrb] WebSocket error:', error);
-        setState('error');
-        reject(error);
-      };
-      
-      ws.onclose = () => {
-        console.log('[OpusOrb] WebSocket disconnected');
-        wsRef.current = null;
-      };
-    });
-  }, [currentEvent?.id, toast]);
-
-  const startRecording = async () => {
+  // Toggle voice mode with OpenAI Realtime
+  const toggleVoice = async () => {
+    if (state === 'connecting') return;
+    
     try {
-      setState('connecting');
-      
-      // Get microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 16000
-        } 
-      });
-      
-      mediaStreamRef.current = stream;
-      
-      // Connect to WebSocket
-      const ws = await connectWebSocket();
-      wsRef.current = ws;
-      
-      // Set up MediaRecorder
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-      
-      mediaRecorderRef.current = mediaRecorder;
-      
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-          // Send audio data to WebSocket
-          ws.send(event.data);
+      if (!isActive) {
+        // Start voice session
+        setState('connecting');
+        setIsActive(true);
+        
+        if (!audioRef.current) {
+          throw new Error('Audio element not found');
         }
-      };
-      
-      // Send start recording command
-      ws.send(JSON.stringify({
-        type: 'start_recording',
-        eventId: currentEvent?.id,
-        payload: {
-          eventTitle: currentEvent?.summary,
-          eventStartTime: currentEvent?.start?.dateTime
-        }
-      }));
-      
-      // Start recording in chunks for real-time streaming
-      mediaRecorder.start(1000); // 1 second chunks for WebSocket streaming
-      setIsRecording(true);
-      
-      toast({
-        title: "Recording started",
-        description: "Silently capturing call audio...",
-      });
-      
+        
+        console.log('[OpusOrb] Starting OpenAI Realtime voice session');
+        handleRef.current = await startRealtimeVoice(audioRef.current);
+        setState('listening');
+        
+        toast({
+          title: "Voice Mode Active",
+          description: "Speak to Opus - your AI assistant is listening",
+        });
+        
+      } else {
+        // Stop voice session
+        setState('connecting');
+        console.log('[OpusOrb] Stopping voice session');
+        
+        handleRef.current?.stop();
+        handleRef.current = null;
+        setIsActive(false);
+        setState('inactive');
+        
+        toast({
+          title: "Voice Mode Ended",
+          description: "Voice session completed successfully",
+        });
+      }
     } catch (error) {
-      console.error('[OpusOrb] Error starting recording:', error);
+      console.error('[OpusOrb] Voice toggle error:', error);
       setState('error');
+      setIsActive(false);
+      handleRef.current = null;
+      
       toast({
-        title: "Recording failed",
-        description: "Could not access microphone or connect to server.",
+        title: "Voice Mode Error",
+        description: error instanceof Error ? error.message : "Failed to start voice session",
         variant: "destructive",
       });
-    }
-  };
-
-  const handleStopRecording = async () => {
-    try {
-      console.log('[OpusOrb] Stopping recording...');
       
-      // Stop media recorder
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-        mediaRecorderRef.current.stop();
-      }
-      
-      // Stop media stream
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach(track => track.stop());
-        mediaStreamRef.current = null;
-      }
-      
-      // Send stop command to WebSocket
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({
-          type: 'stop_recording'
-        }));
-      }
-      
-      setIsRecording(false);
-      setState('muted');
-      
-      toast({
-        title: "Processing recording",
-        description: "Generating transcript from call audio...",
-      });
-      
-    } catch (error) {
-      console.error('[OpusOrb] Error stopping recording:', error);
-      setState('error');
-      toast({
-        title: "Error stopping recording",
-        description: "There was an issue finalizing the recording.",
-        variant: "destructive",
-      });
+      // Reset to inactive after error
+      setTimeout(() => setState('inactive'), 2000);
     }
   };
 
@@ -244,35 +87,13 @@ export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOr
     if (!userId) {
       toast({
         title: "Authentication required",
-        description: "Please sign in to use voice recording.",
+        description: "Please sign in to use voice mode.",
         variant: "destructive",
       });
       return;
     }
 
-    if (!currentEvent) {
-      toast({
-        title: "No active event",
-        description: "Voice recording is only available during calendar events.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!isDuringEvent()) {
-      toast({
-        title: "Event not active",
-        description: "This event hasn't started yet or has already ended.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (isRecording) {
-      handleStopRecording();
-    } else {
-      startRecording();
-    }
+    toggleVoice();
   };
 
   const getOrbContent = () => {
@@ -280,80 +101,102 @@ export default function OpusOrb({ currentEvent, userId, className = '' }: OpusOr
       case 'connecting':
         return <Loader2 className="h-8 w-8 animate-spin text-white" />;
       case 'listening':
-        return <Mic className="h-8 w-8 text-white" />;
+        return (
+          <div className="flex items-center justify-center">
+            <Mic className="h-6 w-6 text-white" />
+            <Volume2 className="h-4 w-4 text-white/80 ml-1" />
+          </div>
+        );
       case 'error':
         return <MicOff className="h-8 w-8 text-red-400" />;
       default:
-        return <MicOff className="h-8 w-8 text-white/60" />;
+        return <Mic className="h-8 w-8 text-white/60" />;
     }
   };
 
   const getOrbClasses = () => {
-    const baseClasses = "h-20 w-20 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer";
+    const baseClasses = "h-28 w-28 rounded-full flex items-center justify-center transition-all duration-300 cursor-pointer border-2 border-transparent relative";
     
     switch (state) {
       case 'listening':
-        return `${baseClasses} opus-orb bg-gradient-to-br from-purple-500 to-violet-600 shadow-lg hover:scale-105`;
+        return `${baseClasses} opus-orb bg-gradient-to-tr from-cyan-400 to-purple-500 shadow-[0_0_30px_5px_rgba(59,130,246,0.65)] hover:scale-105`;
       case 'connecting':
-        return `${baseClasses} bg-gradient-to-br from-blue-500 to-indigo-600 animate-pulse`;
+        return `${baseClasses} bg-gradient-to-tr from-blue-500 to-indigo-600 animate-pulse`;
       case 'error':
-        return `${baseClasses} bg-gradient-to-br from-red-500 to-red-600`;
+        return `${baseClasses} bg-gradient-to-tr from-red-500 to-red-600`;
       default:
-        return `${baseClasses} bg-gradient-to-br from-gray-600 to-gray-700 hover:from-purple-600 hover:to-violet-700 hover:scale-105`;
+        return `${baseClasses} bg-gradient-to-tr from-gray-600 to-gray-700 hover:from-cyan-500 hover:to-purple-600 hover:scale-105 shadow-[0_0_16px_2px_rgba(255,255,255,0.15)] hover:shadow-[0_0_22px_3px_rgba(255,255,255,0.25)]`;
     }
   };
 
   const getTooltipText = () => {
-    if (!userId) return "Sign in to use voice recording";
-    if (!currentEvent) return "No active calendar event";
-    if (!isDuringEvent()) return "Event not currently active";
+    if (!userId) return "Sign in to use voice mode";
     
     switch (state) {
       case 'listening':
-        return "Click to stop recording";
+        return "Speaking with Opus - click to end session";
       case 'connecting':
-        return "Connecting...";
+        return "Connecting to Opus...";
       case 'error':
-        return "Recording error - click to retry";
+        return "Voice error - click to retry";
       default:
-        return "Click to start silent recording";
+        return "Click to start voice conversation with Opus";
     }
   };
 
-  const isDisabled = !userId || !currentEvent || !isDuringEvent() || state === 'connecting';
+  const isDisabled = !userId || state === 'connecting';
 
   return (
     <div className={`flex flex-col items-center gap-3 ${className}`}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
+          <button
             className={getOrbClasses()}
             onClick={handleOrbClick}
             disabled={isDisabled}
             data-testid="opus-orb"
+            aria-pressed={isActive}
+            title={getTooltipText()}
           >
-            {getOrbContent()}
-          </Button>
+            {/* Pulsing glow when listening */}
+            {state === 'listening' && (
+              <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-cyan-400/30 to-purple-500/30 blur-xl animate-pulse" />
+            )}
+            
+            {/* Hollow circle interior */}
+            <div className="absolute inset-2 rounded-full bg-black/80 backdrop-blur-sm border border-white/20" />
+            
+            {/* Content */}
+            <div className="relative z-10">
+              {getOrbContent()}
+            </div>
+            
+            {/* Active indicator */}
+            {state === 'listening' && (
+              <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-white animate-pulse" />
+            )}
+          </button>
         </TooltipTrigger>
         <TooltipContent>
           <p>{getTooltipText()}</p>
         </TooltipContent>
       </Tooltip>
       
-      {/* Event info */}
-      {currentEvent && (
-        <div className="text-center">
-          <div className="flex items-center gap-1 text-xs text-white/60 mb-1">
-            <Calendar className="h-3 w-3" />
-            <span>{isDuringEvent() ? 'Active' : 'Upcoming'}</span>
-          </div>
-          <p className="text-sm text-white/80 font-medium max-w-32 truncate">
-            {currentEvent.summary}
-          </p>
+      {/* Status text */}
+      <div className="text-center">
+        <div className="text-xs text-white/60">
+          {state === 'listening' ? 'Listening… (tap to end)' : 'Tap to speak with Opus'}
         </div>
-      )}
+      </div>
+
+      {/* Hidden audio element for OpenAI's voice responses */}
+      <audio 
+        ref={audioRef} 
+        autoPlay 
+        playsInline 
+        hidden
+        data-testid="opus-audio"
+      />
     </div>
   );
 }

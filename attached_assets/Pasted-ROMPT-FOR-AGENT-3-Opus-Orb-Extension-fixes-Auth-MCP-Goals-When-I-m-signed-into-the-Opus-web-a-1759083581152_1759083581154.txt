@@ -1,0 +1,204 @@
+ROMPT FOR AGENT 3 — Opus Orb Extension fixes (Auth + MCP)
+Goals
+
+When I’m signed into the Opus web app, the extension should not ask me to sign in again.
+
+No localhost redirects from other sites; extension auth uses the production domain.
+
+The Orb chat (extension + in-app) must answer questions using MCP (Calendar + Salesforce).
+
+Chat history already persists across app tabs—keep that—but ensure the extension uses the same chat thread + same user session.
+
+1) Unify session between Web App and Extension
+
+Implement a token exchange flow so the extension reuses the web session without separate login.
+
+Backend
+
+Add endpoint: POST /api/auth/extension/mint
+
+Auth: requires existing web session cookie (or bearer) from app OR accepts a one-time CSRF-safe code.
+
+Returns a short-lived JWT (e.g., 60 min) scoped for the extension.
+
+Payload: { userId, orgId, scopes: ['chat','mcp:calendar','mcp:salesforce'], exp }.
+
+CORS: allow chrome-extension://<EXT_ID> and our app origin. Set Access-Control-Allow-Credentials: true.
+
+Web App (in-app Orb)
+
+On load, broadcast a window message with a one-time code the extension can exchange:
+
+// in app shell once user is authenticated
+window.postMessage({ type: 'OPUS_SESSION_OFFER', code: '<one-time-code>' }, '*');
+
+
+Add handler in web to accept a request from extension and call /api/auth/extension/mint to return the JWT to the extension (or let extension call it directly if cookies are readable).
+
+Extension
+
+In content.js, listen for OPUS_SESSION_OFFER. If received and we don’t have a token, chrome.runtime.sendMessage to background to exchange the code for a JWT.
+
+Store the JWT in chrome.storage.local under opus.auth.
+
+All extension API calls include Authorization: Bearer <jwt>.
+
+Acceptance: If I’m logged into the app and open Gmail/LinkedIn/etc., the Orb appears already authenticated (no “Sign in” button) and can call chat/MCP endpoints.
+
+2) Fix “localhost:5000 access denied” (wrong redirect domain)
+
+The “Sign in to Opus” button in the extension is currently pointing to http://localhost:5000, which causes 403 on non-localhost pages.
+
+Config
+
+Add APP_ORIGIN and API_ORIGIN envs and never hardcode localhost in extension builds.
+
+For dev: APP_ORIGIN=http://localhost:5000, API_ORIGIN=http://localhost:5000.
+
+For prod: APP_ORIGIN=https://app.opus.ai (example), API_ORIGIN=https://api.opus.ai.
+
+In extension, build the sign-in URL as ${APP_ORIGIN}/login?source=extension.
+
+If we still support OAuth inside the extension, use chrome.identity.launchWebAuthFlow with redirect URI to the app origin callback:
+
+Google Authorized redirect URIs must include both:
+
+https://app.opus.ai/api/integrations/google/callback
+
+https://api.opus.ai/api/integrations/google/callback
+
+For dev: http://localhost:5000/api/integrations/google/callback.
+
+Cookies
+
+Set session cookies as SameSite=None; Secure; Domain=.opus.ai so they’re valid when navigating from the extension auth window back to the app and callable by the API.
+
+Acceptance: Clicking “Sign in” in the extension never goes to localhost in prod, and login completes successfully, returning control to the extension with a valid JWT.
+
+3) Ensure extension and app use the same chat runtime
+
+Point the extension chat to the same endpoint the app uses:
+POST /api/chat (or your current path), with the same threadId semantics.
+
+When creating a thread from the extension, first try to reuse the current threadId from chrome.storage.local or fetch the latest active thread for this user via GET /api/chat/threads?scope=global.
+
+Persist threadId in chrome.storage.local so history follows the user across sites.
+
+Acceptance: Messages sent from the extension are visible in the app’s Orb (and vice versa), and history is continuous.
+
+4) Wire MCP context into chat (fix “sample info” + calendar answers)
+
+Right now the realtime/voice path and/or extension chat path bypasses MCP and falls back to sample data. Remove all sample fallbacks and always call MCP.
+
+Backend
+
+Add a unified resolver used by both /api/chat and /api/realtime:
+
+// pseudo
+async function resolveContext({ userId, intent, question }) {
+  const wantsCalendar = intent.includes('calendar') || /today|agenda|meeting/i.test(question);
+  const wantsSF = intent.includes('salesforce') || /opportunity|pipeline|account/i.test(question);
+
+  const ctx: any = {};
+  if (wantsCalendar) ctx.calendar = await mcp.calendar.today(userId);
+  if (wantsSF) ctx.salesforce = await mcp.salesforce.accountSummaries(userId);
+  return ctx;
+}
+
+
+In the chat controller:
+
+const ctx = await resolveContext({ userId, intent, question: input });
+const system = [
+  "You must not fabricate data. If ctx lacks info, say so briefly.",
+  `CalendarCtx: ${JSON.stringify(ctx.calendar ?? {})}`,
+  `SFCtx: ${JSON.stringify(ctx.salesforce ?? {})}`
+].join('\n');
+// pass system + user input to the model
+
+
+MCP tools must be reachable with the extension JWT scopes. Verify:
+
+Google Calendar: list events today/next 7 days
+
+Salesforce: my open opps, current account by email/domain, next steps
+
+Remove any “demo/sample mode” branch or behind a feature flag default OFF.
+
+Extension
+
+When user asks calendar questions (e.g., “What’s my next meeting?”), send metadata: { intents: ['calendar'] } to /api/chat. Same for Salesforce.
+
+Show explicit “No data found” messages when MCP returns empty results.
+
+Acceptance: Ask from the extension: “What’s on my calendar this afternoon?” and get a real answer. No sample text.
+
+5) CORS, permissions, and manifest
+
+API
+
+CORS allowlist includes chrome-extension://<EXT_ID> and the app origin.
+Access-Control-Allow-Origin dynamically matches the caller and sets Vary: Origin.
+
+Allow credentials for cookie-based flows when needed.
+
+Manifest (MV3)
+
+{
+  "manifest_version": 3,
+  "name": "Opus Orb",
+  "version": "0.1.0",
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage", "identity", "cookies", "activeTab", "scripting"],
+  "host_permissions": [
+    "https://app.opus.ai/*",
+    "https://api.opus.ai/*"
+  ],
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "run_at": "document_end"
+  }],
+  "action": { "default_title": "Opus Orb" }
+}
+
+
+If we rely on session cookies: add cookies permission and set the cookie domain to .opus.ai.
+
+Acceptance: Service worker registers, content script injects the Orb, API calls succeed from arbitrary sites.
+
+6) Regression tests (manual)
+
+With the web app logged in, open Gmail and LinkedIn → Orb shows as authenticated, no sign-in prompt.
+
+Ask: “What’s on my calendar today?” → returns real events (titles/times), not sample.
+
+Ask: “What’s the stage and next step for ACME?” → returns from Salesforce or says “I couldn’t find ACME” (no fabrication).
+
+Reload the page and visit a different site → chat history persists; same threadId.
+
+Turn off network → Orb shows graceful error, no sample data.
+
+7) Remove “sample info” everywhere
+
+Grep for sample, mock, demo, fallback in both app and extension code and delete/guard behind DEMO_MODE=false.
+
+8) Env & deployment checklist
+
+APP_ORIGIN and API_ORIGIN used in both web and extension builds.
+
+Google & Salesforce OAuth redirect URIs set for dev + prod (no hardcoded localhost in prod).
+
+Cookies use SameSite=None; Secure; Domain=.opus.ai.
+
+Extension build reads envs at build time (e.g., Vite define or rollup replace).
+
+Please implement the above and reply with:
+
+The new endpoints added and their signatures.
+
+The exact manifest.json and any new permissions.
+
+How the token exchange works (diagram or brief).
+
+Test evidence (screenshots/console logs) showing: no sign-in loop, no localhost redirects, and MCP answers for calendar/SF.

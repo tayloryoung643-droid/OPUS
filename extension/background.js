@@ -8,9 +8,8 @@ const CONFIG = {
   API_ORIGIN: 'http://localhost:5000'
 };
 
-// Host allowlist - don't inject on these domains
+// Host allowlist - don't inject on these domains (except APP_ORIGIN for session handshake)
 const BLOCKED_HOSTS = [
-  'localhost:5000',
   'localhost:3000', 
   'opus.dev',
   'opus.ai',
@@ -119,6 +118,12 @@ function shouldInject(url) {
   try {
     const urlObj = new URL(url);
     const host = urlObj.host;
+    
+    // Always allow injection on APP_ORIGIN for session handshake
+    if (urlObj.origin === CONFIG.APP_ORIGIN) {
+      console.log('[OpusOrb] Allowing injection on APP_ORIGIN for session handshake:', host);
+      return true;
+    }
     
     // Don't inject on blocked hosts
     if (BLOCKED_HOSTS.some(blockedHost => host.includes(blockedHost))) {

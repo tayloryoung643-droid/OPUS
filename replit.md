@@ -9,6 +9,16 @@ The platform is built as a full-stack web application with a React frontend and 
 ## Recent Changes
 
 **September 28, 2025**
+- **🔥 CRITICAL FIX: Voice Mode MCP Integration & Sample Data Elimination**
+  - **Problem Resolved**: Voice sessions were using sample data instead of real Salesforce/Calendar data due to MCP disconnection
+  - **Fixed Import Error**: Added `GmailService` class and exported `gmailService` instance to resolve voice mode import failures
+  - **Blocked Demo Data**: Added USE_MOCKS flag protection to `/api/demo/setup` endpoint preventing sample company creation
+  - **Removed Mock Fallbacks**: Eliminated calendar event mock data fallbacks showing "Acme Corp" and similar sample information
+  - **Anti-Sample Guardrails**: Added explicit instructions to OpenAI Realtime API to never fabricate or use placeholder data
+  - **Voice Token Endpoint**: Fixed `/api/openai/realtime/token` to return 200 with proper MCP context integration
+  - **Data Integrity**: Voice mode now accesses real-time Salesforce CRM and Google Calendar data through MCP tools
+  - **Test Validation**: Confirmed voice sessions successfully connect to OpenAI Realtime API with real data access
+
 - **🎉 MAJOR UPDATE: Completed OpenAI Realtime Voice Mode Implementation**
   - **Project Pivot**: Transformed Momentum AI into Opus - an emotional, personal AI Partner with real-time voice interaction
   - **Backend**: Implemented secure `/api/openai/realtime/token` endpoint with ephemeral session creation, proper OpenAI-Beta headers, and cache control

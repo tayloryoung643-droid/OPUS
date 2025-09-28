@@ -39,15 +39,21 @@ export default function OpusLandingPage() {
   ] : [];
 
   // Process real events into agenda format
-  const agenda = CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents || []).map(event => ({
-    time: new Date(event.start).toLocaleTimeString('en-US', { 
+  const agenda = CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents || []).map(event => {
+    // Handle the nested start time structure
+    const startTime = event.start?.dateTime || event.start?.date;
+    const time = startTime ? new Date(startTime).toLocaleTimeString('en-US', { 
       hour: 'numeric', 
       minute: '2-digit',
       hour12: true 
-    }),
-    title: event.summary || 'Untitled Event',
-    subtitle: event.location || '',
-  }));
+    }) : 'Time TBD';
+
+    return {
+      time,
+      title: event.summary || 'Untitled Event',
+      subtitle: event.location || '',
+    };
+  });
 
   const rhythmItems = CONFIG.USE_MOCKS ? [
     "Back-to-back meetings from 10–4 — grab a snack before",

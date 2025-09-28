@@ -32,8 +32,6 @@
       "js": ["content.js"],
       "run_at": "document_idle",
       "exclude_matches": [
-        "http://localhost:5000/*",
-        "https://localhost:5000/*",
         "http://localhost:3000/*", 
         "https://localhost:3000/*",
         "https://*.replit.app/*",

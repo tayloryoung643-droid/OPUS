@@ -612,8 +612,20 @@
 
     console.log('[OpusOrb] Initializing on:', window.location.href);
     
-    // Set up session offer listener
+    // Always set up session offer listener
     setupSessionOfferListener();
+    
+    // Check if we're on the main app domain
+    const isMainApp = window.location.origin === CONFIG.APP_ORIGIN;
+    
+    if (isMainApp) {
+      console.log('[OpusOrb] On main app domain - session handshake only mode');
+      // On main app: Only handle session offers, don't mount orb (main app has its own)
+      return;
+    }
+    
+    // On external sites: Normal orb operation
+    console.log('[OpusOrb] On external site - attempting to mount orb');
     
     // Small delay to ensure page is settled, then try bootstrap
     setTimeout(() => {

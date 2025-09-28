@@ -37,13 +37,21 @@ export async function validateUserIntegrations(userId: string): Promise<{
     // Import storage dynamically to avoid circular dependencies
     const { storage } = await import('../storage.js');
     
-    // Check if user has encrypted tokens stored
-    const user = await storage.getUserById(userId);
+    // Check Google Calendar integration
+    const googleIntegration = await storage.getGoogleIntegration(userId);
+    const hasGoogle = !!(googleIntegration?.isActive && googleIntegration?.accessToken);
+    
+    // Check Salesforce integration
+    const salesforceIntegration = await storage.getSalesforceIntegration(userId);
+    const hasSalesforce = !!(salesforceIntegration?.isActive && salesforceIntegration?.accessToken);
+    
+    // Gmail uses the same Google OAuth as Calendar
+    const hasGmail = hasGoogle;
     
     return {
-      hasGoogle: !!(user?.googleCalendarTokens?.encryptedAccessToken),
-      hasSalesforce: !!(user?.salesforceTokens?.encryptedAccessToken),
-      hasGmail: !!(user?.gmailTokens?.encryptedAccessToken || user?.googleCalendarTokens?.encryptedAccessToken) // Gmail uses same Google OAuth
+      hasGoogle,
+      hasSalesforce,
+      hasGmail
     };
   } catch (error) {
     console.error('[MCP-Client] Error validating integrations:', error);

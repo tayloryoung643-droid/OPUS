@@ -24,6 +24,16 @@ export default function OpusLandingPage() {
     staleTime: 60_000,
   });
 
+  // Fetch integration status to properly show connection state
+  const { data: integrations } = useQuery({
+    queryKey: ["/api/integrations/status"],
+    queryFn: async () => {
+      const response = await fetch("/api/integrations/status");
+      if (!response.ok) throw new Error("Failed to fetch integration status");
+      return response.json();
+    },
+  });
+
   // Fetch rhythm insights
   const { data: rhythmData } = useQuery({
     queryKey: ['/api/insights/rhythm'],
@@ -203,7 +213,19 @@ export default function OpusLandingPage() {
                   <div className="text-center py-6">
                     <div className="text-zinc-500 text-sm mb-2">No events scheduled for today</div>
                     <div className="text-zinc-600 text-xs">
-                      Google Calendar connected • Check upcoming events in Agenda
+                      {integrations?.googleCalendar?.connected ? (
+                        "Google Calendar connected • Check upcoming events in Agenda"
+                      ) : (
+                        <>
+                          <button 
+                            className="text-purple-400 hover:text-purple-300"
+                            onClick={() => setSettingsOpen(true)}
+                          >
+                            Connect Google Calendar
+                          </button>
+                          {" • Enable calendar sync in Settings"}
+                        </>
+                      )}
                     </div>
                   </div>
                 )}

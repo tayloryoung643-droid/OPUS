@@ -13,6 +13,7 @@ import { VoiceRecorderWebSocketService } from "./services/voiceRecorderWebSocket
 import { z } from "zod";
 import gmailRoutes from "./routes/gmail";
 import orbRoutes from "./routes/orb";
+import orbExtensionRoutes from "./routes/orbExtension";
 import { generateRhythmInsights, generateOpusFeed } from "./services/insights";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -467,6 +468,9 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
   // Orb routes - Chrome extension endpoints (uses own auth middleware)
   app.use("/api/orb", orbRoutes);
+  
+  // Orb extension bootstrap endpoint
+  app.use("/api/orb/extension", orbExtensionRoutes);
 
   // Insights routes for Rhythm and Opus feed
   app.get("/api/insights/rhythm", isAuthenticatedOrGuest, async (req: any, res) => {

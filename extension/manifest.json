@@ -1,30 +1,30 @@
 {
   "manifest_version": 3,
   "name": "Opus Orb",
-  "version": "0.1.0",
-  "description": "Pinned Opus Orb for call prep & live coaching",
+  "version": "1.0.0",
+  "description": "Shared Opus Orb with chat persistence and MCP data access",
   "action": { "default_title": "Opus" },
-  "permissions": ["storage", "activeTab", "scripting", "alarms"],
+  "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [
-    "https://meet.google.com/*",
-    "https://*.zoom.us/*",
-    "https://teams.microsoft.com/*",
-    "https://calendar.google.com/*",
     "http://localhost:5000/*",
-    "https://localhost:5000/*",
-    "*://*/*"
+    "https://localhost:5000/*"
   ],
   "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "exclude_matches": [
+        "http://localhost:5000/*",
+        "https://localhost:5000/*"
+      ]
     }
   ],
-  "side_panel": { "default_path": "panel/index.html" },
-  "web_accessible_resources": [{
-    "resources": ["injected.css"],
-    "matches": ["<all_urls>"]
-  }]
+  "web_accessible_resources": [
+    {
+      "resources": ["opus-orb.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

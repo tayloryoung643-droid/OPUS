@@ -1,197 +1,218 @@
-// background.js - Chrome extension service worker for Opus Orb
-const OPUS_API = "http://localhost:5000/api"; // Update this for production
+// background.js - Chrome extension service worker for Opus Orb (rewritten for MCP)
+let bootstrapData = null;
+let reconnectAttempts = 0;
+const maxReconnectAttempts = 3;
 
-// Check if we can access the API endpoint
-async function checkApiConnection() {
+// Host allowlist - don't inject on these domains
+const BLOCKED_HOSTS = [
+  'localhost:5000',
+  'your-domain.com', // Replace with your production domain
+  'opus.dev',
+  'opus.ai'
+];
+
+/**
+ * Get bootstrap configuration from server
+ * @returns {Promise<Object>} Bootstrap data with JWT, MCP config, etc.
+ */
+async function getBootstrap() {
   try {
-    const response = await fetch(`${OPUS_API}/auth/user`, { 
-      method: 'GET',
-      credentials: 'include'
+    const response = await fetch("http://localhost:5000/api/orb/extension/bootstrap", {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
-    console.log('[OpusOrb] API connection check:', response.status);
-    return response.status !== 0; // 0 indicates network error
+
+    if (!response.ok) {
+      throw new Error(`Bootstrap failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[OpusOrb] Bootstrap successful:', {
+      userId: data.user?.id,
+      googleConnected: data.integrations?.google?.connected,
+      salesforceConnected: data.integrations?.salesforce?.connected
+    });
+
+    return data;
   } catch (error) {
-    console.error('[OpusOrb] API connection failed:', error);
+    console.error('[OpusOrb] Bootstrap error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if we should inject on this URL
+ * @param {string} url - The URL to check
+ * @returns {boolean} True if we should inject
+ */
+function shouldInject(url) {
+  if (!url) return false;
+  
+  try {
+    const urlObj = new URL(url);
+    const host = urlObj.host;
+    
+    // Don't inject on blocked hosts
+    if (BLOCKED_HOSTS.some(blockedHost => host.includes(blockedHost))) {
+      console.log('[OpusOrb] Blocked injection on:', host);
+      return false;
+    }
+    
+    // Don't inject on chrome:// pages
+    if (urlObj.protocol === 'chrome:' || urlObj.protocol === 'chrome-extension:') {
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.warn('[OpusOrb] Invalid URL for injection check:', url);
     return false;
   }
 }
-let opusToken = null;
-
-// Load token at startup
-chrome.storage.sync.get(["opusToken"], ({ opusToken: t }) => { 
-  opusToken = t || null; 
-  console.log('[OpusOrb] Loaded token from storage:', !!opusToken);
-});
-
-// Accept token via messages (from content script or side panel)
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === "SET_TOKEN" && msg.token) {
-    opusToken = msg.token;
-    chrome.storage.sync.set({ opusToken });
-    console.log('[OpusOrb] Token updated and stored');
-    sendResponse({ ok: true });
-  }
-
-  if (msg.type === "OPUS_ASK" && msg.text) {
-    // Handle Q&A from panel - could forward to chat endpoint
-    console.log('[OpusOrb] Q&A request:', msg.text);
-    // For now, just log it
-    sendResponse({ ok: true });
-  }
-});
 
 /**
- * Lightweight URL-based meeting detection
- * @param {string} url - The tab URL to check
- * @returns {Object|null} Meeting info or null
- */
-function detectMeeting(url) {
-  if (!url) return null;
-  if (url.startsWith("https://meet.google.com/")) {
-    return { vendor: "google_meet" };
-  }
-  if (url.includes(".zoom.us/j/") || url.includes(".zoom.us/wc/")) {
-    return { vendor: "zoom" };
-  }
-  if (url.startsWith("https://teams.microsoft.com/")) {
-    return { vendor: "teams" };
-  }
-  return null;
-}
-
-/**
- * Push state and context to a tab
+ * Send bootstrap data to content script
  * @param {number} tabId - Chrome tab ID
- * @param {string} url - Tab URL
  */
-async function pushContext(tabId, url) {
-  if (!tabId || !url) return;
-
-  let state = "idle";
-  let context = null;
-
+async function sendBootstrapToTab(tabId) {
+  if (!tabId) return;
+  
   try {
-    if (opusToken) {
-      const meeting = detectMeeting(url);
-
-      if (meeting) {
-        // Live call state - fetch context
-        state = "live-call";
-        console.log('[OpusOrb] Fetching live call context for:', url);
-        
-        try {
-          const response = await fetch(`${OPUS_API}/orb/context?tabUrl=${encodeURIComponent(url)}`, {
-            headers: { 
-              Authorization: `Bearer ${opusToken}`,
-              'Content-Type': 'application/json'
-            },
-            mode: 'cors',
-            credentials: 'include'
-          });
-          
-          if (response.ok) {
-            context = await response.json();
-            console.log('[OpusOrb] Live call context received:', context);
-          } else {
-            console.warn('[OpusOrb] Failed to fetch live call context:', response.status, await response.text());
-          }
-        } catch (error) {
-          console.error('[OpusOrb] Error fetching live call context:', error);
-        }
-      } else {
-        // Check for upcoming events in pre-call window
-        console.log('[OpusOrb] Checking for upcoming events');
-        
-        try {
-          const response = await fetch(`${OPUS_API}/orb/next-event?window=30m`, {
-            headers: { 
-              Authorization: `Bearer ${opusToken}`,
-              'Content-Type': 'application/json'
-            },
-            mode: 'cors',
-            credentials: 'include'
-          });
-          
-          if (response.ok) {
-            const next = await response.json();
-            if (next && next.startsAtSoon) {
-              state = "pre-call";
-              context = next;
-              console.log('[OpusOrb] Pre-call context received:', context);
-            }
-          } else {
-            console.warn('[OpusOrb] Failed to fetch next event:', response.status, await response.text());
-          }
-        } catch (error) {
-          console.error('[OpusOrb] Error fetching next event:', error);
-        }
-      }
-    } else {
-      console.log('[OpusOrb] No token available, staying in idle state');
+    // Get fresh bootstrap data if needed
+    if (!bootstrapData) {
+      bootstrapData = await getBootstrap();
+      reconnectAttempts = 0;
     }
-  } catch (e) {
-    console.error('[OpusOrb] Error in pushContext:', e);
-  }
-
-  // Send state to content script
-  try {
-    chrome.tabs.sendMessage(tabId, { type: "OPUS_STATE", state, context });
-    console.log(`[OpusOrb] Sent state to tab ${tabId}:`, { state, context: !!context });
+    
+    // Send to content script
+    chrome.tabs.sendMessage(tabId, {
+      type: 'OPUS_BOOTSTRAP',
+      data: bootstrapData
+    }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.log('[OpusOrb] Content script not ready yet:', chrome.runtime.lastError.message);
+      } else if (response?.success) {
+        console.log('[OpusOrb] Bootstrap sent successfully to tab:', tabId);
+      }
+    });
+    
   } catch (error) {
-    // Tab might not be ready yet or content script not injected
-    console.log('[OpusOrb] Failed to send message to tab:', error.message);
+    console.error('[OpusOrb] Failed to send bootstrap to tab:', error);
+    
+    // Clear bootstrap data on auth errors
+    if (error.message.includes('401') || error.message.includes('403')) {
+      bootstrapData = null;
+    }
   }
 }
 
-// When active tab changes or finishes loading
+/**
+ * Handle messages from content scripts
+ */
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  console.log('[OpusOrb] Received message:', msg.type);
+  
+  if (msg.type === "OPUS_GET_BOOTSTRAP") {
+    getBootstrap()
+      .then(data => {
+        bootstrapData = data;
+        sendResponse({ ok: true, ...data });
+      })
+      .catch(error => {
+        console.error('[OpusOrb] Bootstrap request failed:', error);
+        sendResponse({ 
+          ok: false, 
+          error: error.message,
+          needsAuth: error.message.includes('401') || error.message.includes('403')
+        });
+      });
+    
+    return true; // Keep message channel open for async response
+  }
+  
+  if (msg.type === "OPUS_PING") {
+    sendResponse({ ok: true, timestamp: Date.now() });
+    return false;
+  }
+  
+  if (msg.type === "OPUS_CHAT_MESSAGE") {
+    // Handle chat messages if needed
+    console.log('[OpusOrb] Chat message:', msg.message);
+    sendResponse({ ok: true });
+    return false;
+  }
+});
+
+/**
+ * When active tab changes
+ */
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const tab = await chrome.tabs.get(tabId);
-    if (tab.url) {
-      console.log('[OpusOrb] Tab activated:', tab.url);
-      pushContext(tabId, tab.url);
+    if (tab.url && shouldInject(tab.url)) {
+      console.log('[OpusOrb] Tab activated, sending bootstrap:', tab.url);
+      // Delay to ensure content script is loaded
+      setTimeout(() => sendBootstrapToTab(tabId), 1000);
     }
   } catch (error) {
     console.log('[OpusOrb] Error handling tab activation:', error.message);
   }
 });
 
+/**
+ * When tab finishes loading
+ */
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === "complete" && tab.url) {
-    console.log('[OpusOrb] Tab updated:', tab.url);
-    pushContext(tabId, tab.url);
+  if (changeInfo.status === 'complete' && tab.url && shouldInject(tab.url)) {
+    console.log('[OpusOrb] Tab updated, sending bootstrap:', tab.url);
+    // Delay to ensure content script is loaded
+    setTimeout(() => sendBootstrapToTab(tabId), 1000);
   }
 });
 
-// Periodic check for pre-call window updates
-chrome.alarms.create("refreshContext", { periodInMinutes: 5 });
+/**
+ * Periodic refresh of bootstrap data
+ */
+chrome.alarms.create("refreshBootstrap", { periodInMinutes: 25 });
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-  if (alarm.name !== "refreshContext") return;
-  
-  console.log('[OpusOrb] Periodic context refresh');
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (tab && tab.id && tab.url) {
-      pushContext(tab.id, tab.url);
+  if (alarm.name === "refreshBootstrap") {
+    console.log('[OpusOrb] Refreshing bootstrap data');
+    try {
+      bootstrapData = await getBootstrap();
+      
+      // Send updated data to all active tabs
+      const tabs = await chrome.tabs.query({ active: true });
+      for (const tab of tabs) {
+        if (tab.id && tab.url && shouldInject(tab.url)) {
+          sendBootstrapToTab(tab.id);
+        }
+      }
+    } catch (error) {
+      console.error('[OpusOrb] Bootstrap refresh failed:', error);
+      
+      // Clear data on auth errors
+      if (error.message.includes('401') || error.message.includes('403')) {
+        bootstrapData = null;
+      }
     }
-  } catch (error) {
-    console.log('[OpusOrb] Error in periodic refresh:', error.message);
   }
 });
 
-// Initialize on startup
-chrome.runtime.onStartup.addListener(async () => {
+/**
+ * Extension startup
+ */
+chrome.runtime.onStartup.addListener(() => {
   console.log('[OpusOrb] Extension started');
-  const canConnect = await checkApiConnection();
-  if (!canConnect) {
-    console.warn('[OpusOrb] Cannot connect to Opus API at startup');
-  }
+  bootstrapData = null; // Clear cache on startup
 });
 
-chrome.runtime.onInstalled.addListener(async () => {
+/**
+ * Extension install/update
+ */
+chrome.runtime.onInstalled.addListener(() => {
   console.log('[OpusOrb] Extension installed/updated');
-  const canConnect = await checkApiConnection();
-  if (!canConnect) {
-    console.warn('[OpusOrb] Cannot connect to Opus API after install');
-  }
+  bootstrapData = null; // Clear cache on install
 });

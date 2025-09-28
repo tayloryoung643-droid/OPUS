@@ -80,23 +80,9 @@ export default function OpusAgendaList({ onSelect }: Props) {
           notes: event.notes || event.description,
         }));
       } catch (error) {
-        // Graceful fallback with mock data
-        return [
-          { 
-            id: "mock-1", 
-            title: "Acme Corp — Discovery", 
-            company: "Acme Corp", 
-            start: new Date().toISOString(), 
-            attendees: ["ceo@acme.com"] 
-          },
-          { 
-            id: "mock-2", 
-            title: "Globex SG — Demo", 
-            company: "Globex SG", 
-            start: new Date(Date.now() + 4_000_000).toISOString(), 
-            attendees: ["it@globex.sg"] 
-          },
-        ];
+        console.error('Failed to fetch calendar events:', error);
+        // Return empty array instead of mock data - no sample information
+        return [];
       }
     },
     staleTime: 300_000, // 5 minutes

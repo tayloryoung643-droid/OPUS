@@ -1675,8 +1675,16 @@ RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, th
     }
   });
 
-  // Create sample data endpoint for demo
+  // Create sample data endpoint for demo (DISABLED - no sample data in production)
   app.post("/api/demo/setup", async (req, res) => {
+    // Import FLAGS to check if mocks are enabled
+    const { FLAGS } = await import('./config/flags.js');
+    
+    if (!FLAGS.USE_MOCKS && !FLAGS.DEMO_MODE) {
+      return res.status(403).json({ 
+        message: "Demo data creation is disabled. Enable USE_MOCKS=true to use sample data." 
+      });
+    }
     try {
       // Create DataFlow Systems company
       const company = await storage.createCompany({

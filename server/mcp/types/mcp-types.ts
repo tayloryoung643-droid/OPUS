@@ -9,8 +9,6 @@ export const salesforceContactLookupSchema = z.object({
   fields: z.array(z.string()).optional().default([
     'Id', 'Name', 'Email', 'Phone', 'Title', 'AccountId', 'Account.Name'
   ])
-}).refine(data => data.email || data.company, {
-  message: "Either email or company must be provided"
 });
 
 export const salesforceOpportunityLookupSchema = z.object({
@@ -20,8 +18,6 @@ export const salesforceOpportunityLookupSchema = z.object({
   fields: z.array(z.string()).optional().default([
     'Id', 'Name', 'StageName', 'Amount', 'CloseDate', 'AccountId', 'Account.Name'
   ])
-}).refine(data => data.opportunityId || data.contactId || data.accountId, {
-  message: "At least one identifier must be provided"
 });
 
 export const salesforceAccountLookupSchema = z.object({
@@ -31,8 +27,6 @@ export const salesforceAccountLookupSchema = z.object({
   fields: z.array(z.string()).optional().default([
     'Id', 'Name', 'Industry', 'NumberOfEmployees', 'AnnualRevenue', 'Website', 'Description'
   ])
-}).refine(data => data.accountId || data.name || data.domain, {
-  message: "At least one identifier must be provided"
 });
 
 // Google Calendar tool schemas
@@ -181,7 +175,7 @@ export interface MCPToolContext {
 export const MCP_TOOL_DEFINITIONS = {
   salesforce_contact_lookup: {
     name: "salesforce_contact_lookup",
-    description: "Look up contact details from Salesforce CRM using email or company name. Provide either email or company name. Returns contact information including name, title, phone, and account details.",
+    description: "Look up contact details from Salesforce CRM. Can search by email, company name, or call without parameters to get recent contacts. Returns contact information including name, title, phone, and account details.",
     parameters: {
       type: "object",
       properties: {
@@ -206,7 +200,7 @@ export const MCP_TOOL_DEFINITIONS = {
   
   salesforce_opportunity_lookup: {
     name: "salesforce_opportunity_lookup",
-    description: "Get opportunity details from Salesforce by ID, contact, or account. Provide at least one identifier. Returns opportunity information including stage, amount, close date, and account details.",
+    description: "Get opportunity details from Salesforce. Can search by specific ID, contact, account, OR call without parameters to get ALL opportunities in the sales pipeline. Perfect for 'show me my pipeline' queries. Returns opportunity information including stage, amount, close date, and account details.",
     parameters: {
       type: "object",
       properties: {
@@ -234,7 +228,7 @@ export const MCP_TOOL_DEFINITIONS = {
   
   salesforce_account_lookup: {
     name: "salesforce_account_lookup",
-    description: "Retrieve account information and history from Salesforce by ID, name, or domain. Provide at least one identifier. Returns account details including industry, size, revenue, and description.",
+    description: "Retrieve account information from Salesforce. Can search by ID, name, domain, or call without parameters to get recent accounts. Returns account details including industry, size, revenue, and description.",
     parameters: {
       type: "object",
       properties: {

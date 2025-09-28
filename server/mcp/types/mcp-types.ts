@@ -181,7 +181,7 @@ export interface MCPToolContext {
 export const MCP_TOOL_DEFINITIONS = {
   salesforce_contact_lookup: {
     name: "salesforce_contact_lookup",
-    description: "Look up contact details from Salesforce CRM using email or company name. Returns contact information including name, title, phone, and account details.",
+    description: "Look up contact details from Salesforce CRM using email or company name. Provide either email or company name. Returns contact information including name, title, phone, and account details.",
     parameters: {
       type: "object",
       properties: {
@@ -200,17 +200,13 @@ export const MCP_TOOL_DEFINITIONS = {
           description: "Specific Salesforce fields to retrieve",
           default: ["Id", "Name", "Email", "Phone", "Title", "AccountId", "Account.Name"]
         }
-      },
-      anyOf: [
-        { required: ["email"] },
-        { required: ["company"] }
-      ]
+      }
     }
   },
   
   salesforce_opportunity_lookup: {
     name: "salesforce_opportunity_lookup",
-    description: "Get opportunity details from Salesforce by ID, contact, or account. Returns opportunity information including stage, amount, close date, and account details.",
+    description: "Get opportunity details from Salesforce by ID, contact, or account. Provide at least one identifier. Returns opportunity information including stage, amount, close date, and account details.",
     parameters: {
       type: "object",
       properties: {
@@ -232,18 +228,13 @@ export const MCP_TOOL_DEFINITIONS = {
           description: "Specific Salesforce fields to retrieve",
           default: ["Id", "Name", "StageName", "Amount", "CloseDate", "AccountId", "Account.Name"]
         }
-      },
-      anyOf: [
-        { required: ["opportunityId"] },
-        { required: ["contactId"] },
-        { required: ["accountId"] }
-      ]
+      }
     }
   },
   
   salesforce_account_lookup: {
     name: "salesforce_account_lookup",
-    description: "Retrieve account information and history from Salesforce by ID, name, or domain. Returns account details including industry, size, revenue, and description.",
+    description: "Retrieve account information and history from Salesforce by ID, name, or domain. Provide at least one identifier. Returns account details including industry, size, revenue, and description.",
     parameters: {
       type: "object",
       properties: {
@@ -265,18 +256,13 @@ export const MCP_TOOL_DEFINITIONS = {
           description: "Specific Salesforce fields to retrieve",
           default: ["Id", "Name", "Industry", "NumberOfEmployees", "AnnualRevenue", "Website", "Description"]
         }
-      },
-      anyOf: [
-        { required: ["accountId"] },
-        { required: ["name"] },
-        { required: ["domain"] }
-      ]
+      }
     }
   },
   
   calendar_meeting_context: {
     name: "calendar_meeting_context",
-    description: "Get details about upcoming or recent meetings from Google Calendar. Includes meeting information, attendees, and context for call preparation.",
+    description: "Get details about upcoming or recent meetings from Google Calendar. Provide event ID, contact email, or time range. Includes meeting information, attendees, and context for call preparation.",
     parameters: {
       type: "object",
       properties: {
@@ -302,12 +288,7 @@ export const MCP_TOOL_DEFINITIONS = {
           default: true,
           description: "Whether to include attendee information" 
         }
-      },
-      anyOf: [
-        { required: ["eventId"] },
-        { required: ["contactEmail"] },
-        { required: ["timeRange"] }
-      ]
+      }
     }
   },
   
@@ -370,7 +351,7 @@ export const MCP_TOOL_DEFINITIONS = {
   
   call_history_lookup: {
     name: "call_history_lookup",
-    description: "Get historical call data for contacts or companies from the database. Provides context on past interactions and call outcomes.",
+    description: "Get historical call data for contacts or companies from the database. Provide contact email, company name, or company domain. Provides context on past interactions and call outcomes.",
     parameters: {
       type: "object",
       properties: {
@@ -401,12 +382,7 @@ export const MCP_TOOL_DEFINITIONS = {
           default: 10,
           description: "Maximum number of calls to return" 
         }
-      },
-      anyOf: [
-        { required: ["contactEmail"] },
-        { required: ["companyName"] },
-        { required: ["companyDomain"] }
-      ]
+      }
     }
   },
 

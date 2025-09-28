@@ -1,6 +1,6 @@
 import { 
   companies, contacts, calls, callPreps, prepNotes, users, integrations, integrationData, crmOpportunities, googleIntegrations, salesforceIntegrations,
-  coachSessions, coachTranscripts, coachSuggestions, callTranscripts,
+  coachSessions, coachTranscripts, coachSuggestions, callTranscripts, chatSessions, chatMessages,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
@@ -15,7 +15,9 @@ import {
   type CoachSession, type InsertCoachSession,
   type CoachTranscript, type InsertCoachTranscript,
   type CoachSuggestion, type InsertCoachSuggestion,
-  type CallTranscript, type InsertCallTranscript
+  type CallTranscript, type InsertCallTranscript,
+  type ChatSession, type InsertChatSession,
+  type ChatMessage, type InsertChatMessage
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -122,6 +124,16 @@ export interface IStorage {
   getCallTranscriptsByCompany(companyId: string): Promise<CallTranscript[]>;
   updateCallTranscript(id: string, updates: Partial<InsertCallTranscript>): Promise<CallTranscript>;
   deleteCallTranscript(id: string): Promise<void>;
+
+  // Chat Session and Message methods for unified Opus chat
+  createChatSession(session: InsertChatSession): Promise<ChatSession>;
+  getChatSession(conversationId: string): Promise<ChatSession | undefined>;
+  getChatSessionByUserId(userId: string, conversationId: string): Promise<ChatSession | undefined>;
+  getChatMessagesBySession(sessionId: string): Promise<ChatMessage[]>;
+  getChatMessagesByConversationId(conversationId: string, limit?: number, offset?: number): Promise<ChatMessage[]>;
+  getChatMessageCountByConversationId(conversationId: string): Promise<number>;
+  saveChatMessages(sessionId: string, messages: InsertChatMessage[]): Promise<void>;
+  upsertChatSession(userId: string, conversationId: string): Promise<ChatSession>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -775,6 +787,111 @@ export class DatabaseStorage implements IStorage {
     await db
       .delete(callTranscripts)
       .where(eq(callTranscripts.id, id));
+  }
+
+  // Chat Session and Message methods for unified Opus chat
+  async createChatSession(session: InsertChatSession): Promise<ChatSession> {
+    const [newSession] = await db.insert(chatSessions).values(session).returning();
+    return newSession;
+  }
+
+  async getChatSession(conversationId: string): Promise<ChatSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.conversationId, conversationId));
+    return session || undefined;
+  }
+
+  async getChatSessionByUserId(userId: string, conversationId: string): Promise<ChatSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(and(
+        eq(chatSessions.userId, userId),
+        eq(chatSessions.conversationId, conversationId)
+      ));
+    return session || undefined;
+  }
+
+  async getChatMessagesBySession(sessionId: string): Promise<ChatMessage[]> {
+    return await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.sessionId, sessionId))
+      .orderBy(chatMessages.timestamp);
+  }
+
+  async getChatMessagesByConversationId(conversationId: string, limit?: number, offset?: number): Promise<ChatMessage[]> {
+    let query = db
+      .select({
+        id: chatMessages.id,
+        sessionId: chatMessages.sessionId,
+        messageId: chatMessages.messageId,
+        role: chatMessages.role,
+        content: chatMessages.content,
+        timestamp: chatMessages.timestamp,
+        createdAt: chatMessages.createdAt
+      })
+      .from(chatMessages)
+      .innerJoin(chatSessions, eq(chatMessages.sessionId, chatSessions.id))
+      .where(eq(chatSessions.conversationId, conversationId))
+      .orderBy(chatMessages.timestamp, chatMessages.messageId);
+    
+    // Apply pagination if provided
+    if (offset !== undefined) {
+      query = query.offset(offset);
+    }
+    if (limit !== undefined) {
+      query = query.limit(limit);
+    }
+    
+    return await query;
+  }
+
+  async getChatMessageCountByConversationId(conversationId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(chatMessages)
+      .innerJoin(chatSessions, eq(chatMessages.sessionId, chatSessions.id))
+      .where(eq(chatSessions.conversationId, conversationId));
+    
+    return result[0]?.count || 0;
+  }
+
+  async saveChatMessages(sessionId: string, messages: InsertChatMessage[]): Promise<void> {
+    if (messages.length === 0) return;
+    
+    // Add sessionId to all messages
+    const messagesWithSession = messages.map(msg => ({
+      ...msg,
+      sessionId
+    }));
+    
+    // Use onConflictDoNothing to prevent duplicates based on (session_id, message_id) unique constraint
+    await db.insert(chatMessages)
+      .values(messagesWithSession)
+      .onConflictDoNothing({ target: [chatMessages.sessionId, chatMessages.messageId] });
+  }
+
+  async upsertChatSession(userId: string, conversationId: string): Promise<ChatSession> {
+    // First check if conversation exists with different owner (security check)
+    const existingSession = await this.getChatSession(conversationId);
+    if (existingSession && existingSession.userId !== userId) {
+      throw new Error('Access denied: conversation belongs to another user');
+    }
+    
+    // Try to get existing session for this user
+    const userSession = await this.getChatSessionByUserId(userId, conversationId);
+    if (userSession) {
+      return userSession;
+    }
+    
+    // Create new session if doesn't exist
+    return await this.createChatSession({
+      userId,
+      conversationId
+    });
   }
 }
 

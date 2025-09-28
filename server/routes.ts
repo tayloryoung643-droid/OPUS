@@ -11,12 +11,19 @@ import { CryptoService } from "./services/crypto";
 import { CoachWebSocketService } from "./services/coachWebSocket";
 import { VoiceRecorderWebSocketService } from "./services/voiceRecorderWebSocket";
 import { z } from "zod";
+import jwt from "jsonwebtoken";
 import gmailRoutes from "./routes/gmail";
 import orbRoutes from "./routes/orb";
 import orbExtensionRoutes from "./routes/orbExtension";
 import { generateRhythmInsights, generateOpusFeed } from "./services/insights";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Validate critical environment variables at startup
+  if (!process.env.OPUS_JWT_SECRET) {
+    console.error('FATAL: OPUS_JWT_SECRET environment variable is required');
+    process.exit(1);
+  }
+
   // Setup Replit Auth (Google Sign-in support)
   await setupAuth(app);
   
@@ -595,6 +602,208 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
   
   // Orb extension bootstrap endpoint
   app.use("/api/orb/extension", orbExtensionRoutes);
+
+  // Import crypto for UUID generation
+  const crypto = await import('crypto');
+
+  // Import environment configuration
+  const { ENV } = await import('./config/env.js');
+
+  // Centralized CORS middleware for extension origins
+  const setCORSHeaders = (req: any, res: any) => {
+    const origin = req.headers.origin;
+    
+    // Allow main app origin
+    if (origin === ENV.APP_ORIGIN) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      return true;
+    }
+    
+    // Allow chrome-extension origins (with basic validation)
+    if (origin && origin.startsWith('chrome-extension://')) {
+      // Basic validation - should be a valid chrome extension ID format
+      const extensionId = origin.replace('chrome-extension://', '');
+      if (/^[a-p]{32}$/.test(extensionId)) { // Chrome extension IDs are 32 chars, a-p only
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
+  // CORS preflight handler for chat and auth endpoints
+  const handleCORSPreflight = (req: any, res: any, next: any) => {
+    if (req.method === 'OPTIONS') {
+      const validOrigin = setCORSHeaders(req, res);
+      
+      if (validOrigin) {
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+        res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+        return res.status(200).end();
+      } else {
+        return res.status(403).end();
+      }
+    }
+    
+    // Set CORS headers for actual requests
+    setCORSHeaders(req, res);
+    next();
+  };
+
+  // Apply CORS middleware to chat and auth endpoints
+  app.use('/api/chat', handleCORSPreflight);
+  app.use('/api/auth/extension', handleCORSPreflight);
+
+  // Hybrid auth middleware for chat endpoints - supports both session auth and JWT Bearer tokens
+  const isAuthenticatedOrJWT = async (req: any, res: any, next: any) => {
+    // First try JWT Bearer token authentication (for extension)
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const { verifyOrbToken } = await import('./auth/extensionToken.js');
+        const token = authHeader.slice(7);
+        const payload = verifyOrbToken(token);
+        
+        // Set user claims for compatibility with existing endpoints
+        req.user = {
+          claims: {
+            sub: payload.userId
+          }
+        };
+        req.orbToken = payload;
+        return next();
+      } catch (error) {
+        console.error('[ChatAuth] JWT verification failed:', error);
+        return res.status(401).json({ 
+          error: 'Invalid token',
+          message: 'JWT verification failed'
+        });
+      }
+    }
+    
+    // Fallback to session-based authentication (for web app)
+    return isAuthenticatedOrGuest(req, res, next);
+  };
+
+  // Chat session management endpoints for unified Opus chat
+  app.post("/api/chat/session", isAuthenticatedOrJWT, requireWriteAccess, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { conversationId } = req.body;
+      
+      if (!conversationId) {
+        return res.status(400).json({ error: "conversationId is required" });
+      }
+      
+      // Upsert session (create if doesn't exist, return if exists)
+      const session = await storage.upsertChatSession(userId, conversationId);
+      
+      res.json({ 
+        conversationId: session.conversationId,
+        sessionId: session.id 
+      });
+    } catch (error) {
+      console.error("Error creating/getting chat session:", error);
+      res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  app.get("/api/chat/history", isAuthenticatedOrJWT, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const conversationId = req.query.conversationId as string;
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 500); // Max 500 messages
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      if (!conversationId) {
+        return res.status(400).json({ error: "conversationId is required" });
+      }
+      
+      // Verify user owns this conversation
+      const session = await storage.getChatSessionByUserId(userId, conversationId);
+      if (!session) {
+        return res.json({ messages: [], total: 0, hasMore: false }); // Return empty if session doesn't exist
+      }
+      
+      const total = await storage.getChatMessageCountByConversationId(conversationId);
+      const paginatedMessages = await storage.getChatMessagesByConversationId(conversationId, limit, offset);
+      
+      // Transform to expected format
+      const formattedMessages = paginatedMessages.map(msg => ({
+        id: msg.messageId,
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.timestamp).getTime()
+      }));
+      
+      res.json({ 
+        messages: formattedMessages,
+        total,
+        hasMore: offset + limit < total,
+        offset,
+        limit
+      });
+    } catch (error) {
+      console.error("Error getting chat history:", error);
+      res.status(500).json({ error: "Failed to get chat history" });
+    }
+  });
+
+  app.post("/api/chat/events", isAuthenticatedOrJWT, requireWriteAccess, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { conversationId, messages } = req.body;
+      
+      if (!conversationId || !Array.isArray(messages)) {
+        return res.status(400).json({ error: "conversationId and messages array are required" });
+      }
+      
+      // Ensure session exists and user owns it
+      const session = await storage.upsertChatSession(userId, conversationId);
+      
+      // Validate messages array
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: "Messages must be a non-empty array" });
+      }
+      
+      if (messages.length > 100) {
+        return res.status(400).json({ error: "Too many messages in batch (max 100)" });
+      }
+
+      // Transform messages to database format with validation
+      const dbMessages = messages.map(msg => {
+        // Validate required fields
+        if (!msg.role || !['user', 'assistant'].includes(msg.role)) {
+          throw new Error(`Invalid role: ${msg.role}`);
+        }
+        if (!msg.content || typeof msg.content !== 'string') {
+          throw new Error('Content is required and must be a string');
+        }
+        if (msg.content.length > 10000) {
+          throw new Error('Message content too long (max 10000 characters)');
+        }
+        
+        return {
+          messageId: msg.id || crypto.randomUUID(),
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp || Date.now())
+        };
+      });
+      
+      // Save messages to database
+      await storage.saveChatMessages(session.id, dbMessages);
+      
+      res.json({ success: true, saved: messages.length });
+    } catch (error) {
+      console.error("Error saving chat messages:", error);
+      res.status(500).json({ error: "Failed to save chat messages" });
+    }
+  });
 
   // Insights routes for Rhythm and Opus feed
   app.get("/api/insights/rhythm", isAuthenticatedOrGuest, async (req: any, res) => {

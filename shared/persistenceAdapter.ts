@@ -23,16 +23,22 @@ export class ServerPersistenceAdapter implements PersistenceAdapter {
 
   async createSession(): Promise<string> {
     try {
+      // Generate conversation ID client-side for consistency
+      const conversationId = crypto.randomUUID();
+      
       const response = await fetch(`${this.apiBaseUrl}/chat/session`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${this.jwt}`,
           'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ conversationId })
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to create session: ${response.status}`);
+        console.warn(`[Persistence] Failed to create server session: ${response.status}`);
+        // Still return the conversation ID for local use
+        return conversationId;
       }
 
       const data = await response.json();

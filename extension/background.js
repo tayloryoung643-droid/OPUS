@@ -1,5 +1,20 @@
 // background.js - Chrome extension service worker for Opus Orb
 const OPUS_API = "http://localhost:5000/api"; // Update this for production
+
+// Check if we can access the API endpoint
+async function checkApiConnection() {
+  try {
+    const response = await fetch(`${OPUS_API}/auth/user`, { 
+      method: 'GET',
+      credentials: 'include'
+    });
+    console.log('[OpusOrb] API connection check:', response.status);
+    return response.status !== 0; // 0 indicates network error
+  } catch (error) {
+    console.error('[OpusOrb] API connection failed:', error);
+    return false;
+  }
+}
 let opusToken = null;
 
 // Load token at startup
@@ -69,14 +84,16 @@ async function pushContext(tabId, url) {
             headers: { 
               Authorization: `Bearer ${opusToken}`,
               'Content-Type': 'application/json'
-            }
+            },
+            mode: 'cors',
+            credentials: 'include'
           });
           
           if (response.ok) {
             context = await response.json();
             console.log('[OpusOrb] Live call context received:', context);
           } else {
-            console.warn('[OpusOrb] Failed to fetch live call context:', response.status);
+            console.warn('[OpusOrb] Failed to fetch live call context:', response.status, await response.text());
           }
         } catch (error) {
           console.error('[OpusOrb] Error fetching live call context:', error);
@@ -90,7 +107,9 @@ async function pushContext(tabId, url) {
             headers: { 
               Authorization: `Bearer ${opusToken}`,
               'Content-Type': 'application/json'
-            }
+            },
+            mode: 'cors',
+            credentials: 'include'
           });
           
           if (response.ok) {
@@ -101,7 +120,7 @@ async function pushContext(tabId, url) {
               console.log('[OpusOrb] Pre-call context received:', context);
             }
           } else {
-            console.warn('[OpusOrb] Failed to fetch next event:', response.status);
+            console.warn('[OpusOrb] Failed to fetch next event:', response.status, await response.text());
           }
         } catch (error) {
           console.error('[OpusOrb] Error fetching next event:', error);
@@ -161,10 +180,18 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 // Initialize on startup
-chrome.runtime.onStartup.addListener(() => {
+chrome.runtime.onStartup.addListener(async () => {
   console.log('[OpusOrb] Extension started');
+  const canConnect = await checkApiConnection();
+  if (!canConnect) {
+    console.warn('[OpusOrb] Cannot connect to Opus API at startup');
+  }
 });
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener(async () => {
   console.log('[OpusOrb] Extension installed/updated');
+  const canConnect = await checkApiConnection();
+  if (!canConnect) {
+    console.warn('[OpusOrb] Cannot connect to Opus API after install');
+  }
 });

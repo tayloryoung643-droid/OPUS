@@ -172,41 +172,95 @@ export function OpusProvider({ children }: { children: React.ReactNode }) {
     }
   }, [userId, state.chat.messages]);
 
-  // Extension token handshake - send token to Chrome extension when user is authenticated
+  // Extension session offer - broadcast one-time codes to Chrome extension when user is authenticated
   useEffect(() => {
     if (!userId) return;
     
-    const sendTokenToExtension = async () => {
+    const broadcastSessionOffer = async () => {
       try {
-        // Fetch extension token from our backend
-        const response = await fetch('/api/auth/extension-token', {
+        // Generate one-time session code from our backend
+        const response = await fetch('/api/auth/extension/session-code', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
         });
         
         if (response.ok) {
-          const { opusToken } = await response.json();
+          const { code } = await response.json();
           
-          // Send token to Chrome extension via postMessage
+          // Broadcast session offer to Chrome extension via postMessage
           window.postMessage({ 
-            type: 'OPUS_TOKEN_HANDSHAKE', 
-            opusToken 
-          }, window.location.origin);
+            type: 'OPUS_SESSION_OFFER', 
+            code 
+          }, '*');
           
-          console.log('[OpusProvider] Extension token sent to Chrome extension');
+          console.log('[OpusProvider] Session offer broadcast to Chrome extension');
         } else {
-          console.warn('[OpusProvider] Failed to get extension token:', response.status);
+          console.warn('[OpusProvider] Failed to generate session code:', response.status);
         }
       } catch (error) {
-        console.error('[OpusProvider] Extension token handshake error:', error);
+        console.error('[OpusProvider] Session offer error:', error);
       }
     };
     
-    // Send token immediately and then refresh every 25 minutes (tokens expire in 30 minutes)
-    sendTokenToExtension();
-    const tokenRefreshInterval = setInterval(sendTokenToExtension, 25 * 60 * 1000);
+    // Broadcast session offer immediately and then refresh every 25 minutes (codes expire in 5 minutes but tokens last 60 minutes)
+    broadcastSessionOffer();
+    const sessionRefreshInterval = setInterval(broadcastSessionOffer, 25 * 60 * 1000);
     
-    return () => clearInterval(tokenRefreshInterval);
+    return () => clearInterval(sessionRefreshInterval);
+  }, [userId]);
+
+  // Extension message handler - handle requests from Chrome extension for token exchange
+  useEffect(() => {
+    if (!userId) return;
+    
+    const handleExtensionMessage = async (event: MessageEvent) => {
+      // Only handle messages from extension origins or same origin
+      if (!event.origin.startsWith('chrome-extension://') && event.origin !== window.location.origin) {
+        return;
+      }
+      
+      const { type, data } = event.data;
+      
+      if (type === 'OPUS_EXTENSION_TOKEN_REQUEST') {
+        try {
+          // Call the new mint endpoint with session authentication
+          const response = await fetch('/api/auth/extension/mint', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'  // Include session cookies
+          });
+          
+          if (response.ok) {
+            const tokenData = await response.json();
+            
+            // Send JWT back to extension
+            event.source?.postMessage({
+              type: 'OPUS_EXTENSION_TOKEN_RESPONSE',
+              success: true,
+              ...tokenData
+            }, event.origin);
+            
+            console.log('[OpusProvider] Extension token provided via session auth');
+          } else {
+            event.source?.postMessage({
+              type: 'OPUS_EXTENSION_TOKEN_RESPONSE',
+              success: false,
+              error: 'Token generation failed'
+            }, event.origin);
+          }
+        } catch (error) {
+          console.error('[OpusProvider] Extension token request error:', error);
+          event.source?.postMessage({
+            type: 'OPUS_EXTENSION_TOKEN_RESPONSE',
+            success: false,
+            error: 'Token request failed'
+          }, event.origin);
+        }
+      }
+    };
+    
+    window.addEventListener('message', handleExtensionMessage);
+    return () => window.removeEventListener('message', handleExtensionMessage);
   }, [userId]);
 
   // Cleanup voice on unmount

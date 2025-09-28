@@ -560,7 +560,7 @@
       const { type, code } = event.data;
 
       if (type === 'OPUS_SESSION_OFFER' && code) {
-        console.log('[OpusOrb] Received session offer from web app');
+        console.log('[OpusOrb] Received session offer from web app, code:', code.substring(0, 8) + '...');
         
         try {
           // Check if we already have a valid token
@@ -575,6 +575,7 @@
           }
 
           // Exchange the code for a JWT
+          console.log('[OpusOrb] Sending code exchange message to background script');
           chrome.runtime.sendMessage({ 
             type: 'OPUS_EXCHANGE_CODE', 
             code 
@@ -620,6 +621,7 @@
     
     if (isMainApp) {
       console.log('[OpusOrb] On main app domain - session handshake only mode');
+      console.log('[OpusOrb] Setting up session offer listener for origin:', window.location.origin);
       // On main app: Only handle session offers, don't mount orb (main app has its own)
       return;
     }

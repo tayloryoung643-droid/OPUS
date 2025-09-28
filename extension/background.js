@@ -80,27 +80,50 @@ async function getBootstrap() {
       };
     }
 
-    // Fallback to cookie-based bootstrap (original method)
-    const response = await fetch(`${CONFIG.API_ORIGIN}/api/orb/extension/bootstrap`, {
+    // Fallback: Try to get JWT directly using session authentication
+    console.log('[OpusOrb] No stored JWT found, trying direct session-based token request');
+    const response = await fetch(`${CONFIG.API_ORIGIN}/api/auth/extension/mint`, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify({})
     });
 
+    console.log('[OpusOrb] Direct token request response status:', response.status);
     if (!response.ok) {
-      throw new Error(`Bootstrap failed: ${response.status}`);
+      const errorText = await response.text();
+      console.error('[OpusOrb] Direct token request failed with response:', errorText);
+      throw new Error(`Authentication failed: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
-    console.log('[OpusOrb] Bootstrap successful:', {
-      userId: data.user?.id,
-      googleConnected: data.integrations?.google?.connected,
-      salesforceConnected: data.integrations?.salesforce?.connected
-    });
+    const tokenData = await response.json();
+    console.log('[OpusOrb] Successfully obtained JWT via direct session auth');
+    
+    // Store the token for future use
+    const authData = {
+      jwt: tokenData.jwt,
+      expiresAt: Date.now() + (60 * 60 * 1000), // 60 minutes from now
+      scopes: tokenData.scopes,
+      userId: tokenData.user.id,
+      lastRefresh: Date.now()
+    };
 
-    return data;
+    await chrome.storage.local.set({ 'opus.auth': authData });
+    
+    // Return bootstrap data format
+    return {
+      jwt: tokenData.jwt,
+      apiBaseUrl: `${CONFIG.API_ORIGIN}/api`,
+      mcpWsUrl: CONFIG.API_ORIGIN.replace('http://', 'ws://').replace('https://', 'wss://') + '/mcp',
+      user: tokenData.user,
+      integrations: {
+        google: { connected: false, scopes: [] },
+        salesforce: { connected: false, scopes: [] }
+      }
+    };
+
   } catch (error) {
     console.error('[OpusOrb] Bootstrap error:', error);
     throw error;
@@ -186,6 +209,7 @@ async function sendBootstrapToTab(tabId) {
  */
 async function exchangeCodeForToken(code) {
   try {
+    console.log('[OpusOrb] Exchanging code for token:', code.substring(0, 8) + '...');
     const response = await fetch(`${CONFIG.API_ORIGIN}/api/auth/extension/mint`, {
       method: 'POST',
       headers: {
@@ -194,8 +218,11 @@ async function exchangeCodeForToken(code) {
       body: JSON.stringify({ code })
     });
 
+    console.log('[OpusOrb] Token exchange response status:', response.status);
     if (!response.ok) {
-      throw new Error(`Token exchange failed: ${response.status}`);
+      const errorText = await response.text();
+      console.error('[OpusOrb] Token exchange failed with response:', errorText);
+      throw new Error(`Token exchange failed: ${response.status} - ${errorText}`);
     }
 
     const tokenData = await response.json();

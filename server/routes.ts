@@ -40,6 +40,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Setup Replit Auth (Google Sign-in support)
   await setupAuth(app);
+
+  // Import ENV for CORS configuration
+  const { ENV } = await import('./config/env.js');
+
+  // Centralized CORS middleware for extension origins
+  const setCORSHeaders = (req: any, res: any) => {
+    const origin = req.headers.origin;
+    
+    // Allow main app origin
+    if (origin === ENV.APP_ORIGIN) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      return true;
+    }
+    
+    // Allow chrome-extension origins (with basic validation)
+    if (origin && origin.startsWith('chrome-extension://')) {
+      // Basic validation - should be a valid chrome extension ID format
+      const extensionId = origin.replace('chrome-extension://', '');
+      if (/^[a-p]{32}$/.test(extensionId)) { // Chrome extension IDs are 32 chars, a-p only
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        return true;
+      }
+    }
+    
+    // Allow common external test origins for development/testing
+    const allowedTestOrigins = [
+      'https://www.google.com',
+      'https://google.com',
+      'https://example.com',
+      'https://www.example.com'
+    ];
+    
+    if (origin && allowedTestOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      return true;
+    }
+    
+    return false;
+  };
+
+  // CORS preflight handler for auth endpoints
+  const handleCORSPreflight = (req: any, res: any, next: any) => {
+    if (req.method === 'OPTIONS') {
+      const validOrigin = setCORSHeaders(req, res);
+      
+      if (validOrigin) {
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+        res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+        return res.status(200).end();
+      } else {
+        return res.status(403).end();
+      }
+    }
+    
+    // Set CORS headers for actual requests
+    setCORSHeaders(req, res);
+    next();
+  };
+
+  // Apply CORS middleware to auth endpoints BEFORE route registration
+  app.use('/api/auth/extension', handleCORSPreflight);
   
   // Initialize guest user and seed data if enabled
   if (isGuestEnabled() || isDemoMode()) {
@@ -620,57 +685,8 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
   // Import crypto for UUID generation
   const crypto = await import('crypto');
 
-  // Import environment configuration
-  const { ENV } = await import('./config/env.js');
-
-  // Centralized CORS middleware for extension origins
-  const setCORSHeaders = (req: any, res: any) => {
-    const origin = req.headers.origin;
-    
-    // Allow main app origin
-    if (origin === ENV.APP_ORIGIN) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Access-Control-Allow-Credentials', 'true');
-      return true;
-    }
-    
-    // Allow chrome-extension origins (with basic validation)
-    if (origin && origin.startsWith('chrome-extension://')) {
-      // Basic validation - should be a valid chrome extension ID format
-      const extensionId = origin.replace('chrome-extension://', '');
-      if (/^[a-p]{32}$/.test(extensionId)) { // Chrome extension IDs are 32 chars, a-p only
-        res.setHeader('Access-Control-Allow-Origin', origin);
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-        return true;
-      }
-    }
-    
-    return false;
-  };
-
-  // CORS preflight handler for chat and auth endpoints
-  const handleCORSPreflight = (req: any, res: any, next: any) => {
-    if (req.method === 'OPTIONS') {
-      const validOrigin = setCORSHeaders(req, res);
-      
-      if (validOrigin) {
-        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-        res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
-        return res.status(200).end();
-      } else {
-        return res.status(403).end();
-      }
-    }
-    
-    // Set CORS headers for actual requests
-    setCORSHeaders(req, res);
-    next();
-  };
-
-  // Apply CORS middleware to chat and auth endpoints
+  // Apply CORS middleware to chat endpoints  
   app.use('/api/chat', handleCORSPreflight);
-  app.use('/api/auth/extension', handleCORSPreflight);
 
   // Hybrid auth middleware for chat endpoints - supports both session auth and JWT Bearer tokens
   const isAuthenticatedOrJWT = async (req: any, res: any, next: any) => {

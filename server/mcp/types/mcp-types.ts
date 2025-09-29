@@ -34,8 +34,8 @@ export const calendarMeetingContextSchema = z.object({
   eventId: z.string().optional(),
   contactEmail: z.string().email().optional(),
   timeRange: z.object({
-    start: z.string().datetime(),
-    end: z.string().datetime()
+    start: z.string(),  // Accept any string, we'll parse it ourselves
+    end: z.string()
   }).optional(),
   includeAttendees: z.boolean().default(true)
 }).refine(data => data.eventId || data.contactEmail || data.timeRange, {

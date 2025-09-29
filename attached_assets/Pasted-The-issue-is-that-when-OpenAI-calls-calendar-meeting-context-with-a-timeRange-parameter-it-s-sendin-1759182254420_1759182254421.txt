@@ -1,0 +1,47 @@
+The issue is that when OpenAI calls calendar_meeting_context with a timeRange parameter, it's sending invalid datetime strings that fail Zod validation. The simplest fix is to improve the default behavior when NO parameters are provided.
+File: server/mcp/tools/calendar-tools.ts
+Find the else block (around line 45-48):
+typescript} else {
+  // Default: get recent and upcoming events
+  events = await googleCalendarService.getUpcomingEvents(context.userId, 10);
+}
+Replace with:
+typescript} else {
+  // Default: get more events and filter intelligently
+  // Fetch 200 events to account for recurring birthdays
+  const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 200);
+  
+  // Filter to only include events with actual times (exclude all-day birthdays)
+  // and events happening within the next 24 hours
+  const now = new Date();
+  const next24Hours = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+  
+  events = allEvents.filter(event => {
+    // Must have a dateTime (not just a date) to exclude all-day events
+    if (!event.start?.dateTime) return false;
+    
+    const eventTime = new Date(event.start.dateTime);
+    
+    // Include events in the next 24 hours
+    return eventTime <= next24Hours;
+  });
+  
+  // Limit to 10 most relevant events
+  events = events.slice(0, 10);
+}
+Also update the MCP tool definition in server/mcp/types/mcp-types.ts to make timeRange not require datetime validation. Find the calendar_meeting_context tool definition (around line 125) and change:
+typescripttimeRange: z.object({
+  start: z.string().datetime(),  // ← This is too strict
+  end: z.string().datetime()
+}).optional(),
+To:
+typescripttimeRange: z.object({
+  start: z.string(),  // ← Accept any string, we'll parse it ourselves
+  end: z.string()
+}).optional(),
+This way:
+
+✅ When the AI calls with NO parameters, it gets the next 24 hours of meetings (including your 6:15 PM and 7:15 PM meetings)
+✅ All-day birthday events are filtered out
+✅ If the AI tries to send timeRange, it won't fail validation
+✅ Works regardless of server timezone

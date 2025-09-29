@@ -49,8 +49,27 @@ export async function calendarMeetingContext(
         return eventTime >= startTime && eventTime <= endTime;
       });
     } else {
-      // Default: get recent and upcoming events
-      events = await googleCalendarService.getUpcomingEvents(context.userId, 10);
+      // Default: get more events and filter intelligently
+      // Fetch 200 events to account for recurring birthdays
+      const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 200);
+      
+      // Filter to only include events with actual times (exclude all-day birthdays)
+      // and events happening within the next 24 hours
+      const now = new Date();
+      const next24Hours = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+      
+      events = allEvents.filter(event => {
+        // Must have a dateTime (not just a date) to exclude all-day events
+        if (!event.start?.dateTime) return false;
+        
+        const eventTime = new Date(event.start.dateTime);
+        
+        // Include events in the next 24 hours
+        return eventTime <= next24Hours;
+      });
+      
+      // Limit to 10 most relevant events
+      events = events.slice(0, 10);
     }
     
     // Transform to standardized format

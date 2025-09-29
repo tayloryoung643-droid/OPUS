@@ -5,6 +5,7 @@ import { isGuestEnabled, isDemoMode, authenticateGuest, createGuestSession, ensu
 import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
 import { createMCPServer } from "./mcp/mcp-server.js";
+import OpenAI from "openai";
 import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema, insertCoachSessionSchema, insertCoachTranscriptSchema, insertCoachSuggestionSchema } from "@shared/schema";
 import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
@@ -2048,6 +2049,137 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     } catch (error) {
       console.error("Error fetching coach session by event:", error);
       res.status(500).json({ message: "Failed to fetch session" });
+    }
+  });
+
+  // AI Chat endpoint with MCP integration for Opus AI Chat interface
+  app.post("/api/coach/chat", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { message, eventId, context } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ message: "Valid message is required" });
+      }
+
+      console.log(`[Coach-Chat] Processing message for user ${userId}: "${message.substring(0, 50)}..."`);
+
+      // Create MCP server for accessing calendar and Salesforce data
+      const mcpServer = await createMCPServer({ userId, storage });
+
+      // Get available MCP tools for OpenAI function calling
+      const availableFunctions = mcpServer.getOpenAIFunctions();
+      
+      // Wrap each function with type property for OpenAI API
+      const availableTools = availableFunctions.map(func => ({
+        type: "function" as const,
+        function: func
+      }));
+
+      console.log(`[Coach-Chat] ${availableTools.length} MCP tools available for AI`);
+
+      // Build system prompt with sales coaching context
+      const systemPrompt = `You are Opus, an expert AI Sales Coach for Momentum AI. You help sales professionals prepare for calls, analyze their pipeline, and provide strategic guidance.
+
+You have access to the user's:
+- Google Calendar events and meeting history
+- Salesforce CRM data (opportunities, accounts, contacts)
+- Past call preparation notes and history
+
+When users ask about their calendar, meetings, pipeline, opportunities, or deals, use the available tools to fetch real-time data. Always provide specific, actionable advice based on actual data.
+
+Be concise, professional, and focus on helping the user close more deals. Use sales methodologies like MEDDIC, BANT, and SPIN when relevant.`;
+
+      // Initialize OpenAI client
+      const openai = new OpenAI({ 
+        apiKey: process.env.OPENAI_API_KEY 
+      });
+
+      // Build conversation messages
+      const messages: any[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message }
+      ];
+
+      // Make initial request with available MCP tools
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages,
+        tools: availableTools.length > 0 ? availableTools : undefined,
+        tool_choice: availableTools.length > 0 ? "auto" : undefined,
+        temperature: 0.7,
+        max_tokens: 1000
+      });
+
+      let finalResponse = response;
+
+      // Handle tool calls if the AI wants to use MCP functions
+      if (response.choices[0].message.tool_calls) {
+        console.log(`[Coach-Chat] AI requested ${response.choices[0].message.tool_calls.length} tool calls`);
+
+        const toolMessages = [...messages, response.choices[0].message];
+
+        // Execute each tool call
+        for (const toolCall of response.choices[0].message.tool_calls) {
+          try {
+            // Type guard for function tool calls
+            if (toolCall.type !== 'function' || !('function' in toolCall)) {
+              continue;
+            }
+            
+            const toolName = toolCall.function.name;
+            const toolArgs = JSON.parse(toolCall.function.arguments);
+            
+            console.log(`[Coach-Chat] Executing MCP tool: ${toolName} with args:`, toolArgs);
+            const toolResult = await mcpServer.executeTool(toolName as any, toolArgs);
+            
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(toolResult)
+            });
+
+            console.log(`[Coach-Chat] Tool ${toolName} executed successfully`);
+          } catch (toolError) {
+            console.error(`[Coach-Chat] Tool execution failed:`, toolError);
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ 
+                error: "Tool execution failed", 
+                details: (toolError as Error).message 
+              })
+            });
+          }
+        }
+
+        // Get final response with tool results
+        console.log(`[Coach-Chat] Getting final response with tool results`);
+        finalResponse = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: toolMessages,
+          temperature: 0.7,
+          max_tokens: 1000
+        });
+      }
+
+      const aiResponse = finalResponse.choices[0].message.content;
+
+      console.log(`[Coach-Chat] Successfully generated response for user ${userId}`);
+
+      res.json({
+        response: aiResponse,
+        context: context || 'sales_coaching',
+        timestamp: new Date().toISOString(),
+        toolsUsed: response.choices[0].message.tool_calls?.length || 0
+      });
+
+    } catch (error) {
+      console.error("[Coach-Chat] Error processing chat message:", error);
+      res.status(500).json({ 
+        message: "Failed to process chat message",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 

@@ -54,9 +54,9 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
     retry: false
   });
 
-  // Fetch Google Calendar events (upcoming)
+  // Fetch Google Calendar events (today's events only)
   const { data: calendarEvents, isLoading: calendarLoading } = useQuery<CalendarEvent[]>({
-    queryKey: ["/api/calendar/events"],
+    queryKey: ["/api/calendar/today"],
     enabled: !!(googleStatus as any)?.connected,
     retry: false
   });
@@ -71,8 +71,15 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
     queryKey: ["/api/calls/previous"],
   });
 
+  // Filter database calls to today only
   const upcomingDatabaseCalls = Array.isArray(upcomingCalls)
-    ? upcomingCalls.map((call) => ({ ...call, source: "database" as const }))
+    ? upcomingCalls
+        .filter((call) => {
+          const callDate = new Date(call.scheduledAt);
+          const today = new Date();
+          return callDate.toDateString() === today.toDateString();
+        })
+        .map((call) => ({ ...call, source: "database" as const }))
     : [];
 
   // Convert Google Calendar events to call format
@@ -116,8 +123,19 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
 
   const isUpcomingLoading = upcomingLoading || calendarLoading;
 
-  const formatDate = (dateString: string) => {
+  // Helper to detect all-day events
+  const isAllDayEvent = (event: CalendarEvent) => {
+    // All-day events have only date, no dateTime
+    return event.start?.date && !event.start?.dateTime;
+  };
+
+  const formatDate = (dateString: string, event?: CalendarEvent) => {
     if (!dateString) return "No date";
+    
+    // Check if this is an all-day event
+    if (event && isAllDayEvent(event)) {
+      return "All Day";
+    }
     
     const date = new Date(dateString);
     
@@ -219,7 +237,7 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
 
       {/* Upcoming Calls */}
       <div className="mb-8">
-        <h3 className="font-semibold text-foreground mb-4" data-testid="text-upcoming-calls">Upcoming Calls</h3>
+        <h3 className="font-semibold text-foreground mb-4" data-testid="text-upcoming-calls">Today's Calls</h3>
         
         {isUpcomingLoading ? (
           <div className="space-y-3">
@@ -285,7 +303,7 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
                           }`}
                         >
                           <Clock className="mr-2 h-3 w-3" />
-                          <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt)}</span>
+                          <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt, call.source === "calendar" ? calendarEvents?.find(e => e.id === call.calendarEventId?.replace('calendar_', '')) : undefined)}</span>
                         </div>
                         {call.callType && (
                           <Badge
@@ -346,7 +364,7 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center text-sm text-muted-foreground">
                         <Clock className="mr-2 h-3 w-3" />
-                        <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt)}</span>
+                        <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt, call.source === "calendar" ? calendarEvents?.find(e => e.id === call.calendarEventId?.replace('calendar_', '')) : undefined)}</span>
                       </div>
                       {call.callType && (
                         <Badge variant="secondary" className={`text-xs ${getCallTypeColor(call.callType)}`}>

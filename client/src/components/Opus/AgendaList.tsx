@@ -3,6 +3,19 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { safeTimeFormat } from "@/utils/date";
+
+// Helper to detect all-day events
+const isAllDayEvent = (start: any) => {
+  // All-day events have only date, no dateTime
+  if (typeof start === 'object' && start !== null) {
+    return start.date && !start.dateTime;
+  }
+  // Check if string is date-only format (YYYY-MM-DD)
+  if (typeof start === 'string') {
+    return /^\d{4}-\d{2}-\d{2}$/.test(start);
+  }
+  return false;
+};
 import type { CalendarEvent } from "../../pages/OpusAgenda";
 
 type Props = { onSelect: (e: CalendarEvent, prepData?: any) => void };
@@ -59,26 +72,31 @@ export default function OpusAgendaList({ onSelect }: Props) {
       console.error('Prep generation failed:', error);
     }
   };
-  // Query for today's calendar events using the existing API
+  // Query for today's calendar events using the correct API endpoint
   const { data: events, isLoading } = useQuery<CalendarEvent[]>({
-    queryKey: ["/api/calendar/events", "today"],
+    queryKey: ["/api/calendar/today"],
     queryFn: async () => {
       try {
-        const response = await fetch("/api/calendar/events?range=today");
+        const response = await fetch("/api/calendar/today");
         if (!response.ok) throw new Error("Calendar fetch failed");
         
         const data = await response.json();
         // Transform the response to match our CalendarEvent interface
-        return data.map((event: any) => ({
-          id: event.id,
-          title: event.title || event.summary,
-          company: event.company || extractCompanyFromTitle(event.title || event.summary),
-          start: event.start || event.scheduledAt,
-          end: event.end,
-          attendees: event.attendees || [],
-          location: event.location,
-          notes: event.notes || event.description,
-        }));
+        return data.map((event: any) => {
+          // Handle nested start time structure
+          const startTime = event.start?.dateTime || event.start?.date || event.start || event.scheduledAt;
+          
+          return {
+            id: event.id,
+            title: event.title || event.summary || 'Untitled Event',
+            company: event.company || extractCompanyFromTitle(event.title || event.summary || ''),
+            start: startTime,
+            end: event.end?.dateTime || event.end?.date || event.end,
+            attendees: event.attendees || [],
+            location: event.location,
+            notes: event.notes || event.description,
+          };
+        });
       } catch (error) {
         console.error('Failed to fetch calendar events:', error);
         // Return empty array instead of mock data - no sample information
@@ -114,7 +132,7 @@ export default function OpusAgendaList({ onSelect }: Props) {
               data-testid={`agenda-event-${ev.id}`}
             >
               <div className="text-sm opacity-80">
-                {safeTimeFormat(ev.start)}
+                {isAllDayEvent(ev.start) ? "All Day" : (ev.start ? safeTimeFormat(ev.start) : "Time TBD")}
               </div>
               <div className="text-base font-semibold">{ev.title}</div>
               {ev.company && <div className="text-sm opacity-70">{ev.company}</div>}

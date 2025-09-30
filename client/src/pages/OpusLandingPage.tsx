@@ -13,11 +13,11 @@ export default function OpusLandingPage() {
   const { user } = useAuth();
   const userId = (user as any)?.claims?.sub;
 
-  // Fetch upcoming calendar events (including today and future)
+  // Fetch today's calendar events only
   const { data: todaysEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
-    queryKey: ['/api/calendar/events'],
+    queryKey: ['/api/calendar/today'],
     queryFn: async () => {
-      const response = await fetch('/api/calendar/events');
+      const response = await fetch('/api/calendar/today');
       if (!response.ok) throw new Error('Failed to fetch calendar events');
       return response.json();
     },
@@ -52,31 +52,31 @@ export default function OpusLandingPage() {
     { time: "3:00 PM", title: "Orthodontist", subtitle: "Orthodontist" },
   ] : [];
 
-  // Process real events into agenda format
+  // Process today's real events into agenda format
   const agenda = CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents || []).map(event => {
     // Handle the nested start time structure
     const startTime = event.start?.dateTime || event.start?.date;
-    let time = 'Time TBD';
+    let time = 'All Day';
     
     if (startTime) {
-      const eventDate = new Date(startTime);
-      const today = new Date();
-      const isToday = eventDate.toDateString() === today.toDateString();
-      const isTomorrow = eventDate.toDateString() === new Date(today.getTime() + 86400000).toDateString();
-      
-      const timeStr = eventDate.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      });
-      
-      if (isToday) {
-        time = timeStr;
-      } else if (isTomorrow) {
-        time = `Tomorrow • ${timeStr}`;
-      } else {
-        const dayName = eventDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        time = `${dayName} • ${timeStr}`;
+      try {
+        const eventDate = new Date(startTime);
+        // Guard against invalid dates
+        if (!isNaN(eventDate.getTime())) {
+          // For all-day events (date only, no time), just show "All Day"
+          if (event.start?.date && !event.start?.dateTime) {
+            time = 'All Day';
+          } else {
+            time = eventDate.toLocaleTimeString('en-US', { 
+              hour: 'numeric', 
+              minute: '2-digit',
+              hour12: true 
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error formatting event time:', err);
+        time = 'All Day';
       }
     }
 
@@ -85,7 +85,7 @@ export default function OpusLandingPage() {
       title: event.summary || 'Untitled Event',
       subtitle: event.location || '',
     };
-  }).slice(0, 5); // Limit to 5 upcoming events
+  }); // Show all today's events (no limit)
 
   // Find current active calendar event for voice recording
   const currentEvent = React.useMemo(() => {

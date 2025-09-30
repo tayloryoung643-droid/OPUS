@@ -1,6 +1,6 @@
 import { 
   companies, contacts, calls, callPreps, prepNotes, users, integrations, integrationData, crmOpportunities, googleIntegrations, salesforceIntegrations,
-  coachSessions, coachTranscripts, coachSuggestions,
+  coachSessions, coachTranscripts, coachSuggestions, callTranscripts, chatSessions, chatMessages,
   type Company, type InsertCompany,
   type Contact, type InsertContact,
   type Call, type InsertCall,
@@ -14,10 +14,13 @@ import {
   type SalesforceIntegration, type InsertSalesforceIntegration,
   type CoachSession, type InsertCoachSession,
   type CoachTranscript, type InsertCoachTranscript,
-  type CoachSuggestion, type InsertCoachSuggestion
+  type CoachSuggestion, type InsertCoachSuggestion,
+  type CallTranscript, type InsertCallTranscript,
+  type ChatSession, type InsertChatSession,
+  type ChatMessage, type InsertChatMessage
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { CryptoService } from "./services/crypto";
 
 export interface IStorage {
@@ -32,17 +35,20 @@ export interface IStorage {
   // Company methods
   createCompany(company: InsertCompany): Promise<Company>;
   getCompany(id: string): Promise<Company | undefined>;
+  getCompanyById(id: string): Promise<Company | undefined>;
   getCompanyByDomain(domain: string): Promise<Company | undefined>;
   updateCompany(id: string, updates: Partial<InsertCompany>): Promise<Company>;
 
   // Contact methods
   createContact(contact: InsertContact): Promise<Contact>;
+  getContactById(id: string): Promise<Contact | undefined>;
   getContactsByCompany(companyId: string): Promise<Contact[]>;
   updateContact(id: string, updates: Partial<InsertContact>): Promise<Contact>;
 
   // Call methods
   createCall(call: InsertCall): Promise<Call>;
   getCall(id: string): Promise<Call | undefined>;
+  getCallById(id: string): Promise<Call | undefined>;
   getCallsWithCompany(): Promise<Array<Call & { company: Company }>>;
   getUpcomingCalls(): Promise<Array<Call & { company: Company }>>;
   getPreviousCalls(): Promise<Array<Call & { company: Company }>>;
@@ -51,6 +57,8 @@ export interface IStorage {
 
   // Opportunity methods
   createOpportunity(opportunity: InsertCrmOpportunity): Promise<CrmOpportunity>;
+  createCrmOpportunity(opportunity: InsertCrmOpportunity): Promise<CrmOpportunity>;
+  getCrmOpportunityById(id: string): Promise<CrmOpportunity | undefined>;
   getOpportunitiesByCompany(companyId: string): Promise<CrmOpportunity[]>;
   updateOpportunity(id: string, updates: Partial<InsertCrmOpportunity>): Promise<CrmOpportunity>;
 
@@ -107,6 +115,25 @@ export interface IStorage {
   createCoachSuggestion(suggestion: InsertCoachSuggestion): Promise<CoachSuggestion>;
   getCoachSuggestions(sessionId: string): Promise<CoachSuggestion[]>;
   updateCoachSuggestion(id: string, updates: Partial<InsertCoachSuggestion>): Promise<CoachSuggestion>;
+
+  // Call Transcript methods (Silent Call Recorder MVP)
+  createCallTranscript(transcript: InsertCallTranscript): Promise<CallTranscript>;
+  getCallTranscript(id: string): Promise<CallTranscript | undefined>;
+  getCallTranscriptsByUser(userId: string): Promise<CallTranscript[]>;
+  getCallTranscriptByEvent(eventId: string): Promise<CallTranscript | undefined>;
+  getCallTranscriptsByCompany(companyId: string): Promise<CallTranscript[]>;
+  updateCallTranscript(id: string, updates: Partial<InsertCallTranscript>): Promise<CallTranscript>;
+  deleteCallTranscript(id: string): Promise<void>;
+
+  // Chat Session and Message methods for unified Opus chat
+  createChatSession(session: InsertChatSession): Promise<ChatSession>;
+  getChatSession(conversationId: string): Promise<ChatSession | undefined>;
+  getChatSessionByUserId(userId: string, conversationId: string): Promise<ChatSession | undefined>;
+  getChatMessagesBySession(sessionId: string): Promise<ChatMessage[]>;
+  getChatMessagesByConversationId(conversationId: string, limit?: number, offset?: number): Promise<ChatMessage[]>;
+  getChatMessageCountByConversationId(conversationId: string): Promise<number>;
+  saveChatMessages(sessionId: string, messages: InsertChatMessage[]): Promise<void>;
+  upsertChatSession(userId: string, conversationId: string): Promise<ChatSession>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -117,18 +144,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const [user] = await db
-      .insert(users)
-      .values(userData)
-      .onConflictDoUpdate({
-        target: users.id,
-        set: {
-          ...userData,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    return user;
+    // Try to insert, and if there's a conflict on email, update the existing record
+    try {
+      const [user] = await db
+        .insert(users)
+        .values(userData)
+        .onConflictDoUpdate({
+          target: users.email,
+          set: {
+            ...userData,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return user;
+    } catch (error) {
+      // If there's still a conflict on ID, handle it separately
+      const [user] = await db
+        .insert(users)
+        .values(userData)
+        .onConflictDoUpdate({
+          target: users.id,
+          set: {
+            ...userData,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+      return user;
+    }
   }
 
   // Legacy user methods (kept for compatibility)
@@ -153,6 +197,10 @@ export class DatabaseStorage implements IStorage {
     return company || undefined;
   }
 
+  async getCompanyById(id: string): Promise<Company | undefined> {
+    return this.getCompany(id);
+  }
+
   async getCompanyByDomain(domain: string): Promise<Company | undefined> {
     const [company] = await db.select().from(companies).where(eq(companies.domain, domain));
     return company || undefined;
@@ -171,6 +219,11 @@ export class DatabaseStorage implements IStorage {
   async createContact(insertContact: InsertContact): Promise<Contact> {
     const [contact] = await db.insert(contacts).values(insertContact).returning();
     return contact;
+  }
+
+  async getContactById(id: string): Promise<Contact | undefined> {
+    const [contact] = await db.select().from(contacts).where(eq(contacts.id, id));
+    return contact || undefined;
   }
 
   async getContactsByCompany(companyId: string): Promise<Contact[]> {
@@ -195,6 +248,10 @@ export class DatabaseStorage implements IStorage {
   async getCall(id: string): Promise<Call | undefined> {
     const [call] = await db.select().from(calls).where(eq(calls.id, id));
     return call || undefined;
+  }
+
+  async getCallById(id: string): Promise<Call | undefined> {
+    return this.getCall(id);
   }
 
   async getCallsWithCompany(): Promise<Array<Call & { company: Company }>> {
@@ -255,6 +312,15 @@ export class DatabaseStorage implements IStorage {
   async createOpportunity(insertOpportunity: InsertCrmOpportunity): Promise<CrmOpportunity> {
     const [opportunity] = await db.insert(crmOpportunities).values(insertOpportunity).returning();
     return opportunity;
+  }
+
+  async createCrmOpportunity(insertOpportunity: InsertCrmOpportunity): Promise<CrmOpportunity> {
+    return this.createOpportunity(insertOpportunity);
+  }
+
+  async getCrmOpportunityById(id: string): Promise<CrmOpportunity | undefined> {
+    const [opportunity] = await db.select().from(crmOpportunities).where(eq(crmOpportunities.id, id));
+    return opportunity || undefined;
   }
 
   async getOpportunitiesByCompany(companyId: string): Promise<CrmOpportunity[]> {
@@ -668,6 +734,164 @@ export class DatabaseStorage implements IStorage {
       .where(eq(coachSuggestions.id, id))
       .returning();
     return suggestion;
+  }
+
+  // Call Transcript methods (Silent Call Recorder MVP)
+  async createCallTranscript(insertTranscript: InsertCallTranscript): Promise<CallTranscript> {
+    const [transcript] = await db.insert(callTranscripts).values(insertTranscript).returning();
+    return transcript;
+  }
+
+  async getCallTranscript(id: string): Promise<CallTranscript | undefined> {
+    const [transcript] = await db
+      .select()
+      .from(callTranscripts)
+      .where(eq(callTranscripts.id, id));
+    return transcript || undefined;
+  }
+
+  async getCallTranscriptsByUser(userId: string): Promise<CallTranscript[]> {
+    return await db
+      .select()
+      .from(callTranscripts)
+      .where(eq(callTranscripts.userId, userId))
+      .orderBy(desc(callTranscripts.createdAt));
+  }
+
+  async getCallTranscriptByEvent(eventId: string): Promise<CallTranscript | undefined> {
+    const [transcript] = await db
+      .select()
+      .from(callTranscripts)
+      .where(eq(callTranscripts.eventId, eventId));
+    return transcript || undefined;
+  }
+
+  async getCallTranscriptsByCompany(companyId: string): Promise<CallTranscript[]> {
+    return await db
+      .select()
+      .from(callTranscripts)
+      .where(eq(callTranscripts.companyId, companyId))
+      .orderBy(desc(callTranscripts.createdAt));
+  }
+
+  async updateCallTranscript(id: string, updates: Partial<InsertCallTranscript>): Promise<CallTranscript> {
+    const [transcript] = await db
+      .update(callTranscripts)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(callTranscripts.id, id))
+      .returning();
+    return transcript;
+  }
+
+  async deleteCallTranscript(id: string): Promise<void> {
+    await db
+      .delete(callTranscripts)
+      .where(eq(callTranscripts.id, id));
+  }
+
+  // Chat Session and Message methods for unified Opus chat
+  async createChatSession(session: InsertChatSession): Promise<ChatSession> {
+    const [newSession] = await db.insert(chatSessions).values(session).returning();
+    return newSession;
+  }
+
+  async getChatSession(conversationId: string): Promise<ChatSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(eq(chatSessions.conversationId, conversationId));
+    return session || undefined;
+  }
+
+  async getChatSessionByUserId(userId: string, conversationId: string): Promise<ChatSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(chatSessions)
+      .where(and(
+        eq(chatSessions.userId, userId),
+        eq(chatSessions.conversationId, conversationId)
+      ));
+    return session || undefined;
+  }
+
+  async getChatMessagesBySession(sessionId: string): Promise<ChatMessage[]> {
+    return await db
+      .select()
+      .from(chatMessages)
+      .where(eq(chatMessages.sessionId, sessionId))
+      .orderBy(chatMessages.timestamp);
+  }
+
+  async getChatMessagesByConversationId(conversationId: string, limit?: number, offset?: number): Promise<ChatMessage[]> {
+    let query = db
+      .select({
+        id: chatMessages.id,
+        sessionId: chatMessages.sessionId,
+        messageId: chatMessages.messageId,
+        role: chatMessages.role,
+        content: chatMessages.content,
+        timestamp: chatMessages.timestamp,
+        createdAt: chatMessages.createdAt
+      })
+      .from(chatMessages)
+      .innerJoin(chatSessions, eq(chatMessages.sessionId, chatSessions.id))
+      .where(eq(chatSessions.conversationId, conversationId))
+      .orderBy(chatMessages.timestamp, chatMessages.createdAt, chatMessages.messageId);
+    
+    // Apply pagination if provided
+    if (offset !== undefined) {
+      query = query.offset(offset);
+    }
+    if (limit !== undefined) {
+      query = query.limit(limit);
+    }
+    
+    return await query;
+  }
+
+  async getChatMessageCountByConversationId(conversationId: string): Promise<number> {
+    const result = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(chatMessages)
+      .innerJoin(chatSessions, eq(chatMessages.sessionId, chatSessions.id))
+      .where(eq(chatSessions.conversationId, conversationId));
+    
+    return result[0]?.count || 0;
+  }
+
+  async saveChatMessages(sessionId: string, messages: InsertChatMessage[]): Promise<void> {
+    if (messages.length === 0) return;
+    
+    // Add sessionId to all messages
+    const messagesWithSession = messages.map(msg => ({
+      ...msg,
+      sessionId
+    }));
+    
+    // Use onConflictDoNothing to prevent duplicates based on (session_id, message_id) unique constraint
+    await db.insert(chatMessages)
+      .values(messagesWithSession)
+      .onConflictDoNothing({ target: [chatMessages.sessionId, chatMessages.messageId] });
+  }
+
+  async upsertChatSession(userId: string, conversationId: string): Promise<ChatSession> {
+    // First check if conversation exists with different owner (security check)
+    const existingSession = await this.getChatSession(conversationId);
+    if (existingSession && existingSession.userId !== userId) {
+      throw new Error('Access denied: conversation belongs to another user');
+    }
+    
+    // Try to get existing session for this user
+    const userSession = await this.getChatSessionByUserId(userId, conversationId);
+    if (userSession) {
+      return userSession;
+    }
+    
+    // Create new session if doesn't exist
+    return await this.createChatSession({
+      userId,
+      conversationId
+    });
   }
 }
 

@@ -1,0 +1,114 @@
+Prompt for Replit Agent 3 (Replit)
+
+Goal: Add the “Opus Home Page” exactly as specified in the provided JSX. Do not modify unrelated code or break existing flows.
+
+Guardrails (follow exactly)
+
+Do not alter existing auth logic, env vars, API routes, or integration code.
+
+No design substitutions: use the JSX exactly as provided.
+
+Keep changes isolated to new files + minimal routing glue.
+
+If anything is ambiguous, skip and leave a TODO comment rather than guessing.
+
+Branch & Backup
+
+Create a branch: feat/opus-homepage.
+
+Save/backup current App or router files before edits.
+
+Files to add
+
+/src/components/OpusHomePage.jsx
+Paste the JSX exactly from the spec (the current canvas version titled “Opus Homepage Mock”).
+
+Keep all Tailwind classes as-is.
+
+No additional libraries.
+
+Routing (pick the app’s router style and do the minimal change):
+
+If using React Router:
+
+In src/App.jsx or src/main.jsx (where routes are defined), add:
+
+import OpusHomePage from "./components/OpusHomePage";
+// Add a new route. Prefer not to replace the current root unless that’s desired.
+// Add: <Route path="/opus" element={<OpusHomePage />} />
+
+
+Do NOT remove any existing routes.
+
+If using a single-screen app without routing:
+
+Create a temporary feature flagged view:
+
+Export your existing app view unchanged.
+
+Add a new conditional that when process.env.VITE_OPUS_HOMEPAGE === "true" renders <OpusHomePage />, otherwise render the current UI.
+
+Do not replace the default view unless specifically asked.
+
+Tailwind check (DO NOT reconfigure if already present)
+
+If Tailwind is already configured, do nothing.
+
+If not present (only if needed), minimally ensure index.css has Tailwind directives:
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+Do not change PostCSS/Vite config unless the build fails.
+
+Button wiring (placeholders only—no new logic)
+
+The component includes these buttons: Sign in with Google, See Demo, Get Started Free.
+
+For now, attach no-op handlers or TODOs that call existing functions if clearly available:
+
+// Example only—use existing functions if they exist, otherwise leave TODO:
+const handleSignIn = () => {/* TODO: wire to existing Google OAuth */};
+const handleSeeDemo = () => {/* TODO: route to /demo if exists */};
+const handleGetStarted = () => {/* TODO: route to /signup or invoke OAuth */};
+
+
+Do not introduce new auth flows.
+
+Visual fidelity (must match)
+
+Keep dark theme, gradients, spacing, and typography exactly as in JSX.
+
+Ensure the Orb uses Tailwind animate-pulse.
+
+The “What Opus Brings You” grid must be 4 columns on md+.
+
+Keep the mysterious “Coming Soon: AI Superpowers” copy short (one paragraph) as in JSX.
+
+Include the Quotes stack at the bottom exactly as provided.
+
+QA checklist (before commit)
+
+Builds with no TypeScript/JS errors.
+
+/opus route renders the page (or the feature-flag path shows it).
+
+Mobile: grid collapses properly; text is readable on dark.
+
+No console errors or missing asset warnings.
+
+No other screens regressed.
+
+Git
+
+Commit with message: feat(opus): add dark homepage component and route.
+
+Open a quick summary in PR:
+
+Files added/modified.
+
+No logic changes outside routing.
+
+How to view: go to /opus (or set VITE_OPUS_HOMEPAGE=true).

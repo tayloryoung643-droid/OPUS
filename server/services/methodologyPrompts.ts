@@ -65,6 +65,34 @@ ${contextSummary}
 **Available Context:**
 ${buildContextSection(prospectData, additionalContext)}
 
+**CALENDAR & MEETING HISTORY CONTEXT:**
+
+IMPORTANT: You have access to the following MCP tools for gathering calendar and meeting context:
+
+1. **calendar_meeting_context**: Use this to fetch details about upcoming or recent meetings
+   - Can search by eventId, contactEmail, or timeRange
+   - Returns meeting details, attendees, descriptions, and timing
+
+2. **calendar_attendee_history**: Use this to find previous meetings with specific contacts
+   - Requires attendeeEmail parameter
+   - Shows meeting history over the past 90 days (configurable)
+   
+**YOU MUST USE THESE TOOLS** to gather context before generating the call prep sheet. Specifically:
+
+- If you have contact email addresses, use calendar_attendee_history to find past meetings
+- If you have a specific meeting eventId, use calendar_meeting_context to get full meeting details
+- Check for patterns in past interactions (meeting frequency, topics discussed, who attended)
+
+Example tool calls:
+- calendar_attendee_history({ attendeeEmail: "contact@company.com", lookbackDays: 90, maxResults: 10 })
+- calendar_meeting_context({ contactEmail: "contact@company.com", includeAttendees: true })
+
+Include any calendar insights in your response, such as:
+- When was the last meeting with this contact?
+- What topics were discussed in previous meetings?
+- Who else has attended meetings with this company?
+- Are there any patterns or relationship history to note?
+
 ${methodologyInstructions}
 
 ${specificGuidance}

@@ -1,0 +1,174 @@
+PROMPT FOR REPLIT AGENT 3
+Issue Summary
+The Opus AI Chat feature (SalesCoachModal.tsx) is calling a non-existent API endpoint /api/coach/chat, which means it cannot answer questions about calendar events or Salesforce pipeline data. The chat interface needs to be connected to the Model Context Protocol (MCP) server to access integrated data sources.
+Task
+Add the missing /api/coach/chat API endpoint to server/routes.ts that integrates with the existing MCP infrastructure to enable the AI chat to answer questions about Google Calendar events, Salesforce opportunities, and other integrated data.
+Requirements
+
+Create POST endpoint at /api/coach/chat
+Use existing MCP server infrastructure (createMCPServer from ./mcp/mcp-server.js)
+Integrate with OpenAI's function calling to allow AI to use MCP tools
+Match existing code style and error handling patterns in server/routes.ts
+Add endpoint in the "Sales Coach routes" section (after line ~960, near other coach endpoints)
+
+Implementation Instructions
+Step 1: Add OpenAI import
+At the top of server/routes.ts, verify OpenAI is imported (it should already be from other services, but if not, add):
+typescriptimport OpenAI from 'openai';
+Step 2: Add the /api/coach/chat endpoint
+Insert this code in the "Sales Coach routes" section of server/routes.ts, after the existing coach session endpoints (around line 1020, before the WebSocket status endpoint):
+typescript  // AI Chat endpoint with MCP integration for Opus AI Chat interface
+  app.post("/api/coach/chat", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { message, eventId, context } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ message: "Valid message is required" });
+      }
+
+      console.log(`[Coach-Chat] Processing message for user ${userId}: "${message.substring(0, 50)}..."`);
+
+      // Create MCP server for accessing calendar and Salesforce data
+      const mcpServer = await createMCPServer({ userId, storage });
+
+      // Get available MCP tools for OpenAI function calling
+      const availableTools = mcpServer.getOpenAIFunctions();
+
+      console.log(`[Coach-Chat] ${availableTools.length} MCP tools available for AI`);
+
+      // Build system prompt with sales coaching context
+      const systemPrompt = `You are Opus, an expert AI Sales Coach for Momentum AI. You help sales professionals prepare for calls, analyze their pipeline, and provide strategic guidance.
+
+You have access to the user's:
+- Google Calendar events and meeting history
+- Salesforce CRM data (opportunities, accounts, contacts)
+- Past call preparation notes and history
+
+When users ask about their calendar, meetings, pipeline, opportunities, or deals, use the available tools to fetch real-time data. Always provide specific, actionable advice based on actual data.
+
+Be concise, professional, and focus on helping the user close more deals. Use sales methodologies like MEDDIC, BANT, and SPIN when relevant.`;
+
+      // Initialize OpenAI client
+      const openai = new OpenAI({ 
+        apiKey: process.env.OPENAI_API_KEY 
+      });
+
+      // Build conversation messages
+      const messages: any[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message }
+      ];
+
+      // Make initial request with available MCP tools
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages,
+        tools: availableTools.length > 0 ? availableTools : undefined,
+        tool_choice: availableTools.length > 0 ? "auto" : undefined,
+        temperature: 0.7,
+        max_tokens: 1000
+      });
+
+      let finalResponse = response;
+
+      // Handle tool calls if the AI wants to use MCP functions
+      if (response.choices[0].message.tool_calls) {
+        console.log(`[Coach-Chat] AI requested ${response.choices[0].message.tool_calls.length} tool calls`);
+
+        const toolMessages = [...messages, response.choices[0].message];
+
+        // Execute each tool call
+        for (const toolCall of response.choices[0].message.tool_calls) {
+          try {
+            const toolName = toolCall.function.name;
+            const toolArgs = JSON.parse(toolCall.function.arguments);
+            
+            console.log(`[Coach-Chat] Executing MCP tool: ${toolName} with args:`, toolArgs);
+            const toolResult = await mcpServer.executeTool(toolName as any, toolArgs);
+            
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(toolResult)
+            });
+
+            console.log(`[Coach-Chat] Tool ${toolName} executed successfully`);
+          } catch (toolError) {
+            console.error(`[Coach-Chat] Tool execution failed for ${toolCall.function.name}:`, toolError);
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ 
+                error: "Tool execution failed", 
+                details: (toolError as Error).message 
+              })
+            });
+          }
+        }
+
+        // Get final response with tool results
+        console.log(`[Coach-Chat] Getting final response with tool results`);
+        finalResponse = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: toolMessages,
+          temperature: 0.7,
+          max_tokens: 1000
+        });
+      }
+
+      const aiResponse = finalResponse.choices[0].message.content;
+
+      console.log(`[Coach-Chat] Successfully generated response for user ${userId}`);
+
+      res.json({
+        response: aiResponse,
+        context: context || 'sales_coaching',
+        timestamp: new Date().toISOString(),
+        toolsUsed: response.choices[0].message.tool_calls?.length || 0
+      });
+
+    } catch (error) {
+      console.error("[Coach-Chat] Error processing chat message:", error);
+      res.status(500).json({ 
+        message: "Failed to process chat message",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+Step 3: Verify Placement
+The endpoint should be inserted in the "Sales Coach routes" section, specifically:
+
+After: The existing coach session endpoints (GET, POST, PATCH for /api/coach/sessions)
+Before: The WebSocket status endpoint (/api/coach/ws/status)
+Around line: 1020-1025 in server/routes.ts
+
+Testing
+After implementation, the chat should be able to answer questions like:
+
+"What meetings do I have today?"
+"Show me my Salesforce pipeline"
+"What's the status of my deals?"
+"When is my next call?"
+"What opportunities am I working on?"
+
+Expected Behavior
+
+User sends message via chat modal
+Backend creates MCP server instance with user context
+OpenAI analyzes message and decides if tools are needed
+If tools needed: AI calls MCP tools (calendar, Salesforce, etc.)
+Tool results are fed back to AI for final response
+AI generates contextual response based on real data
+Response sent back to chat interface
+
+
+Context
+
+File to modify: server/routes.ts
+Existing imports: OpenAI should already be imported; MCP server is already imported
+MCP infrastructure: Already exists and working (used in call prep generation)
+Tech stack: Express.js, TypeScript, OpenAI GPT-4o, Model Context Protocol
+Authentication: Uses existing isAuthenticated middleware
+
+This will connect the Opus AI Chat interface to your MCP data layer, enabling it to answer questions using real calendar and CRM data

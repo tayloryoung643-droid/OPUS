@@ -1,0 +1,239 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Opus Side Panel</title>
+    <style>
+      body { 
+        margin: 0; 
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; 
+        background: #0b0b12; 
+        color: #fff; 
+        overflow: hidden;
+      }
+      .container {
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      .header { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        padding: 16px 20px; 
+        border-bottom: 1px solid rgba(255,255,255,.1); 
+        background: rgba(255,255,255,.02);
+      }
+      .header h1 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .state-badge { 
+        font-size: 11px; 
+        padding: 4px 8px; 
+        border: 1px solid rgba(255,255,255,.15); 
+        border-radius: 999px; 
+        text-transform: uppercase; 
+        letter-spacing: 0.5px; 
+        font-weight: 500;
+        opacity: 0.8;
+      }
+      .state-badge.idle { 
+        border-color: rgba(120, 80, 255, .3); 
+        background: rgba(120, 80, 255, .1); 
+        color: #a78bfa;
+      }
+      .state-badge.pre-call { 
+        border-color: rgba(245, 158, 11, .4); 
+        background: rgba(245, 158, 11, .1); 
+        color: #f59e0b;
+      }
+      .state-badge.live-call { 
+        border-color: rgba(16, 185, 129, .4); 
+        background: rgba(16, 185, 129, .1); 
+        color: #10b981;
+      }
+      .content { 
+        flex: 1;
+        padding: 20px; 
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .info-card { 
+        background: rgba(255,255,255,.05); 
+        border: 1px solid rgba(255,255,255,.1); 
+        border-radius: 12px; 
+        padding: 16px; 
+      }
+      .info-card h3 {
+        margin: 0 0 8px 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: rgba(255,255,255,.9);
+      }
+      .info-card p {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.5;
+        color: rgba(255,255,255,.7);
+      }
+      .context-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .context-item {
+        background: rgba(255,255,255,.04);
+        border: 1px solid rgba(255,255,255,.06);
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: rgba(255,255,255,.5);
+      }
+      .empty-state .icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+        opacity: 0.6;
+      }
+      .footer {
+        padding: 16px 20px;
+        border-top: 1px solid rgba(255,255,255,.1);
+        background: rgba(255,255,255,.02);
+        font-size: 12px;
+        color: rgba(255,255,255,.4);
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>Opus</h1>
+        <span id="stateBadge" class="state-badge idle">idle</span>
+      </div>
+      
+      <div class="content">
+        <div class="info-card">
+          <h3>About Opus Orb</h3>
+          <p>Use the pinned Orb on any page for contextual meeting prep and live coaching. This side panel provides an overview of your current session.</p>
+        </div>
+
+        <div id="contextSection" class="info-card" style="display: none;">
+          <h3 id="contextTitle">Context</h3>
+          <ul id="contextList" class="context-list"></ul>
+        </div>
+
+        <div id="emptyState" class="empty-state">
+          <div class="icon">🎯</div>
+          <p>The Orb is ready to help.<br>Navigate to any page to see contextual assistance.</p>
+        </div>
+      </div>
+
+      <div class="footer">
+        Opus Orb v0.1.0 • Your AI Sales Partner
+      </div>
+    </div>
+
+    <script>
+      let currentState = 'idle';
+      let currentContext = null;
+
+      const stateBadge = document.getElementById('stateBadge');
+      const contextSection = document.getElementById('contextSection');
+      const contextTitle = document.getElementById('contextTitle');
+      const contextList = document.getElementById('contextList');
+      const emptyState = document.getElementById('emptyState');
+
+      function updateUI(state, context) {
+        currentState = state;
+        currentContext = context;
+
+        // Update state badge
+        stateBadge.textContent = state.replace('-', ' ');
+        stateBadge.className = `state-badge ${state}`;
+
+        // Update context section
+        if (context && (context.quickNotes?.length || context.keyPoints?.length)) {
+          contextSection.style.display = 'block';
+          emptyState.style.display = 'none';
+          
+          if (state === 'pre-call') {
+            contextTitle.textContent = `Upcoming: ${context.title || 'Meeting'}`;
+          } else if (state === 'live-call') {
+            contextTitle.textContent = `Live: ${context.title || 'Meeting'}`;
+          } else {
+            contextTitle.textContent = 'Context';
+          }
+          
+          // Clear and populate context list
+          contextList.innerHTML = '';
+          const items = context.quickNotes || context.keyPoints || [];
+          items.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'context-item';
+            li.textContent = item;
+            contextList.appendChild(li);
+          });
+          
+          // Add additional context for live calls
+          if (state === 'live-call') {
+            if (context.account) {
+              const li = document.createElement('li');
+              li.className = 'context-item';
+              li.textContent = `Account: ${context.account}`;
+              contextList.appendChild(li);
+            }
+            if (context.oppAmount) {
+              const li = document.createElement('li');
+              li.className = 'context-item';
+              li.textContent = `Opportunity: $${context.oppAmount.toLocaleString()}`;
+              contextList.appendChild(li);
+            }
+            if (context.stage) {
+              const li = document.createElement('li');
+              li.className = 'context-item';
+              li.textContent = `Stage: ${context.stage}`;
+              contextList.appendChild(li);
+            }
+          }
+          
+          // Add timing info for pre-call
+          if (state === 'pre-call' && context.startLocal) {
+            const li = document.createElement('li');
+            li.className = 'context-item';
+            li.textContent = `Time: ${context.startLocal}`;
+            contextList.appendChild(li);
+          }
+          
+        } else {
+          contextSection.style.display = 'none';
+          emptyState.style.display = 'block';
+        }
+      }
+
+      // Listen for state updates from background script
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (msg?.type === "OPUS_STATE") {
+          console.log('[OpusOrb] Side panel received state update:', msg);
+          updateUI(msg.state, msg.context);
+        }
+      });
+
+      // Initialize with default state
+      updateUI('idle', null);
+      
+      console.log('[OpusOrb] Side panel initialized');
+    </script>
+  </body>
+</html>

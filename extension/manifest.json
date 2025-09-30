@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Opus Orb",
+  "version": "1.0.0",
+  "description": "Shared Opus Orb with chat persistence and MCP data access",
+  "action": { "default_title": "Opus" },
+  "permissions": [
+    "storage",
+    "activeTab", 
+    "scripting",
+    "alarms",
+    "tabs",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "http://localhost:5000/*",
+    "https://localhost:5000/*",
+    "http://localhost:3000/*",
+    "https://localhost:3000/*",
+    "https://*.replit.app/*",
+    "https://*.replit.dev/*",
+    "https://*.opus.ai/*",
+    "https://app.opus.ai/*",
+    "https://api.opus.ai/*",
+    "https://opus.dev/*",
+    "https://*.opus.dev/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "exclude_matches": [
+        "http://localhost:3000/*", 
+        "https://localhost:3000/*",
+        "https://*.replit.app/*",
+        "https://*.replit.dev/*",
+        "https://*.opus.ai/*",
+        "https://app.opus.ai/*",
+        "https://api.opus.ai/*",
+        "https://opus.dev/*",
+        "https://*.opus.dev/*"
+      ]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["opus-orb.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

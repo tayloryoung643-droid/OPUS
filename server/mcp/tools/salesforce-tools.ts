@@ -32,6 +32,10 @@ export async function salesforceContactLookup(
       // Search by company name
       const searchResults = await salesforceCrmService.searchRecords(context.userId, params.company, ['Contact']);
       contacts = searchResults.filter((record: any) => record.attributes.type === 'Contact') || [];
+    } else {
+      // No specific parameters - get recent contacts (general query)
+      const searchResults = await salesforceCrmService.searchRecords(context.userId, '', ['Contact']);
+      contacts = searchResults.filter((record: any) => record.attributes.type === 'Contact') || [];
     }
     
     // Transform to standardized format
@@ -79,12 +83,15 @@ export async function salesforceOpportunityLookup(
     let opportunities: any[] = [];
     
     if (params.opportunityId) {
-      // For specific opportunity ID, we'd need to extend the service
-      // For now, use the existing getOpportunities method and filter
+      // For specific opportunity ID, get all opportunities and filter
       const allOpportunities = await salesforceCrmService.getOpportunities(context.userId, 50);
       opportunities = allOpportunities.filter((opp: any) => opp.Id === params.opportunityId);
     } else if (params.contactId || params.accountId) {
-      // Get all opportunities and filter later - not ideal but works with current service
+      // Get all opportunities and filter by contact/account later
+      opportunities = await salesforceCrmService.getOpportunities(context.userId, 50);
+      // Note: Filtering by contactId/accountId would require additional logic
+    } else {
+      // No specific parameters - return ALL opportunities (sales pipeline)
       opportunities = await salesforceCrmService.getOpportunities(context.userId, 50);
     }
     
@@ -99,7 +106,8 @@ export async function salesforceOpportunityLookup(
       AccountName: opp.Account?.Name
     }));
     
-    console.log(`[MCP-Salesforce] Found ${transformedOpportunities.length} opportunities for ${params.opportunityId || params.contactId || params.accountId}`);
+    const queryDesc = params.opportunityId || params.contactId || params.accountId || 'all opportunities (pipeline)';
+    console.log(`[MCP-Salesforce] Found ${transformedOpportunities.length} opportunities for ${queryDesc}`);
     
     return {
       opportunities: transformedOpportunities,
@@ -143,6 +151,10 @@ export async function salesforceAccountLookup(
     } else if (params.domain) {
       // Search by domain using search API
       const searchResults = await salesforceCrmService.searchRecords(context.userId, params.domain, ['Account']);
+      accounts = searchResults.filter((record: any) => record.attributes.type === 'Account') || [];
+    } else {
+      // No specific parameters - get recent accounts (general query)
+      const searchResults = await salesforceCrmService.searchRecords(context.userId, '', ['Account']);
       accounts = searchResults.filter((record: any) => record.attributes.type === 'Account') || [];
     }
     

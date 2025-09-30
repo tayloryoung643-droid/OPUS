@@ -386,3 +386,102 @@ export type InsertCoachTranscript = z.infer<typeof insertCoachTranscriptSchema>;
 
 export type CoachSuggestion = typeof coachSuggestions.$inferSelect;
 export type InsertCoachSuggestion = z.infer<typeof insertCoachSuggestionSchema>;
+
+// Call Transcripts table for Silent Call Recorder MVP
+export const callTranscripts = pgTable("call_transcripts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  eventId: varchar("event_id").notNull(), // Google Calendar event ID
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: 'set null' }),
+  opportunityId: varchar("opportunity_id").references(() => crmOpportunities.id, { onDelete: 'set null' }),
+  transcript: text("transcript").notNull(), // Final transcript text only
+  eventTitle: text("event_title"), // Cache of event title for easy reference
+  eventStartTime: timestamp("event_start_time"), // Cache of event start time
+  duration: integer("duration"), // Call duration in seconds
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Call Transcripts relations
+export const callTranscriptsRelations = relations(callTranscripts, ({ one }) => ({
+  user: one(users, {
+    fields: [callTranscripts.userId],
+    references: [users.id],
+  }),
+  company: one(companies, {
+    fields: [callTranscripts.companyId],
+    references: [companies.id],
+  }),
+  opportunity: one(crmOpportunities, {
+    fields: [callTranscripts.opportunityId],
+    references: [crmOpportunities.id],
+  }),
+}));
+
+// Call Transcripts insert schema
+export const insertCallTranscriptSchema = createInsertSchema(callTranscripts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Call Transcripts types
+export type CallTranscript = typeof callTranscripts.$inferSelect;
+export type InsertCallTranscript = z.infer<typeof insertCallTranscriptSchema>;
+
+// Chat Sessions and Messages for unified Opus chat across web app and extension
+export const chatSessions = pgTable("chat_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  conversationId: varchar("conversation_id").notNull().unique(), // Client-side generated UUID
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => chatSessions.id, { onDelete: 'cascade' }),
+  messageId: varchar("message_id").notNull(), // Client-side generated UUID
+  role: text("role").notNull(), // 'user' | 'assistant'
+  content: text("content").notNull(),
+  timestamp: timestamp("timestamp").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  // Unique constraint to prevent message duplication
+  uniqueSessionMessage: unique().on(table.sessionId, table.messageId),
+}));
+
+// Chat relations
+export const chatSessionsRelations = relations(chatSessions, ({ one, many }) => ({
+  user: one(users, {
+    fields: [chatSessions.userId],
+    references: [users.id],
+  }),
+  messages: many(chatMessages),
+}));
+
+export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+  session: one(chatSessions, {
+    fields: [chatMessages.sessionId],
+    references: [chatSessions.id],
+  }),
+}));
+
+// Chat insert schemas
+export const insertChatSessionSchema = createInsertSchema(chatSessions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Chat types
+export type ChatSession = typeof chatSessions.$inferSelect;
+export type InsertChatSession = z.infer<typeof insertChatSessionSchema>;
+
+export type ChatMessage = typeof chatMessages.$inferSelect;
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;

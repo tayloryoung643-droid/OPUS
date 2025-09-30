@@ -1,0 +1,133 @@
+Please proceed with full implementation. Priorities and acceptance criteria below.
+
+Scope (Phase 1 — MVP, ship-ready)
+
+Chrome MV3 Extension
+
+Create /extension/ with:
+
+manifest.json, background.js, content.js, panel/index.html, injected.css (optional).
+
+Behaviors:
+
+Always-visible pinned Orb (right side), hover glow, click → slide-out panel.
+
+State machine: idle → pre-call (T-30) → live-call when on Meet/Zoom/Teams.
+
+Meeting detection via URL heuristics (Google Meet, Zoom, Teams).
+
+Render contextual bullets in panel using data from our API (see endpoints).
+
+Backend Endpoints (Express + TS)
+
+Add JWT mint + verify:
+
+POST /auth/extension-token → returns short-lived opusToken with scope orb:read.
+
+Middleware verifyOrbToken to protect /orb/* routes.
+
+Add Orb routes:
+
+GET /orb/next-event?window=30m
+
+Response shape:
+
+{
+  "startsAtSoon": true,
+  "startLocal": "2025-09-28 2:00 PM",
+  "title": "Discovery: ACME",
+  "participants": ["jane@acme.com","you@company.com"],
+  "quickNotes": ["Company: ACME", "Role: Jane (CTO)", "Goal: SOC2 & SSO, Q4"]
+}
+
+
+If no event in window: { "startsAtSoon": false }.
+
+GET /orb/context?tabUrl=ENCODED_URL
+
+Response shape:
+
+{
+  "title": "Discovery: ACME",
+  "participants": ["jane@acme.com","you@company.com"],
+  "account": "ACME Inc.",
+  "oppAmount": 48000,
+  "stage": "Evaluation",
+  "keyPoints": ["Objection likely: SSO pricing", "Ask: current vendor", "Next: security docs"]
+}
+
+
+Wire these to existing MCP/Google/SF services. No mock data; if unknown, return empty arrays/falsey flags.
+
+Web App Handshake
+
+On user login/refresh, call POST /auth/extension-token and send to extension:
+
+window.postMessage({ type: 'OPUS_TOKEN_HANDSHAKE', opusToken }, window.location.origin);
+
+
+Extension content script relays SET_TOKEN to background → store in chrome.storage.sync.
+
+Repo Layout
+
+Backend: server/ (or current API folder)
+
+src/auth/extensionToken.ts (mint token)
+
+src/middleware/verifyOrbToken.ts
+
+src/routes/orb.ts
+
+Wire into app.ts/router index.
+
+Extension: /extension/* (as above)
+
+Env & Config
+
+Add OPUS_JWT_SECRET (new).
+
+Ensure existing Google/SF OAuth already configured (we will only read via MCP).
+
+CORS allowlist extension scheme if needed; APIs are called by background SW.
+
+Acceptance Criteria (Definition of Done)
+
+Load unpacked extension → Orb visible on any page.
+
+Idle: generic “Tap me if you need help.”
+
+Pre-call: open any page, be within 30 min of next calendar event → panel shows event title, time, quick notes from /orb/next-event.
+
+Live-call: on tab with meet.google.com, *.zoom.us/j/* or /wc/*, or teams.microsoft.com/* → state shows live-call, panel renders /orb/context data.
+
+No sample/mock filler if API has no data; render gracefully.
+
+JWT required; unauth → 401.
+
+Latency target: first render < 300ms on warmed API.
+
+Code is commented, typed (TS on backend), and includes a README with install/test steps.
+
+Test Plan (please verify)
+
+Token: log in to web app → confirm the postMessage is sent and opusToken is set in extension storage.
+
+Pre-call: create a calendar event 15–20 min out; confirm /orb/next-event returns startsAtSoon: true.
+
+Live: open Meet, Zoom, Teams meeting URLs; confirm state switch and context render.
+
+Fallbacks: with no events or context, UI shows neutral hints, no fake data.
+
+Security: /orb/* endpoints reject missing/invalid tokens; token expires in 30 minutes.
+
+Deliverables
+
+PR with all files + README containing:
+
+Extension load steps: chrome://extensions → Developer mode → Load unpacked → /extension.
+
+How to set envs (OPUS_JWT_SECRET), route mounts, and handshake snippet location.
+
+Known limitations/TODOs (e.g., more robust DOM-based meeting detection; side panel parity).
+
+Please start with implementation. If you hit any ambiguity, choose the simplest secure default and document it in the README.

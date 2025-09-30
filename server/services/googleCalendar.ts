@@ -54,9 +54,22 @@ export class GoogleCalendarService {
         orderBy: 'startTime',
       });
 
-      return (response.data.items || [])
-        .filter(event => !!event?.id)
-        .map(event => this.mapGoogleEvent(event));
+      const events = (response.data.items || [])
+        .filter(event => !!event?.id);
+      
+      console.log('DEBUG getCalendarEvents - Total events found:', events.length);
+      events.forEach((event, i) => {
+        console.log(`DEBUG All Events ${i}:`, {
+          id: event.id,
+          summary: event.summary,
+          startDateTime: event.start?.dateTime,
+          startDate: event.start?.date,
+          endDateTime: event.end?.dateTime,
+          endDate: event.end?.date
+        });
+      });
+
+      return events.map(event => this.mapGoogleEvent(event));
 
     } catch (error) {
       console.error('Error fetching calendar events:', error);
@@ -83,8 +96,13 @@ export class GoogleCalendarService {
       });
 
       const today = new Date();
-      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+      // Expand date range to account for all possible timezones (UTC-12 to UTC+14)
+      const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1, 12, 0, 0, 0);
+      const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 14, 0, 0, 0);
+
+      console.log('DEBUG getTodaysEvents - Today:', today.toISOString());
+      console.log('DEBUG getTodaysEvents - StartOfDay (timezone-aware):', startOfDay.toISOString());
+      console.log('DEBUG getTodaysEvents - EndOfDay (timezone-aware):', endOfDay.toISOString());
 
       const response = await calendar.events.list({
         calendarId: 'primary',
@@ -94,12 +112,103 @@ export class GoogleCalendarService {
         orderBy: 'startTime',
       });
 
-      return (response.data.items || [])
-        .filter(event => !!event?.id)
-        .map(event => this.mapGoogleEvent(event));
+      console.log('DEBUG getTodaysEvents - Raw events found:', response.data.items?.length || 0);
+      
+      // Filter events to only include those that are actually "today"
+      // Use Pacific Time (user's timezone) for comparison, not server UTC
+      const pacificTime = new Date(today.toLocaleString("en-US", {timeZone: "America/Los_Angeles"}));
+      const todayString = pacificTime.getFullYear() + '-' + 
+                         String(pacificTime.getMonth() + 1).padStart(2, '0') + '-' + 
+                         String(pacificTime.getDate()).padStart(2, '0');
+      
+      console.log('DEBUG - Local today date string:', todayString);
+      
+      const filteredEvents = (response.data.items || [])
+        .filter(event => {
+          if (!event?.id) return false;
+          
+          // Handle events with dateTime (specific times) 
+          if (event.start?.dateTime) {
+            // Extract date part from the original timestamp (preserves timezone)
+            const eventDateString = event.start.dateTime.split('T')[0];
+            console.log(`DEBUG - Event ${event.summary} dateTime: ${event.start.dateTime}, extracted date: ${eventDateString}`);
+            return eventDateString === todayString;
+          }
+          
+          // Handle all-day events with date only
+          if (event.start?.date) {
+            console.log(`DEBUG - Event ${event.summary} date: ${event.start.date}`);
+            return event.start.date === todayString;
+          }
+          
+          return false;
+        });
+
+      console.log('DEBUG getTodaysEvents - Events filtered for today:', filteredEvents.length);
+      filteredEvents.forEach((event, i) => {
+        console.log(`DEBUG Today Event ${i}:`, {
+          id: event.id,
+          summary: event.summary,
+          startDateTime: event.start?.dateTime,
+          startDate: event.start?.date,
+          endDateTime: event.end?.dateTime,
+          endDate: event.end?.date
+        });
+      });
+
+      return filteredEvents.map(event => this.mapGoogleEvent(event));
 
     } catch (error) {
       console.error('Error fetching today\'s calendar events:', error);
+      return [];
+    }
+  }
+
+  // Get events in a specific time range (supports past and future dates)
+  async getEventsInRange(userId: string, timeMinISO: string, timeMaxISO: string): Promise<CalendarEvent[]> {
+    try {
+      const googleIntegration = await storage.getGoogleIntegration(userId);
+      if (!googleIntegration || !googleIntegration.isActive) {
+        return [];
+      }
+
+      // Check if we need to refresh the token
+      if (this.isTokenExpired(googleIntegration)) {
+        await this.refreshTokenIfNeeded(userId, googleIntegration);
+      }
+
+      const calendar = googleAuth.createCalendarClient({
+        access_token: googleIntegration.accessToken,
+        refresh_token: googleIntegration.refreshToken
+      });
+
+      console.log('DEBUG getEventsInRange - Fetching from:', timeMinISO, 'to:', timeMaxISO);
+
+      const response = await calendar.events.list({
+        calendarId: 'primary',
+        timeMin: timeMinISO,
+        timeMax: timeMaxISO,
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
+
+      const events = (response.data.items || [])
+        .filter(event => !!event?.id);
+      
+      console.log('DEBUG getEventsInRange - Found', events.length, 'events');
+      events.forEach((event, i) => {
+        console.log(`DEBUG Range Event ${i}:`, {
+          id: event.id,
+          summary: event.summary,
+          startDateTime: event.start?.dateTime,
+          startDate: event.start?.date,
+        });
+      });
+
+      return events.map(event => this.mapGoogleEvent(event));
+
+    } catch (error) {
+      console.error('Error fetching calendar events in range:', error);
       return [];
     }
   }

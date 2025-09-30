@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Brain } from "lucide-react";
+import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Zap } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { safeFmt } from "@/utils/date";
 import ExecutiveSummary from "@/components/call-prep/executive-summary";
 import CrmHistory from "@/components/call-prep/crm-history";
 import CompetitiveLandscape from "@/components/call-prep/competitive-landscape";
@@ -164,16 +165,7 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
   const { toast } = useToast();
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    return safeFmt(dateString, "EEEE, MMMM d, yyyy 'at' h:mm a");
   };
 
   // Fetch call details when event is selected
@@ -201,10 +193,26 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
   const saveNotesMutation = useMutation({
     mutationFn: async ({ eventId, text }: { eventId: string; text: string }) => {
       const response = await apiRequest("PUT", "/api/prep-notes", { eventId, text });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to save notes");
+      }
       return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/prep-notes", event?.id] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Could not save notes",
+        description: error.message,
+        variant: "destructive",
+      });
+      // Revert the text to the last successfully saved state
+      setNotesState(prev => ({
+        ...prev,
+        text: prev.lastSavedText
+      }));
     },
   });
 
@@ -255,32 +263,89 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
     }
   }, [notesState.text, notesState.lastSavedText, notesState.eventId, debouncedSaveNotes]);
 
-  // Generate AI prep mutation
+  // Generate AI prep mutation with bulletproof timeout and error handling
   const generatePrepMutation = useMutation({
     mutationFn: async (targetCallId: string) => {
-      const response = await apiRequest("POST", `/api/calls/${targetCallId}/generate-prep`);
-      return response.json();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      try {
+        // Call the generation endpoint with direct fetch for better AbortController support
+        const response = await fetch(`/api/calls/${targetCallId}/generate-prep`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          throw new Error(`Generation failed with status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // Wait a moment for backend to persist data
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Verify data was actually persisted by refetching
+        const refetchedData = await queryClient.fetchQuery({
+          queryKey: ["/api/calls", targetCallId]
+        });
+        
+        // Check if prep was actually generated and saved
+        if (!refetchedData || !refetchedData.callPrep || !refetchedData.callPrep.isGenerated) {
+          // Generation claimed success but no prep data was persisted - treat as failure
+          throw new Error("Generation completed but no preparation data was created. Please try again or proceed with manual preparation.");
+        }
+        
+        return data;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error('Generation timed out after 30 seconds. Please try again or proceed with manual preparation.');
+        }
+        throw error;
+      }
     },
     onSuccess: (data) => {
       toast({
-        title: "AI prep generated",
+        title: "AI prep generated successfully",
         description: "Your call preparation sheet has been updated with AI insights.",
       });
-      // Invalidate and refetch the call details to get updated prep data
+      
+      // Force invalidate queries to refresh the UI
       if (event?.id) {
         queryClient.invalidateQueries({ queryKey: ["/api/calls", event.id] });
       }
-      // Also try to set data if response has the expected format
-      if (event?.id && data && 'call' in data && data.call?.id) {
-        queryClient.setQueryData(["/api/calls", event.id], data);
-      }
     },
     onError: (error) => {
+      console.error("Prep generation failed:", error);
+      
+      // Extract error message with better handling for different error types
+      let errorMessage = "Unknown error occurred";
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String(error.message);
+      }
+      
+      // Ensure toast is called with proper parameters
+      console.log("Showing toast with message:", errorMessage);
       toast({
-        title: "Error",
-        description: "Failed to generate AI preparation: " + (error as Error).message,
+        title: "Prep Generation Failed",
+        description: errorMessage,
         variant: "destructive",
       });
+      
+      // Force a UI refresh to ensure button state resets
+      if (event?.id) {
+        queryClient.invalidateQueries({ queryKey: ["/api/calls", event.id] });
+      }
     },
   });
 
@@ -369,12 +434,80 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
     );
   }
 
+  // Enhanced error handling with recovery options
   if (callDetailsError || !callDetails) {
+    const is404Error = (callDetailsError as any)?.response?.status === 404 || 
+                       (callDetailsError as any)?.message?.includes('404') ||
+                       (callDetailsError as any)?.message?.includes('not found');
+
     return (
       <div className="flex-1 p-6">
-        <div className="max-w-6xl mx-auto text-center">
-          <h1 className="text-2xl font-bold text-foreground mb-4">Call Not Found</h1>
-          <p className="text-muted-foreground">The requested call could not be found or an error occurred.</p>
+        <div className="max-w-2xl mx-auto text-center">
+          <AlertTriangle className="h-16 w-16 text-orange-500 mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-foreground mb-4">
+            {is404Error ? "Call Prep Not Ready" : "Error Loading Call"}
+          </h1>
+          <p className="text-muted-foreground mb-6">
+            {is404Error 
+              ? "This call hasn't been processed yet. We can prepare it for you now."
+              : "There was an error loading this call. Please try again."}
+          </p>
+          
+          {/* Recovery Actions */}
+          <div className="space-y-3">
+            {is404Error && event?.source === "calendar" && event?.calendarEventId && (
+              <Button
+                onClick={async () => {
+                  try {
+                    const response = await fetch(`/api/calendar/events/${event.calendarEventId}/ensure-call`, {
+                      method: "POST"
+                    });
+                    if (response.ok) {
+                      // Invalidate and refetch the call details
+                      queryClient.invalidateQueries({ queryKey: ["/api/calls", event.id] });
+                      toast({
+                        title: "Call Prepared",
+                        description: "The call has been prepared and is ready for viewing.",
+                      });
+                    } else {
+                      throw new Error("Failed to prepare call");
+                    }
+                  } catch (error) {
+                    toast({
+                      title: "Preparation Failed",
+                      description: "Could not prepare the call. Please try selecting it again.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                data-testid="button-prepare-call"
+              >
+                <Calendar className="h-4 w-4 mr-2" />
+                Prepare This Call
+              </Button>
+            )}
+            
+            <Button
+              onClick={() => {
+                // Invalidate and refetch the call details
+                queryClient.invalidateQueries({ queryKey: ["/api/calls", event?.id] });
+                toast({
+                  title: "Refreshing",
+                  description: "Refreshing call data...",
+                });
+              }}
+              variant="outline"
+              data-testid="button-retry-call"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+            
+            <p className="text-sm text-muted-foreground mt-4">
+              If the problem persists, try selecting a different call and returning to this one.
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -440,7 +573,7 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
                     className="flex items-center space-x-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                     data-testid="button-enhance-prep"
                   >
-                    <Brain className="h-4 w-4" />
+                    <Zap className="h-4 w-4" />
                     <span>{generateEnhancedPrepMutation.isPending ? "Enhancing..." : "Enhance with Methodologies"}</span>
                   </Button>
                 </>

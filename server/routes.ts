@@ -1,22 +1,336 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { setupAuth, isAuthenticated } from "./replitAuth";
+import { isGuestEnabled, isDemoMode, authenticateGuest, createGuestSession, ensureGuestUser, seedGuestData } from "./services/guestAuth";
 import { storage } from "./storage";
 import { generateProspectResearch, enhanceCompanyData } from "./services/openai";
 import { createMCPServer } from "./mcp/mcp-server.js";
+import OpenAI from "openai";
 import { insertCompanySchema, insertContactSchema, insertCallSchema, insertCallPrepSchema, insertIntegrationSchema, insertCoachSessionSchema, insertCoachTranscriptSchema, insertCoachSuggestionSchema } from "@shared/schema";
 import { integrationManager } from "./services/integrations/manager";
 import { CryptoService } from "./services/crypto";
 import { CoachWebSocketService } from "./services/coachWebSocket";
+import { VoiceRecorderWebSocketService } from "./services/voiceRecorderWebSocket";
 import { z } from "zod";
+import jwt from "jsonwebtoken";
+import gmailRoutes from "./routes/gmail";
+import orbRoutes from "./routes/orb";
+import orbExtensionRoutes from "./routes/orbExtension";
+import { generateRhythmInsights, generateOpusFeed } from "./services/insights";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Validate critical environment variables at startup
+  if (!process.env.OPUS_JWT_SECRET) {
+    console.error('FATAL: OPUS_JWT_SECRET environment variable is required');
+    process.exit(1);
+  }
+  
+  // Validate encryption key is set for production security
+  if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY === 'default-dev-key-change-in-production-32-chars') {
+    if (process.env.NODE_ENV === 'production') {
+      console.error('FATAL: ENCRYPTION_KEY must be set to a secure value in production');
+      process.exit(1);
+    } else {
+      console.warn('WARNING: Using default encryption key in development. Set ENCRYPTION_KEY for production.');
+    }
+  }
+
+  // Validate feature flags for production safety  
+  const { validateProductionFlags } = await import('./config/flags.js');
+  validateProductionFlags();
+
   // Setup Replit Auth (Google Sign-in support)
   await setupAuth(app);
+
+  // Import ENV for CORS configuration
+  const { ENV } = await import('./config/env.js');
+
+  // Centralized CORS middleware for extension origins
+  const setCORSHeaders = (req: any, res: any) => {
+    const origin = req.headers.origin;
+    
+    // Allow main app origin
+    if (origin === ENV.APP_ORIGIN) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      return true;
+    }
+    
+    // Allow chrome-extension origins (with basic validation)
+    if (origin && origin.startsWith('chrome-extension://')) {
+      // Basic validation - should be a valid chrome extension ID format
+      const extensionId = origin.replace('chrome-extension://', '');
+      if (/^[a-p]{32}$/.test(extensionId)) { // Chrome extension IDs are 32 chars, a-p only
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        return true;
+      }
+    }
+    
+    // Allow common external test origins for development/testing
+    const allowedTestOrigins = [
+      'https://www.google.com',
+      'https://google.com',
+      'https://example.com',
+      'https://www.example.com'
+    ];
+    
+    if (origin && allowedTestOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      return true;
+    }
+    
+    return false;
+  };
+
+  // CORS preflight handler for auth endpoints
+  const handleCORSPreflight = (req: any, res: any, next: any) => {
+    if (req.method === 'OPTIONS') {
+      const validOrigin = setCORSHeaders(req, res);
+      
+      if (validOrigin) {
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+        res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+        return res.status(200).end();
+      } else {
+        return res.status(403).end();
+      }
+    }
+    
+    // Set CORS headers for actual requests
+    setCORSHeaders(req, res);
+    next();
+  };
+
+  // Apply CORS middleware to auth endpoints BEFORE route registration
+  app.use('/api/auth/extension', handleCORSPreflight);
+  
+  // Initialize guest user and seed data if enabled
+  if (isGuestEnabled() || isDemoMode()) {
+    await ensureGuestUser();
+    await seedGuestData();
+  }
   
 
+  // Guest login route
+  app.post('/api/auth/guest/login', async (req, res) => {
+    try {
+      if (!isGuestEnabled()) {
+        return res.status(404).json({ message: "Guest login not enabled" });
+      }
+
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
+
+      const isValid = await authenticateGuest(email, password);
+      if (!isValid) {
+        return res.status(401).json({ message: "Invalid guest credentials" });
+      }
+
+      // Create guest session
+      createGuestSession(req);
+      
+      const user = await storage.getUser("usr_guest_momentum_ai");
+      res.json({ user, guestMode: true });
+    } catch (error) {
+      console.error("Error with guest login:", error);
+      res.status(500).json({ message: "Failed to login as guest" });
+    }
+  });
+
+  // Extension token endpoint for Chrome extension authentication
+  app.post('/api/auth/extension-token', isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ 
+          error: 'User ID not found',
+          message: 'Unable to identify user for token generation'
+        });
+      }
+
+      // Import here to avoid circular dependencies
+      const { mintOrbToken } = await import('./auth/extensionToken.js');
+      
+      // Generate short-lived token for Chrome extension
+      const opusToken = mintOrbToken(userId);
+      
+      console.log(`[ExtensionAuth] Generated token for user: ${userId}`);
+      
+      res.json({ 
+        opusToken,
+        expiresIn: '30m',
+        scope: 'orb:read'
+      });
+      
+    } catch (error) {
+      console.error('[ExtensionAuth] Error generating token:', error);
+      res.status(500).json({ 
+        error: 'Token generation failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // In-memory store for one-time session codes (in production, use Redis)
+  const sessionCodes = new Map<string, { userId: string; createdAt: number }>();
+  
+  // Clean up expired codes every 5 minutes
+  setInterval(() => {
+    const now = Date.now();
+    for (const [code, data] of sessionCodes.entries()) {
+      if (now - data.createdAt > 5 * 60 * 1000) { // 5 minutes
+        sessionCodes.delete(code);
+      }
+    }
+  }, 5 * 60 * 1000);
+
+  // New token mint endpoint for unified session between web app and extension
+  app.post('/api/auth/extension/mint', async (req, res) => {
+    try {
+      let userId: string | undefined;
+      
+      // Method 1: Try session-based authentication (user logged into web app)
+      if (req.isAuthenticated && req.isAuthenticated()) {
+        userId = req.user?.claims?.sub;
+        console.log(`[ExtensionMint] Session auth for user: ${userId}`);
+      }
+      
+      // Method 2: Try one-time code exchange
+      if (!userId && req.body.code) {
+        const codeData = sessionCodes.get(req.body.code);
+        if (codeData && Date.now() - codeData.createdAt < 5 * 60 * 1000) {
+          userId = codeData.userId;
+          sessionCodes.delete(req.body.code); // One-time use
+          console.log(`[ExtensionMint] Code exchange for user: ${userId}`);
+        }
+      }
+      
+      if (!userId) {
+        return res.status(401).json({
+          error: 'Authentication required',
+          message: 'Please provide valid session cookies or exchange code'
+        });
+      }
+
+      // Import here to avoid circular dependencies
+      const { ENV } = await import('./config/env.js');
+      
+      // Generate 60-minute JWT with expanded scopes for extension
+      const extensionJwt = jwt.sign(
+        {
+          userId,
+          orgId: userId, // For future multi-org support
+          scopes: ['chat', 'mcp:calendar', 'mcp:salesforce'],
+          type: 'extension',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + (60 * 60) // 60 minutes
+        },
+        process.env.OPUS_JWT_SECRET!,
+        { algorithm: 'HS256' }
+      );
+
+      console.log(`[ExtensionMint] Generated JWT for user ${userId}`);
+
+      // Set CORS headers for chrome-extension origins
+      const origin = req.headers.origin;
+      if (origin && (origin.startsWith('chrome-extension://') || origin === ENV.APP_ORIGIN)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+
+      res.json({
+        jwt: extensionJwt,
+        expiresIn: '60m',
+        scopes: ['chat', 'mcp:calendar', 'mcp:salesforce'],
+        user: {
+          id: userId
+        }
+      });
+
+    } catch (error) {
+      console.error('[ExtensionMint] Error:', error);
+      res.status(500).json({
+        error: 'Token generation failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Generate one-time session codes for extension token exchange
+  app.post('/api/auth/extension/session-code', isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ 
+          error: 'User ID not found',
+          message: 'Unable to identify user for code generation'
+        });
+      }
+
+      // Generate cryptographically secure one-time code
+      const crypto = await import('crypto');
+      const code = crypto.randomBytes(32).toString('hex');
+      
+      // Store code with expiration (5 minutes)
+      sessionCodes.set(code, {
+        userId,
+        createdAt: Date.now()
+      });
+      
+      console.log(`[ExtensionMint] Generated session code for user: ${userId}`);
+      
+      res.json({ 
+        code,
+        expiresIn: '5m',
+        message: 'Use this code to authenticate the extension'
+      });
+      
+    } catch (error) {
+      console.error('[ExtensionMint] Session code error:', error);
+      res.status(500).json({ 
+        error: 'Code generation failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Enhanced auth middleware that supports both Replit auth and guest users
+  const isAuthenticatedOrGuest = (req: any, res: any, next: any) => {
+    // Check if this is a guest user session (either by ID or email)
+    if (req.user?.claims?.sub === "usr_guest_momentum_ai" || req.user?.claims?.email === "guest@momentum.ai") {
+      return next();
+    }
+    
+    // Otherwise use standard authentication
+    return isAuthenticated(req, res, next);
+  };
+
+  // Read-only middleware for guest users - blocks write operations
+  const requireWriteAccess = (req: any, res: any, next: any) => {
+    const userId = req.user?.claims?.sub;
+    const userEmail = req.user?.claims?.email;
+    
+    // Check if this is a guest user (either by ID or email)
+    if (userId === "usr_guest_momentum_ai" || userEmail === "guest@momentum.ai") {
+      return res.status(403).json({ 
+        message: "Demo mode: Write operations are not allowed. Please sign up for full access.",
+        readOnly: true 
+      });
+    }
+    
+    return next();
+  };
+
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  app.get('/api/auth/user', isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const user = await storage.getUser(userId);
@@ -27,8 +341,160 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Standard /api/auth/me endpoint - returns 401 when no token
+  app.get('/api/auth/me', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  // Generate WebSocket authentication token
+  app.get('/api/auth/ws-token', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      if (!userId) {
+        return res.status(400).json({ message: "User ID not found" });
+      }
+      
+      // Generate authentication token for WebSocket connection
+      const token = VoiceRecorderWebSocketService.generateAuthToken(userId);
+      const now = Date.now();
+      const expiresAt = now + (5 * 60 * 1000); // 5 minutes from now
+      
+      // Security: Prevent token caching
+      res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+      
+      res.json({ 
+        token,
+        userId,
+        expiresIn: '5 minutes',
+        expiresAt: expiresAt
+      });
+    } catch (error) {
+      console.error("Error generating WebSocket token:", error);
+      res.status(500).json({ message: "Failed to generate authentication token" });
+    }
+  });
+
+  // OpenAI Realtime API - Generate ephemeral tokens for WebRTC voice sessions with MCP integration
+  app.post('/api/openai/realtime/token', isAuthenticated, async (req: any, res) => {
+    try {
+      const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+      const REALTIME_MODEL = process.env.OPENAI_REALTIME_MODEL || "gpt-4o-realtime-preview-2024-12-17";
+      const userId = req.user?.claims?.sub || req.user?.sub;
+
+      if (!OPENAI_API_KEY) {
+        console.error('[OpenAI-Realtime] OPENAI_API_KEY environment variable not set');
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+
+      // Load MCP context for this user
+      const { createMcpContext } = await import('./mcp/client.js');
+      const { buildSalesContext, formatContextForModel } = await import('./mcp/contextLoader.js');
+      const { MCP_TOOL_DEFINITIONS } = await import('./mcp/types/mcp-types.js');
+
+      console.log(`[OpenAI-Realtime] Building MCP context for user: ${userId}`);
+      
+      let salesContext = '';
+      let tools: any[] = [];
+      
+      try {
+        // Create MCP context and load sales data
+        const mcpContext = await createMcpContext(userId);
+        const context = await buildSalesContext({ mcp: mcpContext, userId });
+        salesContext = formatContextForModel(context);
+        
+        // Convert MCP tools to OpenAI Realtime format
+        tools = Object.values(MCP_TOOL_DEFINITIONS).map(tool => ({
+          type: "function",
+          name: tool.name,
+          description: tool.description,
+          parameters: tool.parameters
+        }));
+        
+        console.log(`[OpenAI-Realtime] Loaded context with ${tools.length} tools available`);
+      } catch (contextError) {
+        console.error('[OpenAI-Realtime] Error loading MCP context:', contextError);
+        salesContext = 'Note: Some integrations may not be connected. Check Google Calendar and Salesforce connections.';
+      }
+
+      // Enhanced instructions with real-time context and anti-sample guardrails
+      const instructions = `You are Opus, the ultimate AI sales partner with access to real-time data. 
+
+CURRENT CONTEXT:
+${salesContext}
+
+CRITICAL RULES:
+🚫 NEVER provide sample, mock, or placeholder data
+🚫 NEVER say "Here's a sample..." or give examples as real data
+🚫 If you don't have real data, say "I don't have that information right now" instead of making up data
+✅ ALWAYS use your available tools to access real information from Google Calendar, Salesforce, and Gmail
+✅ Provide specific insights based on actual data from your tools
+✅ Be direct and actionable in your recommendations
+
+AVAILABLE TOOLS: You have ${tools.length} tools for accessing real-time calendar events, CRM opportunities, contacts, call history, and email threads.
+
+RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable recommendations. Keep responses concise for voice interaction.`;
+
+      // Create realtime session with MCP tools and context
+      const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+          "OpenAI-Beta": "realtime=v1",
+        },
+        body: JSON.stringify({
+          model: REALTIME_MODEL,
+          voice: "verse", // Default voice for Opus
+          modalities: ["audio", "text"],
+          instructions: instructions,
+          tools: tools.length > 0 ? tools : undefined // Only include tools if available
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[OpenAI-Realtime] Failed to create session:', errorText);
+        return res.status(500).json({ 
+          error: "Failed to create OpenAI Realtime session", 
+          details: errorText 
+        });
+      }
+
+      const sessionData = await response.json();
+      console.log('[OpenAI-Realtime] Session created successfully with MCP integration');
+      
+      // Security: Prevent token caching
+      res.set({
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
+      
+      // Return the session data including client_secret.value for WebRTC
+      res.json(sessionData);
+    } catch (error) {
+      console.error('[OpenAI-Realtime] Error creating session:', error);
+      res.status(500).json({ 
+        error: "Internal server error", 
+        message: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
   // Integration routes for Outlook
-  app.get("/api/integrations/outlook/setup", isAuthenticated, async (req, res) => {
+  app.get("/api/integrations/outlook/setup", isAuthenticatedOrGuest, async (req, res) => {
     try {
       // For now, we'll show a coming soon message for Outlook
       // This would normally redirect to the Outlook OAuth flow
@@ -42,7 +508,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/outlook/status", isAuthenticated, async (req, res) => {
+  app.get("/api/integrations/outlook/status", isAuthenticatedOrGuest, async (req, res) => {
     try {
       // For now, always return not connected
       res.json({ 
@@ -55,7 +521,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/outlook", isAuthenticated, async (req, res) => {
+  // Combined integrations status endpoint
+  app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      
+      // Get Google integration status
+      const googleIntegration = await storage.getGoogleIntegration(userId);
+      const googleStatus = {
+        connected: !!googleIntegration?.isActive,
+        scopes: googleIntegration?.scopes || [],
+        connectedAt: googleIntegration?.createdAt,
+        service: "google"
+      };
+
+      // Get Salesforce integration status
+      const salesforceIntegration = await storage.getSalesforceIntegration(userId);
+      const salesforceStatus = {
+        connected: !!salesforceIntegration?.isActive,
+        instanceUrl: salesforceIntegration?.instanceUrl,
+        connectedAt: salesforceIntegration?.createdAt,
+        service: "salesforce"
+      };
+
+      // Outlook is always not connected for now
+      const outlookStatus = {
+        connected: false,
+        service: "outlook",
+        message: "Outlook integration coming soon"
+      };
+
+      res.json({
+        googleCalendar: googleStatus,
+        salesforce: salesforceStatus,
+        outlook: outlookStatus
+      });
+    } catch (error) {
+      console.error("Error checking integrations status:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/integrations/outlook", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       // For now, just return success
       res.json({ 
@@ -69,7 +576,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Google Calendar and Gmail integration routes
-  app.get("/api/integrations/google/auth", isAuthenticated, async (req, res) => {
+  app.get("/api/integrations/google/auth", isAuthenticatedOrGuest, async (req, res) => {
     try {
       if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
         return res.status(501).json({
@@ -135,7 +642,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/google/status", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/google/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const googleIntegration = await storage.getGoogleIntegration(userId);
@@ -152,7 +659,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/google", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/integrations/google", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       await storage.deleteGoogleIntegration(userId);
@@ -167,8 +674,325 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Gmail routes - Mount the Gmail router
+  app.use("/api/gmail", isAuthenticatedOrGuest, gmailRoutes);
+
+  // Orb routes - Chrome extension endpoints (uses own auth middleware)
+  app.use("/api/orb", orbRoutes);
+  
+  // Orb extension bootstrap endpoint
+  app.use("/api/orb/extension", orbExtensionRoutes);
+
+  // Import crypto for UUID generation
+  const crypto = await import('crypto');
+
+  // Apply CORS middleware to chat endpoints  
+  app.use('/api/chat', handleCORSPreflight);
+
+  // Hybrid auth middleware for chat endpoints - supports both session auth and JWT Bearer tokens
+  const isAuthenticatedOrJWT = async (req: any, res: any, next: any) => {
+    // First try JWT Bearer token authentication (for extension)
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        const { verifyOrbToken } = await import('./auth/extensionToken.js');
+        const token = authHeader.slice(7);
+        const payload = verifyOrbToken(token);
+        
+        // Set user claims for compatibility with existing endpoints
+        req.user = {
+          claims: {
+            sub: payload.userId
+          }
+        };
+        req.orbToken = payload;
+        return next();
+      } catch (error) {
+        console.error('[ChatAuth] JWT verification failed:', error);
+        return res.status(401).json({ 
+          error: 'Invalid token',
+          message: 'JWT verification failed'
+        });
+      }
+    }
+    
+    // Fallback to session-based authentication (for web app)
+    return isAuthenticatedOrGuest(req, res, next);
+  };
+
+  // Chat session management endpoints for unified Opus chat
+  app.post("/api/chat/session", isAuthenticatedOrJWT, requireWriteAccess, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { conversationId } = req.body;
+      
+      if (!conversationId) {
+        return res.status(400).json({ error: "conversationId is required" });
+      }
+      
+      // Upsert session (create if doesn't exist, return if exists)
+      const session = await storage.upsertChatSession(userId, conversationId);
+      
+      res.json({ 
+        conversationId: session.conversationId,
+        sessionId: session.id 
+      });
+    } catch (error) {
+      console.error("Error creating/getting chat session:", error);
+      res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  app.get("/api/chat/history", isAuthenticatedOrJWT, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const conversationId = req.query.conversationId as string;
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 500); // Max 500 messages
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      if (!conversationId) {
+        return res.status(400).json({ error: "conversationId is required" });
+      }
+      
+      // Verify user owns this conversation
+      const session = await storage.getChatSessionByUserId(userId, conversationId);
+      if (!session) {
+        return res.json({ messages: [], total: 0, hasMore: false }); // Return empty if session doesn't exist
+      }
+      
+      const total = await storage.getChatMessageCountByConversationId(conversationId);
+      const paginatedMessages = await storage.getChatMessagesByConversationId(conversationId, limit, offset);
+      
+      // Transform to expected format
+      const formattedMessages = paginatedMessages.map(msg => ({
+        id: msg.messageId,
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.timestamp).getTime()
+      }));
+      
+      res.json({ 
+        messages: formattedMessages,
+        total,
+        hasMore: offset + limit < total,
+        offset,
+        limit
+      });
+    } catch (error) {
+      console.error("Error getting chat history:", error);
+      res.status(500).json({ error: "Failed to get chat history" });
+    }
+  });
+
+  app.post("/api/chat/events", isAuthenticatedOrJWT, requireWriteAccess, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { conversationId, messages } = req.body;
+      
+      if (!conversationId || !Array.isArray(messages)) {
+        return res.status(400).json({ error: "conversationId and messages array are required" });
+      }
+      
+      // Ensure session exists and user owns it
+      const session = await storage.upsertChatSession(userId, conversationId);
+      
+      // Validate messages array
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: "Messages must be a non-empty array" });
+      }
+      
+      if (messages.length > 100) {
+        return res.status(400).json({ error: "Too many messages in batch (max 100)" });
+      }
+
+      // Transform messages to database format with validation
+      const dbMessages = messages.map(msg => {
+        // Validate required fields
+        if (!msg.role || !['user', 'assistant'].includes(msg.role)) {
+          throw new Error(`Invalid role: ${msg.role}`);
+        }
+        if (!msg.content || typeof msg.content !== 'string') {
+          throw new Error('Content is required and must be a string');
+        }
+        if (msg.content.length > 10000) {
+          throw new Error('Message content too long (max 10000 characters)');
+        }
+        
+        return {
+          messageId: msg.id || crypto.randomUUID(),
+          role: msg.role,
+          content: msg.content,
+          timestamp: new Date(msg.timestamp || Date.now())
+        };
+      });
+      
+      // Save messages to database
+      await storage.saveChatMessages(session.id, dbMessages);
+      
+      res.json({ success: true, saved: messages.length });
+    } catch (error) {
+      console.error("Error saving chat messages:", error);
+      res.status(500).json({ error: "Failed to save chat messages" });
+    }
+  });
+
+  // GET /api/chat/context - get comprehensive context through MCP
+  app.get("/api/chat/context", isAuthenticatedOrJWT, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // Import the unified MCP context resolver
+      const { createUnifiedMCPResolver } = await import('./mcp/contextResolver.js');
+      
+      // Create and use the MCP resolver to get context
+      const mcpResolver = await createUnifiedMCPResolver(userId);
+      const context = await mcpResolver.buildComprehensiveContext();
+      
+      console.log(`[Chat API] Provided MCP context for user ${userId}`);
+      res.json(context);
+    } catch (error) {
+      console.error('[Chat API] Error fetching MCP context:', error);
+      res.status(500).json({ 
+        error: 'Failed to fetch context',
+        integrationStatus: { hasGoogle: false, hasSalesforce: false, hasGmail: false },
+        calendarEvents: { events: [], total: 0 },
+        opportunities: { opportunities: [], total: 0 },
+        recentContacts: { contacts: [], total: 0 }
+      });
+    }
+  });
+
+  // POST /api/chat - send message and get AI response
+  app.post("/api/chat", isAuthenticatedOrJWT, requireWriteAccess, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub || req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const { message, conversationId } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ error: "Message is required and must be a string" });
+      }
+
+      if (!conversationId || typeof conversationId !== 'string') {
+        return res.status(400).json({ error: "conversationId is required" });
+      }
+
+      // Ensure session exists
+      const session = await storage.upsertChatSession(userId, conversationId);
+
+      // Get MCP context for the AI
+      const { createUnifiedMCPResolver } = await import('./mcp/contextResolver.js');
+      const mcpResolver = await createUnifiedMCPResolver(userId);
+      const context = await mcpResolver.buildComprehensiveContext();
+
+      // Load existing conversation history
+      const existingMessages = await storage.getChatMessagesByConversationId(conversationId, 50, 0);
+
+      // Format messages for OpenAI
+      const formattedMessages = existingMessages.map(msg => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content
+      }));
+
+      // Add current user message
+      formattedMessages.push({ role: 'user', content: message });
+
+      // Prepare system message with context
+      const systemMessage = {
+        role: 'system' as const,
+        content: `You are Opus, an emotional, personal AI partner. Use the provided context to give helpful, personalized responses.
+
+Integration Status:
+- Google Calendar: ${context.integrationStatus.hasGoogle ? 'Connected' : 'Not Connected'}
+- Salesforce CRM: ${context.integrationStatus.hasSalesforce ? 'Connected' : 'Not Connected'}  
+- Gmail: ${context.integrationStatus.hasGmail ? 'Connected' : 'Not Connected'}
+
+Available Data:
+- Calendar Events: ${context.calendarEvents.total} events
+- CRM Opportunities: ${context.opportunities.total} opportunities
+- Recent Contacts: ${context.recentContacts.total} contacts
+
+IMPORTANT: Only use real data from the context above. Never fabricate or use sample data like "Acme Corp", "DataFlow Systems", etc.`
+      };
+
+      // Call OpenAI
+      const { OpenAI } = await import('openai');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [systemMessage, ...formattedMessages],
+        temperature: 0.7,
+        max_tokens: 1000
+      });
+
+      const assistantMessage = completion.choices[0]?.message?.content || "I'm sorry, I couldn't generate a response.";
+
+      // Save both user and assistant messages with proper chronological timestamps
+      const userTimestamp = new Date();
+      const assistantTimestamp = new Date(userTimestamp.getTime() + 1); // Ensure assistant is 1ms later
+      
+      const messagesToSave = [
+        {
+          messageId: crypto.randomUUID(),
+          role: 'user' as const,
+          content: message,
+          timestamp: userTimestamp
+        },
+        {
+          messageId: crypto.randomUUID(),
+          role: 'assistant' as const,
+          content: assistantMessage,
+          timestamp: assistantTimestamp
+        }
+      ];
+
+      await storage.saveChatMessages(session.id, messagesToSave);
+
+      // Return the AI response
+      res.json({
+        message: assistantMessage,
+        conversationId,
+        timestamp: Date.now()
+      });
+
+    } catch (error) {
+      console.error("Error processing chat message:", error);
+      res.status(500).json({ error: "Failed to process chat message" });
+    }
+  });
+
+  // Insights routes for Rhythm and Opus feed
+  app.get("/api/insights/rhythm", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const rhythmItems = await generateRhythmInsights(userId);
+      res.json({ items: rhythmItems });
+    } catch (error) {
+      console.error("Error generating rhythm insights:", error);
+      res.json({ items: [] }); // Fail silent as per spec
+    }
+  });
+
+  app.get("/api/insights/opus-feed", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const opusFeedItems = await generateOpusFeed(userId);
+      res.json({ items: opusFeedItems });
+    } catch (error) {
+      console.error("Error generating opus feed:", error);
+      res.json({ items: [] }); // Fail silent as per spec
+    }
+  });
+
   // Salesforce CRM integration routes
-  app.get("/api/integrations/salesforce/auth", isAuthenticated, async (req, res) => {
+  app.get("/api/integrations/salesforce/auth", isAuthenticatedOrGuest, async (req, res) => {
     try {
       if (!process.env.SALESFORCE_CLIENT_ID || !process.env.SALESFORCE_CLIENT_SECRET) {
         return res.status(501).json({
@@ -247,7 +1071,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/salesforce/status", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const salesforceIntegration = await storage.getSalesforceIntegration(userId);
@@ -265,7 +1089,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/integrations/salesforce", isAuthenticated, async (req: any, res) => {
+  app.delete("/api/integrations/salesforce", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       await storage.deleteSalesforceIntegration(userId);
@@ -281,7 +1105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Salesforce CRM data routes
-  app.get("/api/integrations/salesforce/leads", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/leads", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');
@@ -294,7 +1118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/salesforce/opportunities", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/opportunities", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');
@@ -307,7 +1131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/integrations/salesforce/contacts", isAuthenticated, async (req: any, res) => {
+  app.get("/api/integrations/salesforce/contacts", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { salesforceCrmService } = await import('./services/salesforceCrm');
@@ -323,6 +1147,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Google Calendar data routes
   app.get("/api/calendar/events", isAuthenticated, async (req: any, res) => {
     try {
+      // Return mock data only if explicitly in demo mode with demo header
+      if (process.env.VITE_DEMO_MODE === "true" && req.headers["x-demo"] === "1") {
+        const { loadGuestSeedData } = await import('./services/guestAuth');
+        try {
+          const seedData = loadGuestSeedData();
+          return res.json(seedData.calendar.events);
+        } catch (error) {
+          console.warn("Could not load demo data, falling back to empty array");
+          return res.json([]);
+        }
+      }
+
       const userId = req.user.claims.sub;
       const { googleCalendarService } = await import('./services/googleCalendar');
       
@@ -334,7 +1170,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/calendar/today", isAuthenticated, async (req: any, res) => {
+  app.get("/api/calendar/today", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { googleCalendarService } = await import('./services/googleCalendar');
@@ -347,7 +1183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/calendar/events/:eventId/ensure-call", isAuthenticated, async (req: any, res) => {
+  app.post("/api/calendar/events/:eventId/ensure-call", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const { eventId } = req.params;
@@ -530,7 +1366,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new company
-  app.post("/api/companies", async (req, res) => {
+  app.post("/api/companies", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       const data = insertCompanySchema.parse(req.body);
       
@@ -563,7 +1399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new contact
-  app.post("/api/contacts", async (req, res) => {
+  app.post("/api/contacts", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       const data = insertContactSchema.parse(req.body);
       const contact = await storage.createContact(data);
@@ -577,7 +1413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create new call
-  app.post("/api/calls", async (req, res) => {
+  app.post("/api/calls", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       const data = insertCallSchema.parse(req.body);
       const call = await storage.createCall(data);
@@ -600,7 +1436,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Generate AI call prep
-  app.post("/api/calls/:id/generate-prep", async (req, res) => {
+  app.post("/api/calls/:id/generate-prep", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
     try {
       console.log(`[MCP-Route] Starting call prep generation for call: ${req.params.id}`);
       
@@ -863,7 +1699,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Prep notes API endpoints
-  app.get("/api/prep-notes", async (req: any, res) => {
+  app.get("/api/prep-notes", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -887,7 +1723,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
-  app.put("/api/prep-notes", async (req: any, res) => {
+  app.put("/api/prep-notes", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       if (!req.user) {
         return res.status(401).json({ message: "Unauthorized" });
@@ -1051,7 +1887,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
 
   // Sales Coach routes
   // Create a new coach session
-  app.post("/api/coach/sessions", isAuthenticated, async (req: any, res) => {
+  app.post("/api/coach/sessions", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionData = insertCoachSessionSchema.parse({
@@ -1073,7 +1909,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Get a specific coach session
-  app.get("/api/coach/sessions/:id", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/sessions/:id", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1096,7 +1932,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Update a coach session (e.g., change status, end session)
-  app.patch("/api/coach/sessions/:id", isAuthenticated, async (req: any, res) => {
+  app.patch("/api/coach/sessions/:id", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1126,7 +1962,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // End a coach session (convenience endpoint)
-  app.post("/api/coach/sessions/:id/end", isAuthenticated, async (req: any, res) => {
+  app.post("/api/coach/sessions/:id/end", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1155,7 +1991,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Get transcripts for a session
-  app.get("/api/coach/sessions/:id/transcripts", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/sessions/:id/transcripts", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1179,7 +2015,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Get suggestions for a session
-  app.get("/api/coach/sessions/:id/suggestions", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/sessions/:id/suggestions", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const sessionId = req.params.id;
@@ -1203,7 +2039,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Get or create session for a specific event
-  app.get("/api/coach/sessions/event/:eventId", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/sessions/event/:eventId", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
       const eventId = req.params.eventId;
@@ -1216,8 +2052,139 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
+  // AI Chat endpoint with MCP integration for Opus AI Chat interface
+  app.post("/api/coach/chat", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const { message, eventId, context } = req.body;
+
+      if (!message || typeof message !== 'string') {
+        return res.status(400).json({ message: "Valid message is required" });
+      }
+
+      console.log(`[Coach-Chat] Processing message for user ${userId}: "${message.substring(0, 50)}..."`);
+
+      // Create MCP server for accessing calendar and Salesforce data
+      const mcpServer = await createMCPServer({ userId, storage });
+
+      // Get available MCP tools for OpenAI function calling
+      const availableFunctions = mcpServer.getOpenAIFunctions();
+      
+      // Wrap each function with type property for OpenAI API
+      const availableTools = availableFunctions.map(func => ({
+        type: "function" as const,
+        function: func
+      }));
+
+      console.log(`[Coach-Chat] ${availableTools.length} MCP tools available for AI`);
+
+      // Build system prompt with sales coaching context
+      const systemPrompt = `You are Opus, an expert AI Sales Coach for Momentum AI. You help sales professionals prepare for calls, analyze their pipeline, and provide strategic guidance.
+
+You have access to the user's:
+- Google Calendar events and meeting history
+- Salesforce CRM data (opportunities, accounts, contacts)
+- Past call preparation notes and history
+
+When users ask about their calendar, meetings, pipeline, opportunities, or deals, use the available tools to fetch real-time data. Always provide specific, actionable advice based on actual data.
+
+Be concise, professional, and focus on helping the user close more deals. Use sales methodologies like MEDDIC, BANT, and SPIN when relevant.`;
+
+      // Initialize OpenAI client
+      const openai = new OpenAI({ 
+        apiKey: process.env.OPENAI_API_KEY 
+      });
+
+      // Build conversation messages
+      const messages: any[] = [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: message }
+      ];
+
+      // Make initial request with available MCP tools
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages,
+        tools: availableTools.length > 0 ? availableTools : undefined,
+        tool_choice: availableTools.length > 0 ? "auto" : undefined,
+        temperature: 0.7,
+        max_tokens: 1000
+      });
+
+      let finalResponse = response;
+
+      // Handle tool calls if the AI wants to use MCP functions
+      if (response.choices[0].message.tool_calls) {
+        console.log(`[Coach-Chat] AI requested ${response.choices[0].message.tool_calls.length} tool calls`);
+
+        const toolMessages = [...messages, response.choices[0].message];
+
+        // Execute each tool call
+        for (const toolCall of response.choices[0].message.tool_calls) {
+          try {
+            // Type guard for function tool calls
+            if (toolCall.type !== 'function' || !('function' in toolCall)) {
+              continue;
+            }
+            
+            const toolName = toolCall.function.name;
+            const toolArgs = JSON.parse(toolCall.function.arguments);
+            
+            console.log(`[Coach-Chat] Executing MCP tool: ${toolName} with args:`, toolArgs);
+            const toolResult = await mcpServer.executeTool(toolName as any, toolArgs);
+            
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify(toolResult)
+            });
+
+            console.log(`[Coach-Chat] Tool ${toolName} executed successfully`);
+          } catch (toolError) {
+            console.error(`[Coach-Chat] Tool execution failed:`, toolError);
+            toolMessages.push({
+              role: "tool",
+              tool_call_id: toolCall.id,
+              content: JSON.stringify({ 
+                error: "Tool execution failed", 
+                details: (toolError as Error).message 
+              })
+            });
+          }
+        }
+
+        // Get final response with tool results
+        console.log(`[Coach-Chat] Getting final response with tool results`);
+        finalResponse = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: toolMessages,
+          temperature: 0.7,
+          max_tokens: 1000
+        });
+      }
+
+      const aiResponse = finalResponse.choices[0].message.content;
+
+      console.log(`[Coach-Chat] Successfully generated response for user ${userId}`);
+
+      res.json({
+        response: aiResponse,
+        context: context || 'sales_coaching',
+        timestamp: new Date().toISOString(),
+        toolsUsed: response.choices[0].message.tool_calls?.length || 0
+      });
+
+    } catch (error) {
+      console.error("[Coach-Chat] Error processing chat message:", error);
+      res.status(500).json({ 
+        message: "Failed to process chat message",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // WebSocket status endpoint
-  app.get("/api/coach/ws/status", isAuthenticated, async (req: any, res) => {
+  app.get("/api/coach/ws/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       // This will be available after the server is created
       res.json({
@@ -1232,8 +2199,162 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
-  // Create sample data endpoint for demo
+  // Opus chat endpoint - AI sales partner with real-time data access
+  app.post("/api/opus/chat", isAuthenticatedOrGuest, async (req, res) => {
+    try {
+      const { messages } = req.body;
+      const userId = req.user?.claims?.sub || req.user?.sub;
+      
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ reply: "Invalid message format" });
+      }
+
+      // Import required modules dynamically
+      const OpenAI = (await import('openai')).default;
+      const { MCP_TOOL_DEFINITIONS } = await import('./mcp/types/mcp-types.js');
+      const { MCP_TOOL_HANDLERS } = await import('./mcp/tools/index.js');
+      
+      const openai = new OpenAI({
+        apiKey: process.env.OPENAI_API_KEY,
+      });
+
+      // Create MCP context for tool execution
+      const mcpContext = {
+        userId: userId,
+        storage: storage
+      };
+
+      // Prepare OpenAI tool definitions from MCP tools - using new tools format
+      const tools = Object.values(MCP_TOOL_DEFINITIONS).map(tool => ({
+        type: "function",
+        function: tool
+      }));
+
+      // System prompt for Opus as ultimate sales partner
+      const systemPrompt = `You are Opus, the ultimate AI sales partner and coach. You have access to real-time data about:
+
+📅 CALENDAR & MEETINGS: Use calendar_meeting_context to get meeting details, attendees, descriptions. Use calendar_attendee_history for previous meetings.
+
+🏢 CRM & SALESFORCE: Use salesforce_contact_lookup, salesforce_opportunity_lookup, salesforce_account_lookup to get real-time CRM data.
+
+📊 CALL HISTORY & PREP: Use call_history_lookup and prep_notes_search to access previous calls and preparation notes.
+
+📧 EMAIL CONTEXT: Use gmail_search_threads and gmail_read_thread for email context.
+
+PERSONALITY: You're an experienced sales veteran, direct but supportive. You provide specific, actionable insights based on real data. Always use available tools to get current information before giving advice.
+
+CRITICAL RULES:
+- NEVER provide sample, mock, or placeholder data
+- ALWAYS use available tools to get real information when asked about meetings, contacts, opportunities, or accounts
+- If you can't get real data, say "I couldn't access that information right now" instead of making up data
+- Provide specific insights based on actual data, not generic advice
+- Help with call preparation, objection handling, and sales strategy
+- Be proactive - if someone asks about a meeting, look up attendees, company info, and previous interactions
+- Use data to give tactical recommendations: "Based on your last 3 calls with this prospect..."
+
+RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, then provide actionable recommendations.`;
+
+      // Prepare messages for OpenAI
+      const openaiMessages = [
+        { role: 'system', content: systemPrompt },
+        ...messages.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      ];
+
+      console.log('[OpusChat] Processing message with', tools.length, 'available tools');
+
+      // Call OpenAI with NEW tools parameter (not deprecated functions)
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: openaiMessages,
+        tools: tools,
+        tool_choice: 'auto',
+        temperature: 0.7,
+        max_tokens: 1000
+      });
+
+      const responseMessage = completion.choices[0]?.message;
+
+      // Handle tool calls (new format)
+      if (responseMessage?.tool_calls && responseMessage.tool_calls.length > 0) {
+        const toolCall = responseMessage.tool_calls[0]; // Handle first tool call
+        const functionName = toolCall.function.name;
+        const functionArgs = JSON.parse(toolCall.function.arguments || '{}');
+        
+        console.log(`[OpusChat] Executing function: ${functionName}`);
+        
+        // Execute the MCP tool
+        const toolHandler = MCP_TOOL_HANDLERS[functionName as keyof typeof MCP_TOOL_HANDLERS];
+        if (toolHandler) {
+          try {
+            const toolResult = await toolHandler(functionArgs, mcpContext);
+            
+            // Create follow-up messages with tool result
+            const followUpMessages = [
+              ...openaiMessages,
+              {
+                role: 'assistant',
+                content: responseMessage.content || '',
+                tool_calls: responseMessage.tool_calls
+              },
+              {
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: JSON.stringify(toolResult)
+              }
+            ];
+
+            // Get final response with tool data
+            const finalCompletion = await openai.chat.completions.create({
+              model: 'gpt-4o',
+              messages: followUpMessages,
+              temperature: 0.7,
+              max_tokens: 1000
+            });
+
+            const finalResponse = finalCompletion.choices[0]?.message?.content || 
+              "I have the data but couldn't formulate a response. Please try asking again.";
+
+            res.json({ reply: finalResponse });
+            
+          } catch (toolError) {
+            console.error(`[OpusChat] Tool execution error for ${functionName}:`, toolError);
+            res.json({ 
+              reply: `I tried to look up that information but encountered an issue. Here's what I can tell you generally: ${responseMessage.content || "Let me know what specific information you need and I'll help you out."}` 
+            });
+          }
+        } else {
+          console.error(`[OpusChat] Unknown function: ${functionName}`);
+          res.json({ 
+            reply: responseMessage.content || "I'm here to help with your sales questions! What would you like to know?"
+          });
+        }
+      } else {
+        // Direct response without function call
+        const reply = responseMessage?.content || "I'm here to help with your sales strategy! What can I assist you with?";
+        res.json({ reply });
+      }
+
+    } catch (error) {
+      console.error("[OpusChat] Error:", error);
+      res.status(500).json({ 
+        reply: "I'm having trouble accessing my data sources right now. Please try again in a moment." 
+      });
+    }
+  });
+
+  // Create sample data endpoint for demo (DISABLED - no sample data in production)
   app.post("/api/demo/setup", async (req, res) => {
+    // Import FLAGS to check if mocks are enabled
+    const { FLAGS } = await import('./config/flags.js');
+    
+    if (!FLAGS.USE_MOCKS && !FLAGS.DEMO_MODE) {
+      return res.status(403).json({ 
+        message: "Demo data creation is disabled. Enable USE_MOCKS=true to use sample data." 
+      });
+    }
     try {
       // Create DataFlow Systems company
       const company = await storage.createCompany({
@@ -1336,7 +2457,7 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
   });
 
   // Enhanced Methodology-Aware Call Prep Generation
-  app.post("/api/calls/:id/generate-enhanced-prep", isAuthenticated, async (req: any, res) => {
+  app.post("/api/calls/:id/generate-enhanced-prep", isAuthenticatedOrGuest, requireWriteAccess, async (req: any, res) => {
     try {
       const callId = req.params.id;
       const userId = req.user.claims.sub;
@@ -1404,11 +2525,264 @@ ${research.strategicExpansion?.join('\n• ') || 'N/A'}`;
     }
   });
 
+  // Helper functions for robust prep sheet generation
+  function buildBasePrep(event: any, attendees: any): any {
+    const notesSection = {
+      id: "notes",
+      title: "Notes",
+      type: "notes",
+      content: "",
+      expanded: true, // Always pinned open
+      editable: true
+    };
+
+    return {
+      meta: {
+        title: event.title || "Call",
+        time: `${new Date(event.start).toLocaleTimeString()} - ${event.end ? new Date(event.end).toLocaleTimeString() : 'TBD'}`,
+        attendees: attendees || [],
+        source: "BasePrep"
+      },
+      sections: [
+        notesSection, // GUARANTEED at index 0
+        {
+          id: "objectives", 
+          title: "Call Objectives",
+          items: [
+            `Discuss: ${event.title || 'meeting topic'}`,
+            "Build rapport and understand current situation",
+            "Identify pain points and challenges", 
+            "Determine next steps and timeline"
+          ]
+        },
+        {
+          id: "agenda",
+          title: "Suggested Agenda", 
+          items: [
+            "Opening and introductions (5 min)",
+            "Current situation and challenges (15 min)",
+            "Exploring potential solutions (20 min)",
+            "Next steps and timeline (10 min)"
+          ]
+        },
+        {
+          id: "questions",
+          title: "Discovery Questions",
+          items: [
+            "What are your main priorities this quarter?",
+            "What challenges are you currently facing with [relevant area]?",
+            "How are you handling this today?",
+            "What would an ideal solution look like for your team?"
+          ]
+        },
+        {
+          id: "next_steps",
+          title: "Next Steps",
+          items: [
+            "Send follow-up email with recap",
+            "Schedule next meeting",
+            "Prepare relevant resources/demos"
+          ]
+        }
+      ]
+    };
+  }
+
+  function buildEnrichedPrep(ctx: any): any {
+    const basePrep = buildBasePrep(ctx.event, ctx.attendees);
+    
+    // GUARANTEED Notes section at index 0
+    const notesSection = basePrep.sections[0]; // This is always Notes from buildBasePrep
+    
+    // Enhance sections with CRM data
+    return {
+      ...basePrep,
+      meta: {
+        ...basePrep.meta,
+        account: ctx.account ? {
+          name: ctx.account.name,
+          industry: ctx.account.industry,
+          website: ctx.account.website
+        } : null,
+        source: "Enriched"
+      },
+      sections: [
+        notesSection, // GUARANTEED Notes at index 0
+        {
+          id: "insights",
+          title: "CRM Insights",
+          items: [
+            `Account: ${ctx.account?.name || 'Unknown'}`,
+            `Industry: ${ctx.account?.industry || 'Not specified'}`,
+            `Previous interactions: ${ctx.contacts?.length || 0} contacts found`,
+            ctx.opportunity ? `Opportunity: ${ctx.opportunity.name} (${ctx.opportunity.stage})` : 'No active opportunity found'
+          ]
+        },
+        ...basePrep.sections.slice(1) // Rest of sections
+      ]
+    };
+  }
+
+  function scoreMatch(ctx: any): { score: number; reason: string } {
+    let score = 0;
+    let reason = "none";
+    
+    // +40 if attendee email matches CRM Contact email
+    if (ctx.crmContacts?.length) {
+      score += 40;
+      reason = "email_match";
+    }
+    
+    // +25 if calendar title contains exact Account/Opportunity name  
+    if (ctx.crmAccounts?.length && ctx.event.title?.toLowerCase().includes(ctx.crmAccounts[0]?.name?.toLowerCase())) {
+      score += 25;
+      if (reason === "none") reason = "name_match";
+    }
+    
+    // +15 if attendee domain matches Account website domain
+    if (ctx.attendeeDomains?.length && ctx.crmAccounts?.some((acc: any) => 
+        ctx.attendeeDomains.some((domain: string) => acc.website?.includes(domain)))) {
+      score += 15; 
+      if (reason === "none") reason = "domain_match";
+    }
+    
+    // +10 if recent email threads found
+    if (ctx.emailThreads?.length) {
+      score += 10;
+    }
+    
+    // +10 if call history exists
+    if (ctx.callHistory?.length) {
+      score += 10;
+    }
+    
+    return { score: Math.max(0, Math.min(100, score)), reason };
+  }
+
+  // GUARANTEED Prep sheet generation route - NEVER FAILS (200 always) - READ-ONLY
+  app.post("/api/prep-sheet/generate", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      // Extract event with fallback to ensure we always have something to work with
+      let event = req.body?.event;
+      if (!event) {
+        event = { 
+          title: "Meeting", 
+          start: new Date().toISOString(),
+          attendees: []
+        };
+      }
+
+      const userId = req.user?.claims?.sub || 'anonymous';
+
+      // 1) Extract attendees and normalize
+      const attendees = (event.attendees || []).map((attendee: any) => {
+        if (typeof attendee === 'string') return attendee;
+        return attendee.email || attendee.name || attendee;
+      });
+      
+      const attendeeDomains = attendees
+        .filter((a: string) => a.includes('@'))
+        .map((email: string) => email.split('@')[1])
+        .filter(Boolean);
+
+      // 2) Mock CRM data lookup (in real implementation, this would be actual integrations)
+      const mockCrmLookup = async () => {
+        // Simulate CRM lookup delay
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // Mock some results based on domain
+        const hasCommonDomain = attendeeDomains.some(domain => 
+          ['gmail.com', 'company.com', 'acme.com'].includes(domain)
+        );
+        
+        return {
+          crmContacts: hasCommonDomain ? [{ email: attendees[0], name: 'Mock Contact' }] : [],
+          crmAccounts: hasCommonDomain ? [{ name: 'Mock Account', industry: 'Technology' }] : [],
+          crmOpps: [],
+          emailThreads: hasCommonDomain ? ['Recent email thread found'] : [],
+          callHistory: []
+        };
+      };
+
+      // 3) Attempt data enrichment (non-blocking)
+      let crmData;
+      try {
+        crmData = await mockCrmLookup();
+        console.log('CRM lookup completed for:', attendees);
+      } catch (error: any) {
+        console.log('CRM lookup failed, using base data:', error?.message);
+        crmData = { crmContacts: [], crmAccounts: [], crmOpps: [], emailThreads: [], callHistory: [] };
+      }
+
+      // 4) Score the match
+      const matchContext = {
+        event,
+        attendees,
+        attendeeDomains,
+        ...crmData
+      };
+      
+      const { score, reason } = scoreMatch(matchContext);
+      const matched = score >= 40;
+
+      // 5) Build prep based on confidence
+      let prep;
+      if (!matched) {
+        prep = buildBasePrep(event, attendees);
+      } else {
+        prep = buildEnrichedPrep({
+          event,
+          attendees,
+          account: crmData.crmAccounts[0],
+          opportunity: crmData.crmOpps[0],
+          contacts: crmData.crmContacts
+        });
+      }
+
+      // 6) Always return success with prep - SPEC COMPLIANT FORMAT
+      return res.status(200).json({
+        status: "ok",
+        prep,
+        confidence: score,
+        matched,
+        matchReason: reason
+      });
+      
+    } catch (error) {
+      console.error("prep-generate error", error);
+    }
+
+    // ULTIMATE FALLBACK - this code ALWAYS runs if we get here
+    const emergencyPrep = {
+      meta: { title: "Call", time: "TBD", attendees: [], source: "Emergency" },
+      sections: [{
+        id: "notes",
+        title: "Notes", 
+        type: "notes",
+        content: "",
+        expanded: true,
+        editable: true
+      }]
+    };
+
+    return res.status(200).json({
+      status: "ok",
+      prep: emergencyPrep,
+      confidence: 0,
+      matched: false,
+      matchReason: "emergency"
+    });
+  });
+
   const httpServer = createServer(app);
   
   // Initialize Coach WebSocket service
   const coachWS = new CoachWebSocketService(httpServer);
   console.log('[Coach] WebSocket service initialized');
+  
+  // Initialize Voice Recorder WebSocket service for Silent Call Recorder MVP
+  const voiceRecorderWS = new VoiceRecorderWebSocketService(httpServer);
+  console.log('[Voice-Recorder] WebSocket service initialized');
   
   return httpServer;
 }

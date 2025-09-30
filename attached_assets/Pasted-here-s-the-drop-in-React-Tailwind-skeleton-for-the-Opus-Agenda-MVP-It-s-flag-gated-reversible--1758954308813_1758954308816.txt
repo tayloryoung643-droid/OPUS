@@ -1,0 +1,341 @@
+here’s the drop-in React + Tailwind skeleton for the “Opus” Agenda MVP. It’s flag-gated, reversible, and wires your existing services without changing them.
+
+1) App.tsx – flag-gate route
+// App.tsx
+import { useEffect, useState } from "react";
+import OpusAgenda from "./pages/OpusAgenda";
+import LegacyApp from "./LegacyApp"; // your existing entry
+
+const ENABLE_OPUS = import.meta.env.VITE_ENABLE_OPUS_UI === "true";
+
+export default function App() {
+  if (ENABLE_OPUS) return <OpusAgenda />;
+  return <LegacyApp />;
+}
+
+2) /pages/OpusAgenda.tsx – main page
+// pages/OpusAgenda.tsx
+import { useMemo, useState } from "react";
+import OpusTopNav from "../components/Opus/TopNav";
+import OpusHeroGreeting from "../components/Opus/HeroGreeting";
+import OpusAgendaList from "../components/Opus/AgendaList";
+import OpusPrepSheet from "../components/Opus/PrepSheet";
+import OpusInsights from "../components/Opus/Insights";
+import OpusPartnerCircle from "../components/Opus/PartnerCircle";
+
+export type CalendarEvent = {
+  id: string;
+  title: string;
+  company?: string;
+  start: string; // ISO
+  attendees?: string[];
+};
+
+export default function OpusAgenda() {
+  const [viewMode, setViewMode] = useState<"GREETING" | "AGENDA">("GREETING");
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+
+  const onAgendaTabClick = () => setViewMode("AGENDA");
+  const onSelectEvent = (ev: CalendarEvent) => {
+    setViewMode("AGENDA");
+    setSelectedEvent(ev);
+  };
+
+  const firstName = useMemo(() => "Taylor", []); // replace with current user
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-100">
+      <div className="mx-auto max-w-7xl px-4 md:px-6">
+        <OpusTopNav active="Agenda" onAgendaClick={onAgendaTabClick} />
+
+        {/* Greeting hides once Agenda is clicked */}
+        {viewMode === "GREETING" && (
+          <OpusHeroGreeting firstName={firstName} />
+        )}
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-12 md:items-start">
+          {/* Left: Agenda (always pinned) */}
+          <aside className="md:col-span-4">
+            <div className="sticky top-4 space-y-4">
+              <OpusAgendaList onSelect={onSelectEvent} />
+            </div>
+          </aside>
+
+          {/* Center: Prep sheet when an event is selected, else placeholder */}
+          <main className="md:col-span-6">
+            <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-4 backdrop-blur">
+              <OpusPrepSheet event={selectedEvent} />
+            </div>
+          </main>
+
+          {/* Right: Insights + Partner circle (always visible) */}
+          <aside className="md:col-span-2">
+            <div className="sticky top-4 space-y-4">
+              <OpusInsights />
+              <OpusPartnerCircle />
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+3) /components/Opus/TopNav.tsx
+// components/Opus/TopNav.tsx
+type Props = { active: "Agenda"; onAgendaClick: () => void };
+
+export default function OpusTopNav({ active, onAgendaClick }: Props) {
+  const Tab = ({
+    name,
+    active,
+    onClick,
+    disabled,
+  }: { name: string; active?: boolean; onClick?: () => void; disabled?: boolean }) => (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "px-3 py-2 rounded-lg text-sm font-medium",
+        active ? "text-cyan-300" : "text-slate-300/80 hover:text-slate-100",
+        disabled ? "opacity-40 cursor-not-allowed" : ""
+      ].join(" ")}
+    >
+      {name}
+    </button>
+  );
+
+  return (
+    <header className="flex items-center justify-between py-5">
+      <div className="flex items-center gap-3">
+        <div className="h-8 w-8 rounded-xl bg-gradient-to-tr from-cyan-400 to-violet-500" />
+        <span className="text-xl font-semibold tracking-tight">Opus</span>
+      </div>
+      <nav className="flex items-center gap-2">
+        <Tab name="Agenda" active={active === "Agenda"} onClick={onAgendaClick} />
+        <Tab name="Pipeline" disabled />
+        <Tab name="Tasks" disabled />
+        <Tab name="Coach" disabled />
+        <Tab name="Insights" disabled />
+      </nav>
+      <div className="flex items-center gap-3 opacity-70">
+        <span className="text-sm">⚙️</span>
+        <span className="text-sm">❓</span>
+        <div className="h-7 w-7 rounded-full bg-slate-700" />
+      </div>
+    </header>
+  );
+}
+
+4) /components/Opus/HeroGreeting.tsx
+// components/Opus/HeroGreeting.tsx
+export default function OpusHeroGreeting({ firstName }: { firstName: string }) {
+  return (
+    <section className="my-6 rounded-2xl border border-white/5 bg-slate-900/40 p-6 backdrop-blur">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-5xl md:text-6xl font-extrabold tracking-tight">
+            Good morning,<br />{firstName}
+          </h1>
+          <p className="mt-3 text-slate-300/80">
+            Review your agenda and jump into prep when you’re ready.
+          </p>
+        </div>
+        {/* decorative gradient ring */}
+        <div className="hidden md:block">
+          <div
+            className="h-36 w-36 rounded-full"
+            style={{
+              background:
+                "conic-gradient(from 0deg, #22d3ee, #a78bfa, #22d3ee)",
+              filter: "blur(0.3px)"
+            }}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+5) /components/Opus/AgendaList.tsx
+// components/Opus/AgendaList.tsx
+import { useEffect, useState } from "react";
+import type { CalendarEvent } from "../../pages/OpusAgenda";
+// @ts-ignore – plug your real calendar service:
+import { calendarService } from "../../services/calendarService";
+
+type Props = { onSelect: (e: CalendarEvent) => void };
+
+export default function OpusAgendaList({ onSelect }: Props) {
+  const [events, setEvents] = useState<CalendarEvent[] | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await calendarService.getTodayEvents(); // must resolve to CalendarEvent[]
+        if (mounted) setEvents(res);
+      } catch {
+        // graceful fallback
+        if (mounted)
+          setEvents([
+            { id: "mock-1", title: "Acme Corp — Discovery", company: "Acme Corp", start: new Date().toISOString(), attendees: ["ceo@acme.com"] },
+            { id: "mock-2", title: "Globex SG — Demo", company: "Globex SG", start: new Date(Date.now()+4e6).toISOString(), attendees: ["it@globex.sg"] },
+          ]);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  return (
+    <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-4 backdrop-blur">
+      <h2 className="mb-3 text-lg font-semibold text-cyan-300">Today’s Agenda</h2>
+      <div className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+        {(events ?? []).map(ev => (
+          <button
+            key={ev.id}
+            onClick={() => onSelect(ev)}
+            className="w-full rounded-xl border border-white/5 bg-slate-900/50 p-3 text-left hover:bg-slate-800/60 transition"
+          >
+            <div className="text-sm opacity-80">
+              {new Date(ev.start).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </div>
+            <div className="text-base font-semibold">{ev.title}</div>
+            {ev.company && <div className="text-sm opacity-70">{ev.company}</div>}
+          </button>
+        ))}
+        {!events && (
+          <>
+            <div className="h-16 animate-pulse rounded-xl bg-white/5" />
+            <div className="h-16 animate-pulse rounded-xl bg-white/5" />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+6) /components/Opus/PrepSheet.tsx – wrapper for your existing PrepSheetView
+// components/Opus/PrepSheet.tsx
+import type { CalendarEvent } from "../../pages/OpusAgenda";
+// @ts-ignore – plug your real prep sheet view component:
+import PrepSheetView from "../PrepSheetView";
+// @ts-ignore – plug your SFDC service:
+import { salesforceService } from "../../services/salesforceService";
+
+export default function OpusPrepSheet({ event }: { event: CalendarEvent | null }) {
+  // Empty state before selection
+  if (!event) {
+    return (
+      <div className="flex h-64 items-center justify-center text-slate-300/70">
+        Select an event from your agenda to generate a call prep sheet.
+      </div>
+    );
+  }
+
+  // Minimal context resolver; safe if SFDC lookup fails
+  const findAccount = async () => {
+    try {
+      const email = event.attendees?.[0];
+      if (!email) return null;
+      return await salesforceService.findAccountByEmail(email);
+    } catch {
+      return null;
+    }
+  };
+
+  // Pass raw event + lazy account resolver down to your existing view
+  return (
+    <PrepSheetView
+      event={event}
+      getSalesforceAccount={findAccount}
+      // Keep notes pinned, and always render even if no account
+      options={{ alwaysRender: true, pinNotes: true }}
+    />
+  );
+}
+
+7) /components/Opus/Insights.tsx
+// components/Opus/Insights.tsx
+export default function OpusInsights() {
+  const attained = 480_000;
+  const target = 1_000_000;
+  const pct = Math.min(100, Math.round((attained / target) * 100));
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-4">
+        <h3 className="mb-2 text-cyan-300 font-semibold">Quarter insights</h3>
+        <div className="text-xl font-bold">${(attained/1000).toFixed(0)}K <span className="text-slate-300/70">/ $1M target</span></div>
+        <div className="mt-3 h-2 w-full rounded-full bg-white/10">
+          <div className="h-2 rounded-full bg-cyan-400" style={{ width: `${pct}%` }} />
+        </div>
+        <div className="mt-2 text-xs text-slate-400">You’re top 20% in your segment.</div>
+      </div>
+
+      <div className="rounded-2xl border border-white/5 bg-slate-900/40 p-4">
+        <h3 className="mb-2 text-cyan-300 font-semibold">Streaks</h3>
+        <div className="text-sm">3 days in a row</div>
+        <div className="text-xs opacity-70">•• Follow-Up Streak</div>
+      </div>
+    </div>
+  );
+}
+
+8) /components/Opus/PartnerCircle.tsx
+// components/Opus/PartnerCircle.tsx
+import { useState } from "react";
+// @ts-ignore – your existing chat modal
+import ChatModal from "../ChatModal";
+
+export default function OpusPartnerCircle() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(true)}
+        aria-label="Open AI Partner"
+        className="grid place-items-center rounded-full h-16 w-16 mx-auto
+                   bg-gradient-to-tr from-cyan-400 to-violet-500 shadow-lg
+                   ring-2 ring-white/10 hover:scale-105 transition"
+      />
+      {open && (
+        <div className="fixed inset-0 z-40 bg-black/40" onClick={() => setOpen(false)}>
+          <div
+            className="fixed right-0 top-0 z-50 h-full w-[360px] bg-slate-900 border-l border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between p-3 border-b border-white/10">
+              <div className="font-semibold">Opus Coach</div>
+              <button onClick={() => setOpen(false)} className="opacity-70 hover:opacity-100">✕</button>
+            </div>
+            <ChatModal /* ensure text-only mode; no audio/video */ />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+9) .env and rollout
+
+Create branch: feat/opus-agenda-ui
+
+Add to .env:
+
+VITE_ENABLE_OPUS_UI=true
+
+
+To rollback: set VITE_ENABLE_OPUS_UI=false (legacy UI returns).
+
+Notes to Agent 3 (keep)
+
+Remove the “Generate Call Prep” and “Draft Follow-Up” buttons entirely.
+
+Behavior: Clicking Agenda hides the greeting, agenda stays pinned left, clicking an event renders the prep sheet to the right. Voice circle & insights remain on the right.
+
+Only Agenda tab is functional; others are placeholders.
+
+Do not modify calendarService, salesforceService, PrepSheetView, or OAuth flows.
+
+If SFDC/account lookup fails, still render a basic prep sheet with notes pinned.

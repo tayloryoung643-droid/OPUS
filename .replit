@@ -15,6 +15,14 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
+localPort = 34489
+externalPort = 8000
+
+[[ports]]
+localPort = 35321
+externalPort = 9000
+
+[[ports]]
 localPort = 35453
 externalPort = 3003
 
@@ -25,6 +33,10 @@ externalPort = 3001
 [[ports]]
 localPort = 40007
 externalPort = 6000
+
+[[ports]]
+localPort = 40409
+externalPort = 8099
 
 [[ports]]
 localPort = 40805
@@ -43,6 +55,22 @@ localPort = 42397
 externalPort = 3000
 
 [[ports]]
+localPort = 43153
+externalPort = 8081
+
+[[ports]]
+localPort = 43301
+externalPort = 6800
+
+[[ports]]
+localPort = 43551
+externalPort = 8080
+
+[[ports]]
+localPort = 46253
+externalPort = 8008
+
+[[ports]]
 localPort = 46549
 externalPort = 4200
 
@@ -53,7 +81,7 @@ PORT = "5000"
 integrations = ["javascript_database:1.0.0", "javascript_openai:1.0.0", "javascript_log_in_with_replit:1.0.0"]
 
 [workflows]
-runButton = "Project"
+runButton = "Restart App"
 
 [[workflows.workflow]]
 name = "Project"
@@ -72,3 +100,20 @@ author = "agent"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Restart App"
+author = 45677158
+mode = "sequential"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pkill -f \"tsx server/index.ts\" || true"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "sleep 2"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"

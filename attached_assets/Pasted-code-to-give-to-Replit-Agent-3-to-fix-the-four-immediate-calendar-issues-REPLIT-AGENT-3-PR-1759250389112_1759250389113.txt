@@ -1,0 +1,311 @@
+code to give to Replit Agent 3 to fix the four immediate calendar issues:
+
+---
+
+## REPLIT AGENT 3 PROMPT
+
+__Task:__ Fix Google Calendar Integration in Opus AI - 4 Critical Issues
+
+__Context:__ The MCP server has Google Calendar tools that are failing silently. Salesforce works but Calendar doesn't return data to the AI. We need to fix error handling, add logging, enhance prompts, and fix date parsing.
+
+__Files to Modify:__
+
+1. `server/mcp/tools/calendar-tools.ts` - Fix error handling and add logging
+2. `server/services/methodologyPrompts.ts` - Enhance prompts to request calendar data
+3. `client/src/components/CalendarView.tsx` - Fix date parsing issues
+4. `server/services/openai.ts` - Add calendar context to AI requests
+
+---
+
+## CODE CHANGES
+
+### 1. Fix Error Handling in calendar-tools.ts
+
+__File:__ `server/mcp/tools/calendar-tools.ts`
+
+Replace the entire file with:
+
+```typescript
+import {
+  calendarMeetingContextSchema,
+  calendarAttendeeHistorySchema,
+  type CalendarEvent,
+  type MCPToolContext
+} from '../types/mcp-types.js';
+
+/**
+ * Google Calendar Meeting Context Tool
+ * Gets details about upcoming or recent meetings from Google Calendar
+ */
+export async function calendarMeetingContext(
+  args: unknown, 
+  context: MCPToolContext
+): Promise<{ events: CalendarEvent[]; total: number }> {
+  const startTime = Date.now();
+  console.log('[MCP-Calendar] calendarMeetingContext called with args:', JSON.stringify(args));
+  
+  try {
+    const params = calendarMeetingContextSchema.parse(args);
+    console.log('[MCP-Calendar] Parsed params:', params);
+    
+    // Import the Google Calendar service dynamically
+    const { googleCalendarService } = await import('../../services/googleCalendar.js');
+    
+    let events: any[] = [];
+    
+    if (params.eventId) {
+      console.log(`[MCP-Calendar] Fetching specific event: ${params.eventId}`);
+      const event = await googleCalendarService.getEventById(context.userId, params.eventId);
+      if (event) {
+        events = [event];
+        console.log(`[MCP-Calendar] Found event: ${event.summary}`);
+      } else {
+        console.warn(`[MCP-Calendar] No event found for ID: ${params.eventId}`);
+      }
+    } else if (params.contactEmail) {
+      console.log(`[MCP-Calendar] Searching events for contact: ${params.contactEmail}`);
+      const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 50);
+      console.log(`[MCP-Calendar] Retrieved ${allEvents.length} total events`);
+      
+      events = allEvents.filter(event => {
+        if (!event.attendees) return false;
+        return event.attendees.some((attendee: any) => 
+          attendee.email === params.contactEmail
+        );
+      });
+      console.log(`[MCP-Calendar] Filtered to ${events.length} events with ${params.contactEmail}`);
+    } else if (params.timeRange) {
+      console.log(`[MCP-Calendar] Searching events in time range: ${params.timeRange.start} to ${params.timeRange.end}`);
+      const startTime = new Date(params.timeRange.start);
+      const endTime = new Date(params.timeRange.end);
+      
+      const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 100);
+      console.log(`[MCP-Calendar] Retrieved ${allEvents.length} total events`);
+      
+      events = allEvents.filter(event => {
+        if (!event.start?.dateTime) return false;
+        const eventTime = new Date(event.start.dateTime);
+        return eventTime >= startTime && eventTime <= endTime;
+      });
+      console.log(`[MCP-Calendar] Filtered to ${events.length} events in time range`);
+    } else {
+      console.log('[MCP-Calendar] Getting default upcoming events');
+      events = await googleCalendarService.getUpcomingEvents(context.userId, 10);
+      console.log(`[MCP-Calendar] Retrieved ${events.length} upcoming events`);
+    }
+    
+    // Transform to standardized format
+    const transformedEvents: CalendarEvent[] = events.map(event => ({
+      id: event.id,
+      summary: event.summary || 'No Title',
+      start: event.start,
+      end: event.end,
+      attendees: params.includeAttendees ? event.attendees?.map((attendee: any) => ({
+        email: attendee.email,
+        displayName: attendee.displayName,
+        responseStatus: attendee.responseStatus
+      })) : undefined,
+      description: event.description,
+      location: event.location
+    }));
+    
+    const duration = Date.now() - startTime;
+    console.log(`[MCP-Calendar] ✅ SUCCESS: Found ${transformedEvents.length} events in ${duration}ms`);
+    
+    return {
+      events: transformedEvents,
+      total: transformedEvents.length
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[MCP-Calendar] ❌ ERROR after ${duration}ms:`, error);
+    console.error('[MCP-Calendar] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: context.userId,
+      args
+    });
+    
+    // THROW the error instead of returning empty array
+    throw new Error(`Calendar meeting context failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * Google Calendar Attendee History Tool
+ * Finds previous meetings with specific attendees
+ */
+export async function calendarAttendeeHistory(
+  args: unknown, 
+  context: MCPToolContext
+): Promise<{ events: CalendarEvent[]; attendeeEmail: string; lookbackDays: number }> {
+  const startTime = Date.now();
+  console.log('[MCP-Calendar] calendarAttendeeHistory called with args:', JSON.stringify(args));
+  
+  try {
+    const params = calendarAttendeeHistorySchema.parse(args);
+    console.log('[MCP-Calendar] Parsed params:', params);
+    
+    // Import the Google Calendar service dynamically
+    const { googleCalendarService } = await import('../../services/googleCalendar.js');
+    
+    // Calculate the date range for lookback
+    const now = new Date();
+    const lookbackDate = new Date(now.getTime() - (params.lookbackDays * 24 * 60 * 60 * 1000));
+    console.log(`[MCP-Calendar] Looking back ${params.lookbackDays} days to ${lookbackDate.toISOString()}`);
+    
+    // Get events from the lookback period
+    const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 200);
+    console.log(`[MCP-Calendar] Retrieved ${allEvents.length} total events`);
+    
+    // Filter for events with the specific attendee and within date range
+    const matchingEvents = allEvents.filter(event => {
+      // Check if event has the attendee
+      const hasAttendee = event.attendees?.some((attendee: any) => 
+        attendee.email === params.attendeeEmail
+      );
+      
+      if (!hasAttendee) return false;
+      
+      // Check if event is within date range
+      if (!event.start?.dateTime) return false;
+      const eventDate = new Date(event.start.dateTime);
+      return eventDate >= lookbackDate && eventDate <= now;
+    }).slice(0, params.maxResults);
+    
+    console.log(`[MCP-Calendar] Found ${matchingEvents.length} matching events with ${params.attendeeEmail}`);
+    
+    // Transform to standardized format
+    const transformedEvents: CalendarEvent[] = matchingEvents.map(event => ({
+      id: event.id,
+      summary: event.summary || 'No Title',
+      start: event.start,
+      end: event.end,
+      attendees: event.attendees?.map((attendee: any) => ({
+        email: attendee.email,
+        displayName: attendee.displayName,
+        responseStatus: attendee.responseStatus
+      })),
+      description: event.description,
+      location: event.location
+    }));
+    
+    const duration = Date.now() - startTime;
+    console.log(`[MCP-Calendar] ✅ SUCCESS: Found ${transformedEvents.length} historical events in ${duration}ms`);
+    
+    return {
+      events: transformedEvents,
+      attendeeEmail: params.attendeeEmail,
+      lookbackDays: params.lookbackDays
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    console.error(`[MCP-Calendar] ❌ ERROR after ${duration}ms:`, error);
+    console.error('[MCP-Calendar] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: context.userId,
+      args
+    });
+    
+    // THROW the error instead of returning empty array
+    throw new Error(`Calendar attendee history failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+```
+
+### 2. Enhance Prompts in methodologyPrompts.ts
+
+__File:__ `server/services/methodologyPrompts.ts`
+
+Find the `generateCallPrepPrompt` function and update it to include calendar instructions. Add this section after the company/contact information:
+
+```typescript
+// Around line 50-80, add this section in the prompt:
+
+## CALENDAR & MEETING HISTORY CONTEXT
+
+IMPORTANT: You have access to the following MCP tools for gathering calendar and meeting context:
+
+1. **calendar_meeting_context**: Use this to fetch details about upcoming or recent meetings
+   - Can search by eventId, contactEmail, or timeRange
+   - Returns meeting details, attendees, descriptions, and timing
+
+2. **calendar_attendee_history**: Use this to find previous meetings with specific contacts
+   - Requires attendeeEmail parameter
+   - Shows meeting history over the past 90 days (configurable)
+   
+**YOU MUST USE THESE TOOLS** to gather context before generating the call prep sheet. Specifically:
+
+- If you have contact email addresses, use calendar_attendee_history to find past meetings
+- If you have a specific meeting eventId, use calendar_meeting_context to get full meeting details
+- Check for patterns in past interactions (meeting frequency, topics discussed, who attended)
+
+Example tool calls:
+- calendar_attendee_history({ attendeeEmail: "contact@company.com", lookbackDays: 90, maxResults: 10 })
+- calendar_meeting_context({ contactEmail: "contact@company.com", includeAttendees: true })
+
+Include any calendar insights in your response, such as:
+- When was the last meeting with this contact?
+- What topics were discussed in previous meetings?
+- Who else has attended meetings with this company?
+- Are there any patterns or relationship history to note?
+```
+
+### 3. Fix Date Parsing in CalendarView.tsx
+
+__File:__ `client/src/components/CalendarView.tsx`
+
+Replace the `formatDate` function (around line 75) with this improved version:
+
+```typescript
+const formatDate = (dateString: string) => {
+  try {
+    // Handle various date formats
+    let date: Date;
+    
+    // Try parsing as ISO string first
+    if (dateString.includes('T') || dateString.includes('Z')) {
+      date = new Date(dateString);
+    } else {
+      // Try parsing as date-only string (YYYY-MM-DD)
+      date = new Date(`${dateString}T00:00:00Z`);
+    }
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      console.warn(`[CalendarView] Invalid date string: ${dateString}`);
+      return 'Invalid Date';
+    }
+    
+    // Format with proper timezone handling
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    }).format(date);
+  } catch (error) {
+    console.error(`[CalendarView] Error formatting date "${dateString}":`, error);
+    return 'Invalid Date';
+  }
+};
+```
+
+### 4. Add Calendar Context to OpenAI Service
+
+__File:__ `server/services/openai.ts`
+
+Find the `generateProspectResearch` function and add calendar context logging. Add this before the OpenAI API call (around line 40-60):
+
+```typescript
+// Add this section before making the OpenAI API call
+console.log('[OpenAI] Generating prospect research with available tools:', {
+  hasMCPServer: !!mcpServer,
+  availableTools: mcpServer ? mcpServer.getOpenAIFunctions().map((t: any) => t.name) : [],
+  calendarToolsAvailable: mcpServer 
+    ? mcpServer.getOpenAIFunctions().some((t: any) => t.
+```

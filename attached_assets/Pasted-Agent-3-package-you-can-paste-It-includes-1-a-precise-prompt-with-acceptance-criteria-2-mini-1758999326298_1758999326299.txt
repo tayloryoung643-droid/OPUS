@@ -1,0 +1,135 @@
+Agent 3” package you can paste. It includes: (1) a precise prompt with acceptance criteria, (2) minimal wiring code for React Router and Next.js (pick the one your app uses). You’ll paste your existing canvas component into the new file path noted below.
+
+1) Agent 3 prompt (copy/paste)
+
+Title: Wire the Agenda mock as the live “Agenda” tab (outline-first → generate flow)
+
+Context: I have a working React component for the Agenda page (outline-only on load, Generate → fills, editable sections, per-call chat memory, save toast). The code is provided by me and must be used as-is (styling and layout unchanged).
+
+Do this exactly:
+
+Create file: src/features/agenda/OpusAgendaMock.tsx
+
+I will paste the full component code into this file. Do not modify styling or structure—only make imports compile if needed.
+
+Route it:
+
+If we use React Router, add a route /agenda that renders OpusAgendaMock.
+
+If we use Next.js (pages router), add pages/agenda.tsx that imports and renders OpusAgendaMock.
+
+If we use Next.js (app router), add app/agenda/page.tsx that imports and renders OpusAgendaMock.
+
+Default navigation:
+
+Authenticated users should land on /agenda by default.
+
+Logged-out users still land on the public homepage (no changes there).
+
+Use our existing auth guard/context (or a simple isAuthenticated() placeholder + TODO) for the redirect.
+
+Static assets & styles:
+
+Ensure Tailwind is loaded globally (we already use it).
+
+Keep the floating Opus Orb and chat box on the Agenda page only (no global portal needed).
+
+No regressions:
+
+Left rail: Upcoming/Previous pinned; first upcoming auto-selected.
+
+Right panel: outline-only until Generate Prep.
+
+Notes: editable + auto-save on blur + toast.
+
+Opus chat: persists per callId within the session (component already handles this).
+
+Sticky call context bar + Risk pills.
+
+Section “↻ Regenerate” buttons are present (no-op is fine for now).
+
+Acceptance criteria checklist:
+
+Visiting /agenda shows the exact UI from my file (no style deviations).
+
+Reloading the page keeps the selection on first upcoming call and empty outline until I click Generate Prep.
+
+Notes edits trigger ✓ toast on blur and with ⌘/Ctrl+S.
+
+Chat retains messages when switching between calls within the session.
+
+Authenticated default route → /agenda; logged-out → public home.
+
+If something’s unclear, implement with minimal placeholders and leave // TODO: comments—don’t re-style.
+
+2) Code to wire the route (choose one)
+A) React Router (e.g., src/App.tsx)
+// src/App.tsx
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import OpusAgendaMock from "./features/agenda/OpusAgendaMock";
+
+function isAuthenticated() {
+  // TODO: hook into real auth
+  return !!localStorage.getItem("auth");
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Public home (already exists) */}
+        <Route path="/" element={isAuthenticated() ? <Navigate to="/agenda" replace /> : <PublicHome />} />
+        {/* Agenda for authed users */}
+        <Route path="/agenda" element={isAuthenticated() ? <OpusAgendaMock /> : <Navigate to="/" replace />} />
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to={isAuthenticated() ? "/agenda" : "/"} replace />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+// NOTE: ensure <PublicHome /> is your existing public component
+
+B) Next.js — pages router (e.g., pages/agenda.tsx)
+// pages/agenda.tsx
+import dynamic from "next/dynamic";
+const OpusAgendaMock = dynamic(() => import("../src/features/agenda/OpusAgendaMock"), { ssr: false });
+
+export default function AgendaPage() {
+  // TODO: gate with real auth. If using next-auth, check session and redirect in getServerSideProps.
+  return <OpusAgendaMock />;
+}
+
+
+Optionally, redirect authed users to /agenda from your homepage:
+
+// pages/index.tsx (example)
+import { useEffect } from "react";
+import { useRouter } from "next/router";
+
+export default function Home() {
+  const r = useRouter();
+  useEffect(() => {
+    const authed = !!localStorage.getItem("auth"); // replace with real check
+    if (authed) r.replace("/agenda");
+  }, [r]);
+  return <PublicHome />;
+}
+
+C) Next.js — app router (e.g., app/agenda/page.tsx)
+// app/agenda/page.tsx
+"use client";
+import dynamic from "next/dynamic";
+const OpusAgendaMock = dynamic(() => import("../../src/features/agenda/OpusAgendaMock"), { ssr: false });
+
+export default function Agenda() {
+  return <OpusAgendaMock />;
+}
+
+3) What you (the user) should paste for Agent 3
+
+Paste the prompt from section 1.
+
+Then paste the component code from your canvas file “Opus Agenda Mock Preview” into src/features/agenda/OpusAgendaMock.tsx. (Agent 3 will create the path.)
+
+Pick the routing snippet (A/B/C) that matches your app and paste it.

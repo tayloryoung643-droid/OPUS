@@ -6,6 +6,35 @@ Momentum AI is a comprehensive sales call preparation platform that helps sales 
 
 The platform is built as a full-stack web application with a React frontend and Express.js backend, utilizing PostgreSQL for data persistence and OpenAI for AI-powered research generation.
 
+## Recent Changes
+
+**September 28, 2025**
+- **🔥 CRITICAL FIX: Voice Mode MCP Integration & Sample Data Elimination**
+  - **Problem Resolved**: Voice sessions were using sample data instead of real Salesforce/Calendar data due to MCP disconnection
+  - **Fixed Import Error**: Added `GmailService` class and exported `gmailService` instance to resolve voice mode import failures
+  - **Blocked Demo Data**: Added USE_MOCKS flag protection to `/api/demo/setup` endpoint preventing sample company creation
+  - **Removed Mock Fallbacks**: Eliminated calendar event mock data fallbacks showing "Acme Corp" and similar sample information
+  - **Anti-Sample Guardrails**: Added explicit instructions to OpenAI Realtime API to never fabricate or use placeholder data
+  - **Voice Token Endpoint**: Fixed `/api/openai/realtime/token` to return 200 with proper MCP context integration
+  - **Data Integrity**: Voice mode now accesses real-time Salesforce CRM and Google Calendar data through MCP tools
+  - **Test Validation**: Confirmed voice sessions successfully connect to OpenAI Realtime API with real data access
+
+- **🎉 MAJOR UPDATE: Completed OpenAI Realtime Voice Mode Implementation**
+  - **Project Pivot**: Transformed Momentum AI into Opus - an emotional, personal AI Partner with real-time voice interaction
+  - **Backend**: Implemented secure `/api/openai/realtime/token` endpoint with ephemeral session creation, proper OpenAI-Beta headers, and cache control
+  - **Frontend**: Built complete WebRTC helper (`realtimeClient.ts`) with mic capture, SDP negotiation, and audio playback
+  - **UI Transformation**: Updated OpusOrb component from Silent Call Recorder to real-time voice mode with state management (inactive/connecting/listening/error)
+  - **Critical Fixes**: Added required OpenAI-Beta headers, cache control, and proper WebRTC handshake requirements
+  - **Security**: Implemented session-based authentication, encrypted token storage, and proper error handling
+  - **Ready for Testing**: Users can now click the Opus Orb to start/stop voice conversations with OpenAI's GPT-4o Realtime model
+
+**September 27, 2025**
+- **Fixed Navigation Bug**: Resolved agenda button navigation issue by implementing proper React Router v6 navigation
+  - Updated Overview page (OpusLandingPage.tsx) to use useNavigate() instead of hardcoded href="#" links
+  - Updated Agenda page (OpusAgendaMock.tsx) to support bidirectional navigation between /overview and /agenda
+  - Added proper test IDs and disabled styling for unimplemented tabs (Pipeline, Tasks, Coach, Insights)
+  - Verified complete navigation flow: Overview ↔ Agenda ↔ Settings all working correctly
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.

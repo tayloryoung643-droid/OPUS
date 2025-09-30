@@ -1,0 +1,174 @@
+Subject: Chrome Extension — Reuse the exact app Orb, persist chat across pages/tabs, and route all data access through MCP (Google + Salesforce)
+
+Goals
+
+Fix “Receiving end does not exist” and make the panel clickable (as already outlined).
+
+Reuse the exact same Orb bundle from the app (UI + voice + chat) — no second UI.
+
+Persist chat history across pages/tabs (server-backed via conversationId with local fallback).
+
+All data access goes through MCP: the Orb must call MCP tools for Google (Calendar/Gmail) and Salesforce (Accounts/Contacts/Opps/Notes) — never sample data, never bypass MCP.
+
+Only one Orb: if the app renders Orb, extension does not inject.
+
+A) Single source of truth (same Orb)
+
+Build/export the in-app Orb as embed/opus-orb.js with:
+
+mount(selector, { jwt, apiBaseUrl, mcpWsUrl, conversationId, persistence }).
+
+The same voice realtime path as the app.
+
+A pluggable PersistenceAdapter (already specified).
+
+B) Injection + handshake
+
+Use the previous handshake (content script ping/retry) and host allowlist so we don’t inject on the app domain.
+
+Guard against duplicates with #opus-orb-root.
+
+C) Chat persistence (server + local)
+
+Preferred: POST /chat/session → conversationId; GET /chat/history?conversationId=…; POST /chat/events.
+
+Fallback: chrome.storage.local with keys scoped to user+conversation; sync across tabs with chrome.storage.onChanged.
+
+Pass adapter into OpusOrb.mount.
+
+D) MCP wiring (MANDATORY)
+
+The Orb must talk to MCP only for user data. No direct Google/SFDC calls from the Orb or extension.
+
+1) Token & endpoints passed from background → content
+
+// background.js
+async function getBootstrap() {
+  const r = await fetch("https://<api>/orb/extension/bootstrap", { credentials: "include" });
+  // returns: { jwt, mcpWsUrl, apiBaseUrl, user }
+  if (!r.ok) throw new Error("bootstrap failed");
+  return r.json();
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === "OPUS_GET_BOOTSTRAP") {
+    getBootstrap().then(d => sendResponse({ ok: true, ...d }))
+                  .catch(e => sendResponse({ ok: false, error: String(e) }));
+    return true;
+  }
+});
+
+// content.js
+chrome.runtime.sendMessage({ type: "OPUS_GET_BOOTSTRAP" }, async (res) => {
+  if (!res?.ok) { /* render Sign-in CTA; no sample data */ return; }
+  const { jwt, apiBaseUrl, mcpWsUrl } = res;
+  window.OpusOrb?.mount("#opus-orb-root", {
+    jwt, apiBaseUrl, mcpWsUrl,
+    persistence: createExtensionPersistence({ apiBaseUrl, jwt })
+  });
+});
+
+
+2) Orb → MCP protocol (inside the shared bundle)
+
+Create a single MCP client that the Orb uses for all data tools.
+
+Connect over WebSocket using mcpWsUrl with Authorization: Bearer <jwt>.
+
+// mcpClient.ts (shared by app & extension)
+export class McpClient {
+  constructor(private url: string, private jwt: string) {}
+  connect() { /* open WS, auth header via subprotocol or token frame */ }
+  async call(tool: string, args: Record<string, any>) { /* JSON-RPC over WS */ }
+  // Tool wrappers:
+  google = {
+    calendar: { getNextEvents: (n=10) => this.call("google.calendar.list", { limit: n }) },
+    gmail: {
+      searchThreads: (q:string, limit=20) => this.call("google.gmail.search_threads", { q, limit }),
+      getThread: (id:string) => this.call("google.gmail.get_thread", { id })
+    }
+  }
+  salesforce = {
+    accountByDomain: (domain:string) => this.call("salesforce.account.by_domain", { domain }),
+    contactLookup: (email:string) => this.call("salesforce.contact.by_email", { email }),
+    opps: { listOpen: () => this.call("salesforce.opportunity.list_open", {}) },
+    notesForEvent: (eventId:string) => this.call("salesforce.notes.for_event", { eventId })
+  }
+}
+
+
+3) Orb features call MCP (examples)
+
+Agenda/Pre-call:
+
+google.calendar.list → attendees, title, link
+
+Resolve account: salesforce.account.by_domain (from attendee emails)
+
+Pull open opps: salesforce.opportunity.list_open (filtered by accountId)
+
+Recent emails: google.gmail.search_threads "to:attendee@example.com newer_than:30d"
+
+Post-call tasks:
+
+salesforce.notes.for_event for prior notes;
+
+write-back endpoints remain server-side (Orb calls our API, API uses MCP tool for mutation).
+
+4) Error policy
+
+If any MCP call fails or returns empty, the Orb shows a precise inline error/empty state (no mock/sample content):
+
+“No Gmail threads found for last 30 days.”
+
+“Salesforce not connected — [Connect]”
+
+5) Connection lifecycle
+
+Reconnect MCP on network changes/tab restore.
+
+Heartbeat/ping every 30s; exponential backoff on disconnect.
+
+Surface a small indicator chip in the Orb header (“MCP • connected/disconnected”).
+
+E) Permissions / Scopes
+
+Extension manifest.json can stay minimal (no direct Google/SFDC permissions).
+
+All OAuth and scopes (Gmail read-only, Calendar read-only, Salesforce) are already granted to the backend and exposed via MCP. The extension only needs storage, activeTab, scripting.
+
+If user isn’t connected, Orb shows connect CTAs that open the app’s first-party connect pages; after success, MCP tools become available.
+
+F) Voice parity
+
+Use the same Realtime/voice module from the app bundle; no extension-specific audio path.
+
+Mic permission UX stays inside the Orb; works on any page via page context.
+
+G) QA to close
+
+Navigate across 3+ sites and tabs: chat history persists (same conversationId).
+
+On the Opus app page: no duplicate orb.
+
+MCP chip shows “connected”; calls return real data:
+
+Calendar next events
+
+Gmail threads for an attendee email
+
+Salesforce open opps for resolved account
+
+Disable a connector (e.g., revoke Gmail): Orb shows accurate empty state, no sample text.
+
+Background console shows no “Receiving end does not exist”.
+
+Deliverables
+
+Updated manifest.json, background.js, content.js.
+
+Path + build script for embed/opus-orb.js (the shared app bundle).
+
+MCP client module used by both app and extension.
+
+Short loom/video showing: a) one orb only, b) chat persists across sites, c) MCP data flowing from Gmail/Calendar/Salesforce.

@@ -1,0 +1,413 @@
+Here’s a tight, copy-paste prompt + code package for Agent 3 to build the MVP Chrome extension that pins the Opus Orb, detects meetings, and shows contextual prep. It’s self-contained and wired to your existing backend (MCP) with simple endpoints.
+
+✅ PROMPT FOR AGENT 3
+
+Objective:
+Ship a Chrome MV3 extension called Opus Orb that is always pinned on the right edge of any web page. It has three states—idle, pre-call (T-30), and live-call—and a slide-out chat/prep panel. When a user is on a Google Meet / Zoom / Teams meeting, the Orb switches to live-call and displays context (“tap me if you need help”). We’ll pass a JWT (opusToken) from the web app to the extension for authenticated context fetches.
+
+Acceptance Criteria:
+
+Orb is always visible (right side, small glowing circle). Hover glow, click expands panel.
+
+State machine:
+
+Idle (no meeting soon)
+
+Pre-call (has event starting within next 30 min)
+
+Live-call (active tab is Meet/Zoom/Teams)
+
+Meeting detection MVP: URL heuristics for Meet/Zoom/Teams.
+
+Context fetch:
+
+GET /orb/next-event?window=30m → returns startsAtSoon and details
+
+GET /orb/context?tabUrl=... → returns meeting title, participants, account, bullets
+
+Auth handshake: Extension stores and uses opusToken (JWT) from web app via postMessage → background saves to chrome.storage.sync.
+
+No popups; panel slides in/out.
+
+Clean, minimal UI (Tailwind-ish styles inline).
+
+Code structure, comments, and install instructions included.
+
+Deliverables:
+
+/extension/manifest.json (MV3)
+
+/extension/background.js (service worker, state & meeting detection)
+
+/extension/content.js (Orb + panel UI via Shadow DOM)
+
+/extension/panel/index.html (optional side panel—wire, but can be basic)
+
+/extension/injected.css (optional, but we’ll inline critical CSS)
+
+README with install steps
+
+Web app snippet to send opusToken to extension
+
+📁 FILE TREE
+extension/
+  manifest.json
+  background.js
+  content.js
+  injected.css
+  panel/
+    index.html
+
+manifest.json
+{
+  "manifest_version": 3,
+  "name": "Opus Orb",
+  "version": "0.1.0",
+  "description": "Pinned Opus Orb for call prep & live coaching",
+  "action": { "default_title": "Opus" },
+  "permissions": ["storage", "activeTab", "scripting", "alarms"],
+  "host_permissions": [
+    "https://meet.google.com/*",
+    "https://*.zoom.us/*",
+    "https://teams.microsoft.com/*",
+    "https://calendar.google.com/*",
+    "https://app.your-opus-domain.com/*",
+    "https://api.your-opus-domain.com/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": { "default_path": "panel/index.html" },
+  "web_accessible_resources": [{
+    "resources": ["injected.css"],
+    "matches": ["<all_urls>"]
+  }]
+}
+
+background.js (service worker: token, meeting detection, state push)
+// background.js
+const OPUS_API = "https://api.your-opus-domain.com";
+let opusToken = null;
+
+// Load token at boot
+chrome.storage.sync.get(["opusToken"], ({ opusToken: t }) => { opusToken = t || null; });
+
+// Accept token via messages (from content or side panel)
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "SET_TOKEN" && msg.token) {
+    opusToken = msg.token;
+    chrome.storage.sync.set({ opusToken });
+    sendResponse({ ok: true });
+  }
+});
+
+// Lightweight URL-based meeting detection
+function detectMeeting(url) {
+  if (!url) return null;
+  if (url.startsWith("https://meet.google.com/")) return { vendor: "google_meet" };
+  if (url.includes(".zoom.us/j/") || url.includes(".zoom.us/wc/")) return { vendor: "zoom" };
+  if (url.startsWith("https://teams.microsoft.com/")) return { vendor: "teams" };
+  return null;
+}
+
+// Push state + context to a tab
+async function pushContext(tabId, url) {
+  if (!tabId || !url) return;
+
+  let state = "idle";
+  let context = null;
+
+  try {
+    if (opusToken) {
+      const meeting = detectMeeting(url);
+
+      if (meeting) {
+        state = "live-call";
+        context = await fetch(`${OPUS_API}/orb/context?tabUrl=${encodeURIComponent(url)}`, {
+          headers: { Authorization: `Bearer ${opusToken}` }
+        }).then(r => r.ok ? r.json() : null).catch(() => null);
+      } else {
+        const next = await fetch(`${OPUS_API}/orb/next-event?window=30m`, {
+          headers: { Authorization: `Bearer ${opusToken}` }
+        }).then(r => r.ok ? r.json() : null).catch(() => null);
+
+        if (next && next.startsAtSoon) {
+          state = "pre-call";
+          context = next;
+        }
+      }
+    }
+  } catch (e) {
+    // swallow network errors for now; content will still render the orb
+  }
+
+  chrome.tabs.sendMessage(tabId, { type: "OPUS_STATE", state, context });
+}
+
+// When active tab changes or finishes loading
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    pushContext(tabId, tab.url);
+  } catch {}
+});
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "complete") pushContext(tabId, tab.url);
+});
+
+// Periodic check for pre-call window
+chrome.alarms.create("refreshContext", { periodInMinutes: 5 });
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name !== "refreshContext") return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab) pushContext(tab.id, tab.url);
+});
+
+// Handshake from web app via postMessage (relayed by content script)
+// (No code needed here; content.js will forward SET_TOKEN)
+
+content.js (UI overlay: Orb + slide-out panel via Shadow DOM)
+// content.js
+(() => {
+  if (window.__OPUS_ORB__) return;
+  window.__OPUS_ORB__ = true;
+
+  // --- Host + Shadow DOM ---
+  const host = document.createElement('div');
+  host.id = 'opus-orb-host';
+  Object.assign(host.style, { position: 'fixed', top: '50%', right: '16px', zIndex: 2147483647 });
+  document.documentElement.appendChild(host);
+  const shadow = host.attachShadow({ mode: 'open' });
+
+  // --- Styles (minimal, dark, subtle glow) ---
+  const style = document.createElement('style');
+  style.textContent = `
+    :host { all: initial; }
+    .wrap { position: relative; transform: translateY(-50%); font-family: ui-sans-serif, system-ui; }
+    .orb { width: 48px; height: 48px; border-radius: 50%; cursor: pointer;
+      background: radial-gradient(circle at 30% 30%, #a78bfa, #4c1d95);
+      box-shadow: 0 0 16px rgba(120, 80, 255, 0.5); transition: transform .15s ease; }
+    .orb:hover { transform: scale(1.06); }
+    .pulse { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%{box-shadow:0 0 8px rgba(120,80,255,.4);} 50%{box-shadow:0 0 18px rgba(120,80,255,.9);} 100%{box-shadow:0 0 8px rgba(120,80,255,.4);} }
+
+    .panel { position: fixed; top: 50%; right: 72px; transform: translateY(-50%);
+      width: 360px; height: 520px; border-radius: 16px; overflow: hidden;
+      background: #0b0b12; color: #f7f7ff; box-shadow: 0 20px 60px rgba(0,0,0,.5);
+      display: none; flex-direction: column; }
+    .panel.open { display: flex; }
+    .hdr { display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,.08);}
+    .tag { font-size:12px; opacity:.75; padding:4px 8px; border:1px solid rgba(255,255,255,.12); border-radius:999px; }
+    .title { font-weight:600; }
+    .body { padding:12px 14px; gap:8px; display:flex; flex-direction:column; overflow:auto; }
+    .bullet { font-size:13px; opacity:.95; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.06); padding:8px; border-radius:10px; }
+    .foot { margin-top:auto; padding:12px 14px; border-top:1px solid rgba(255,255,255,.08); display:flex; gap:8px; }
+    .in { flex:1; border-radius:10px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.03); color:#fff; padding:10px; }
+    .btn { border-radius:10px; border:1px solid rgba(255,255,255,.18); background:rgba(166, 108, 255, .18); color:#fff; padding:10px 12px; cursor:pointer; }
+    .subtle { font-size:12px; opacity:.7; }
+  `;
+  shadow.appendChild(style);
+
+  // --- DOM ---
+  const wrap = document.createElement('div'); wrap.className = 'wrap';
+  const orb = document.createElement('div'); orb.className = 'orb pulse'; orb.title = 'Opus';
+  const panel = document.createElement('div'); panel.className = 'panel';
+
+  // Panel structure
+  panel.innerHTML = `
+    <div class="hdr">
+      <div class="title">Opus</div>
+      <div class="tag" id="stateTag">idle</div>
+    </div>
+    <div class="body" id="body">
+      <div class="subtle">I’m pinned here. Tap me if you need help.</div>
+    </div>
+    <div class="foot">
+      <input id="q" class="in" placeholder="Ask Opus…" />
+      <button id="send" class="btn">Send</button>
+    </div>
+  `;
+
+  wrap.appendChild(orb);
+  shadow.appendChild(wrap);
+  shadow.appendChild(panel);
+
+  let currentState = "idle";
+  let currentContext = null;
+  const stateTag = panel.querySelector('#stateTag');
+  const body = panel.querySelector('#body');
+
+  function setState(state, context) {
+    currentState = state;
+    currentContext = context || null;
+    stateTag.textContent = state;
+
+    // Render bullets
+    body.innerHTML = "";
+    if (state === "pre-call" && context) {
+      addBullet(`Upcoming: ${context.title || 'Meeting'} at ${context.startLocal || ''}`);
+      (context.quickNotes || []).forEach(b => addBullet(b));
+      addSubtle("Tap me if you need help.");
+    } else if (state === "live-call" && context) {
+      addBullet(`Live: ${context.title || 'Meeting'}`);
+      if (context.participants?.length) addBullet(`Participants: ${context.participants.join(', ')}`);
+      (context.keyPoints || []).forEach(b => addBullet(b));
+      addSubtle("Tap me if you need help.");
+    } else {
+      addSubtle("I’m pinned here. Tap me if you need help.");
+    }
+  }
+
+  function addBullet(text) {
+    const div = document.createElement('div');
+    div.className = 'bullet';
+    div.textContent = text;
+    body.appendChild(div);
+  }
+  function addSubtle(text) {
+    const div = document.createElement('div');
+    div.className = 'subtle';
+    div.textContent = text;
+    body.appendChild(div);
+  }
+
+  // Toggle panel
+  orb.addEventListener('click', () => { panel.classList.toggle('open'); });
+
+  // Handle simple Q&A (send to backend chat)
+  panel.querySelector('#send').addEventListener('click', () => {
+    const q = panel.querySelector('#q');
+    const text = q.value.trim();
+    if (!text) return;
+    q.value = '';
+    addBullet(`You: ${text}`);
+    // Optionally: forward to backend via background (requires token from storage)
+    chrome.runtime.sendMessage({ type: "OPUS_ASK", text }, () => {});
+  });
+
+  // Receive state from background
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (msg?.type === "OPUS_STATE") setState(msg.state, msg.context);
+  });
+
+  // Handshake for token from web app (postMessage -> content -> background)
+  window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+    const { type, opusToken } = event.data || {};
+    if (type === 'OPUS_TOKEN_HANDSHAKE' && opusToken) {
+      chrome.runtime.sendMessage({ type: "SET_TOKEN", token: opusToken }, () => {});
+    }
+  });
+
+  // Initialize default state
+  setState("idle", null);
+})();
+
+injected.css (optional; already inlined in content.js)
+/* Reserved for future shared styles */
+
+panel/index.html (optional Chrome side panel UI – basic)
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Opus Side Panel</title>
+    <style>
+      body { margin:0; font-family: ui-sans-serif, system-ui; background:#0b0b12; color:#fff; }
+      .wrap { padding:12px; }
+      .h { display:flex; justify-content:space-between; align-items:center; padding:12px; border-bottom:1px solid rgba(255,255,255,.1); }
+      .b { padding:12px; }
+      .box { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:12px; padding:12px; margin-bottom:8px; }
+    </style>
+  </head>
+  <body>
+    <div class="h"><strong>Opus</strong><span id="state">idle</span></div>
+    <div class="b">
+      <div class="box">Use the pinned Orb on any page. This panel is optional.</div>
+    </div>
+    <script>
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (msg?.type === "OPUS_STATE") document.getElementById('state').textContent = msg.state;
+      });
+    </script>
+  </body>
+</html>
+
+🔌 Web App Token Handshake (add to your logged-in shell/layout)
+
+Sends opusToken (your JWT for the user) to the extension via postMessage.
+Fire on login and on token refresh.
+
+<script>
+  (function sendOpusTokenToExtension() {
+    // Replace with your real token getter:
+    const opusToken = window.localStorage.getItem('opus_jwt');
+    if (!opusToken) return;
+    window.postMessage({ type: 'OPUS_TOKEN_HANDSHAKE', opusToken }, window.location.origin);
+  })();
+</script>
+
+
+If you prefer a click action, put this behind a “Connect Opus Orb” button that calls the function above.
+
+🧪 Backend MVP Endpoints (expected shapes)
+
+GET /orb/next-event?window=30m (Auth: Bearer ${opusToken})
+Response:
+
+{
+  "startsAtSoon": true,
+  "startLocal": "2025-09-28 2:00 PM",
+  "title": "Discovery: ACME",
+  "participants": ["jane@acme.com","you@company.com"],
+  "quickNotes": [
+    "Company: ACME (FinTech, 500 FTE)",
+    "Role: Jane (CTO) — owns security review",
+    "Goal: SOC2 & SSO reqs; timeline Q4"
+  ]
+}
+
+
+GET /orb/context?tabUrl=... (Auth: Bearer ${opusToken})
+Response:
+
+{
+  "title": "Discovery: ACME",
+  "participants": ["jane@acme.com","you@company.com"],
+  "account": "ACME Inc.",
+  "oppAmount": 48000,
+  "stage": "Evaluation",
+  "keyPoints": [
+    "Objection likely: SSO pricing",
+    "Ask: current vendor + renewal date",
+    "Next step: security doc packet"
+  ]
+}
+
+
+Hook these to your existing MCP pipeline (Calendar + CRM + transcript history). Keep latency <300ms for snappy UI.
+
+🔐 Notes / Security
+
+Never store Google/SF refresh tokens in the extension. Only store your short-lived opusToken JWT.
+
+Scope opusToken so it can only hit /orb/* routes, not full account APIs.
+
+Use HTTPS and CORS allowlist only for your app/extension origins.
+
+Consider a rolling token refresh (background reads from chrome.storage.sync).
+
+🛠️ Install / Test Steps
+
+chrome://extensions → Developer mode → Load unpacked → select /extension.
+
+Log into your web app → ensure opusToken is sent via the handshake snippet.
+
+Open meet.google.com or a Zoom/Teams URL: Orb should pulse and panel shows live-call context.
+
+From any page, 30 min before a calendar event, panel shows pre-call bullets.

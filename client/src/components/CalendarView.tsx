@@ -54,9 +54,9 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
     retry: false
   });
 
-  // Fetch Google Calendar events (upcoming)
+  // Fetch Google Calendar events (today's events only)
   const { data: calendarEvents, isLoading: calendarLoading } = useQuery<CalendarEvent[]>({
-    queryKey: ["/api/calendar/events"],
+    queryKey: ["/api/calendar/today"],
     enabled: !!(googleStatus as any)?.connected,
     retry: false
   });
@@ -71,29 +71,41 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
     queryKey: ["/api/calls/previous"],
   });
 
+  // Filter database calls to today only
   const upcomingDatabaseCalls = Array.isArray(upcomingCalls)
-    ? upcomingCalls.map((call) => ({ ...call, source: "database" as const }))
+    ? upcomingCalls
+        .filter((call) => {
+          const callDate = new Date(call.scheduledAt);
+          const today = new Date();
+          return callDate.toDateString() === today.toDateString();
+        })
+        .map((call) => ({ ...call, source: "database" as const }))
     : [];
 
   // Convert Google Calendar events to call format
   const upcomingCalendarEvents = Array.isArray(calendarEvents)
-    ? calendarEvents.map((event) => ({
-        id: `calendar_${event.id}`,
-        calendarEventId: event.id,
-        title: event.summary || "No Title",
-        scheduledAt:
-          event.start?.dateTime ||
-          (event.start?.date ? new Date(`${event.start.date}T00:00:00Z`).toISOString() : new Date().toISOString()),
-        status: "upcoming",
-        callType: "meeting",
-        source: "calendar" as const,
-        company: {
-          id: "google-calendar",
-          name: "Google Calendar",
-          domain: undefined,
-          industry: undefined,
-        },
-      }))
+    ? calendarEvents
+        .filter(event => {
+          // Only include events with valid start times
+          return event.start?.dateTime || event.start?.date;
+        })
+        .map((event) => ({
+          id: `calendar_${event.id}`,
+          calendarEventId: event.id,
+          title: event.summary || "No Title",
+          scheduledAt:
+            event.start?.dateTime ||
+            (event.start?.date ? new Date(`${event.start.date}T00:00:00Z`).toISOString() : ""),
+          status: "upcoming",
+          callType: "meeting",
+          source: "calendar" as const,
+          company: {
+            id: "google-calendar",
+            name: "Google Calendar",
+            domain: undefined,
+            industry: undefined,
+          },
+        }))
     : [];
 
   // Combine all upcoming calls (database + Google Calendar)
@@ -111,16 +123,52 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
 
   const isUpcomingLoading = upcomingLoading || calendarLoading;
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+  // Helper to detect all-day events
+  const isAllDayEvent = (event: CalendarEvent) => {
+    // All-day events have only date, no dateTime
+    return event.start?.date && !event.start?.dateTime;
+  };
+
+  const formatDate = (dateString: string, event?: CalendarEvent) => {
+    if (!dateString) return "No date";
+    
+    // Check if this is an all-day event
+    if (event && isAllDayEvent(event)) {
+      return "All Day";
+    }
+    
+    try {
+      // Handle various date formats
+      let date: Date;
+      
+      // Try parsing as ISO string first
+      if (dateString.includes('T') || dateString.includes('Z')) {
+        date = new Date(dateString);
+      } else {
+        // Try parsing as date-only string (YYYY-MM-DD)
+        date = new Date(`${dateString}T00:00:00Z`);
+      }
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn(`[CalendarView] Invalid date string: ${dateString}`);
+        return 'Invalid Date';
+      }
+      
+      // Format with proper timezone handling
+      return new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      }).format(date);
+    } catch (error) {
+      console.error(`[CalendarView] Error formatting date "${dateString}":`, error);
+      return 'Invalid Date';
+    }
   };
 
   const getCallTypeColor = (callType?: string) => {
@@ -208,7 +256,7 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
 
       {/* Upcoming Calls */}
       <div className="mb-8">
-        <h3 className="font-semibold text-foreground mb-4" data-testid="text-upcoming-calls">Upcoming Calls</h3>
+        <h3 className="font-semibold text-foreground mb-4" data-testid="text-upcoming-calls">Today's Calls</h3>
         
         {isUpcomingLoading ? (
           <div className="space-y-3">
@@ -274,7 +322,7 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
                           }`}
                         >
                           <Clock className="mr-2 h-3 w-3" />
-                          <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt)}</span>
+                          <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt, call.source === "calendar" ? calendarEvents?.find(e => e.id === call.calendarEventId?.replace('calendar_', '')) : undefined)}</span>
                         </div>
                         {call.callType && (
                           <Badge
@@ -335,7 +383,7 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
                     <div className="flex items-center justify-between">
                       <div className="flex items-center text-sm text-muted-foreground">
                         <Clock className="mr-2 h-3 w-3" />
-                        <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt)}</span>
+                        <span data-testid={`text-call-time-${call.id}`}>{formatDate(call.scheduledAt, call.source === "calendar" ? calendarEvents?.find(e => e.id === call.calendarEventId?.replace('calendar_', '')) : undefined)}</span>
                       </div>
                       {call.callType && (
                         <Badge variant="secondary" className={`text-xs ${getCallTypeColor(call.callType)}`}>

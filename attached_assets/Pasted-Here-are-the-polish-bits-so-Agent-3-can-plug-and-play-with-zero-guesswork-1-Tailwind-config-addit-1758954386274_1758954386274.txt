@@ -1,0 +1,214 @@
+Here are the polish bits so Agent 3 can plug-and-play with zero guesswork:
+
+1) Tailwind config additions (colors, shadows, radii, glow)
+
+tailwind.config.ts
+
+import type { Config } from "tailwindcss";
+const config: Config = {
+  content: ["./index.html","./src/**/*.{ts,tsx,js,jsx}"],
+  theme: {
+    extend: {
+      colors: {
+        slateglass: {
+          800: "rgba(15,23,42,0.6)", // bg-slate-900/40 equivalent but named
+        },
+        opus: {
+          cyan: "#22d3ee",
+          violet: "#a78bfa",
+        },
+      },
+      borderRadius: {
+        '2xl': '1rem',
+        '3xl': '1.25rem',
+      },
+      boxShadow: {
+        'card': "0 0 0 1px rgba(255,255,255,0.03), 0 10px 30px rgba(0,0,0,0.25)",
+        'ring': "0 0 0 2px rgba(255,255,255,0.08)",
+      },
+      backgroundImage: {
+        'opus-conic': "conic-gradient(from 0deg, #22d3ee, #a78bfa, #22d3ee)",
+        'opus-grad': "linear-gradient(135deg, #0b1020, #0f172a 40%, #0b0f24 70%, #0a0d22)",
+      },
+      animation: {
+        'spin-slow': 'spin 8s linear infinite',
+      },
+    },
+  },
+  plugins: [],
+};
+export default config;
+
+
+Utility shortcuts (optional):
+
+/* src/styles/utilities.css (import once in main.tsx) */
+.opus-card { @apply rounded-2xl border border-white/5 bg-slate-900/40 backdrop-blur shadow-card; }
+.opus-kicker { @apply text-cyan-300 font-semibold; }
+.opus-heading { @apply text-5xl md:text-6xl font-extrabold tracking-tight text-white; }
+.opus-progress { @apply h-2 w-full rounded-full bg-white/10; }
+
+
+Use like:
+
+<div className="opus-card p-4"> ... </div>
+
+
+Gradient ring (exact match):
+
+<div className="h-36 w-36 rounded-full bg-opus-conic animate-spin-slow" />
+
+2) Service method signatures (strongly typed)
+calendarService
+// src/services/calendarService.ts
+export type CalendarEvent = {
+  id: string;
+  title: string;
+  company?: string;
+  start: string;         // ISO
+  end?: string;          // ISO
+  attendees?: string[];  // emails
+  location?: string;
+  notes?: string;
+};
+
+export interface CalendarService {
+  getTodayEvents(): Promise<CalendarEvent[]>;
+  getEventById(id: string): Promise<CalendarEvent | null>;
+}
+
+export const calendarService: CalendarService = {
+  async getTodayEvents() {
+    // IMPLEMENTATION: call existing /api/calendar/events?range=today
+    const res = await fetch("/api/calendar/events?range=today");
+    if (!res.ok) throw new Error("Calendar fetch failed");
+    const data = await res.json();
+    return data as CalendarEvent[];
+  },
+  async getEventById(id) {
+    const res = await fetch(`/api/calendar/events/${id}`);
+    if (!res.ok) return null;
+    return (await res.json()) as CalendarEvent;
+  },
+};
+
+salesforceService
+// src/services/salesforceService.ts
+export type SalesforceAccount = {
+  id: string;
+  name: string;
+  domain?: string;
+  ownerName?: string;
+  stage?: string;
+  amount?: number;
+};
+
+export interface SalesforceService {
+  findAccountByEmail(email: string): Promise<SalesforceAccount | null>;
+  // optional: findAccountByDomain(domain: string): Promise<SalesforceAccount | null>;
+}
+
+export const salesforceService: SalesforceService = {
+  async findAccountByEmail(email) {
+    try {
+      const res = await fetch(`/api/salesforce?email=${encodeURIComponent(email)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data?.account ?? null) as SalesforceAccount | null;
+    } catch {
+      return null;
+    }
+  },
+};
+
+3) PrepSheetView prop contract (wrapper-safe)
+
+If your existing PrepSheetView doesn’t have a typed interface handy, standardize it to this so the wrapper I gave composes cleanly.
+
+// src/components/PrepSheetView.tsx
+import type { CalendarEvent } from "../services/calendarService";
+import type { SalesforceAccount } from "../services/salesforceService";
+
+type PrepSheetOptions = {
+  alwaysRender?: boolean; // render even if no account
+  pinNotes?: boolean;     // keep notes section fixed at top
+};
+
+type Props = {
+  event: CalendarEvent;
+  getSalesforceAccount?: () => Promise<SalesforceAccount | null>;
+  options?: PrepSheetOptions;
+};
+
+export default function PrepSheetView({ event, getSalesforceAccount, options }: Props) {
+  // IMPLEMENT: lazy load account, render sections; honor options.alwaysRender & options.pinNotes
+  return (
+    <div>/* your existing content */</div>
+  );
+}
+
+4) Zero-break fallback mocks (dev only)
+
+Drop these in src/mocks/opus.mocks.ts and guard with import.meta.env.DEV.
+
+import { calendarService as realCalendar, CalendarEvent } from "../services/calendarService";
+import { salesforceService as realSf, SalesforceAccount } from "../services/salesforceService";
+
+const mockEvents: CalendarEvent[] = [
+  { id: "mock-1", title: "Acme Corp — Discovery", company: "Acme Corp", start: new Date().toISOString(), attendees: ["ceo@acme.com"] },
+  { id: "mock-2", title: "Globex SG — Demo", company: "Globex SG", start: new Date(Date.now()+3_600_000).toISOString(), attendees: ["cto@globex.sg"] },
+];
+
+const mockAccount: SalesforceAccount = {
+  id: "001xx000003",
+  name: "Acme Corp",
+  stage: "Evaluation",
+  amount: 120000,
+};
+
+export const calendarService = import.meta.env.DEV
+  ? { ...realCalendar, getTodayEvents: async () => mockEvents }
+  : realCalendar;
+
+export const salesforceService = import.meta.env.DEV
+  ? { ...realSf, findAccountByEmail: async () => mockAccount }
+  : realSf;
+
+
+In OpusAgenda.tsx, switch imports to these mock-wrapped services during development if desired.
+
+5) UX details to match screenshot exactly
+
+Typography
+
+Headline: text-5xl md:text-6xl font-extrabold tracking-tight
+
+Section titles (cards): text-lg font-semibold text-cyan-300
+
+Agenda items: time text-sm opacity-80, title text-base font-semibold, subtitle text-sm opacity-70
+
+Layout
+
+Grid: md:grid-cols-12 → 4 / 6 / 2 split
+
+Sticky pinning: sticky top-4 on left and right columns
+
+Cards: opus-card p-4 (from utility shortcut)
+
+Interactions
+
+Agenda item hover: hover:bg-slate-800/60 transition
+
+Partner circle: hover:scale-105 transition, opens right drawer (text-only coach)
+
+6) QA checklist (fast)
+
+VITE_ENABLE_OPUS_UI=true shows Opus layout; false shows legacy.
+
+Clicking Agenda hides greeting; agenda stays pinned.
+
+Clicking an event renders prep sheet to the right; insights + circle remain visible.
+
+Removing “Generate Call Prep” & “Draft Follow-Up” verified.
+
+Mobile: agenda stacks over prep; partner circle accessible.

@@ -10,11 +10,16 @@ export default function Navigation() {
   return (
     <nav className="bg-card border-b border-border px-6 py-4" data-testid="navigation-dashboard">
       <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <span className="text-primary-foreground font-bold text-lg">M</span>
+        <div className="flex items-center space-x-3">
+          {/* Opus Logo Circle */}
+          <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center relative">
+            <div className="w-6 h-6 border-2 border-white rounded-full flex items-center justify-center">
+              <div className="w-1 h-3 bg-white rounded-full"></div>
+              <div className="w-1 h-2 bg-white rounded-full ml-0.5"></div>
+              <div className="w-1 h-4 bg-white rounded-full ml-0.5"></div>
+            </div>
           </div>
-          <span className="text-xl font-semibold text-foreground">Momentum AI</span>
+          <span className="text-xl font-semibold text-foreground">Opus</span>
         </div>
         
         <div className="flex items-center space-x-4">

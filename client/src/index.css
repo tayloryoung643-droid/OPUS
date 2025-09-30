@@ -3,6 +3,25 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Opus Orb enhanced glow */
+.opus-orb {
+  box-shadow:
+    0 0 40px rgba(150, 100, 255, 0.3),
+    0 0 100px rgba(130, 90, 255, 0.25),
+    0 0 200px rgba(120, 80, 255, 0.15),
+    0 0 180px rgba(140, 100, 255, 0.2) inset;
+  transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.opus-orb:hover {
+  box-shadow:
+    0 0 60px rgba(160, 110, 255, 0.4),
+    0 0 140px rgba(140, 100, 255, 0.32),
+    0 0 280px rgba(130, 90, 255, 0.2),
+    0 0 220px rgba(150, 110, 255, 0.25) inset;
+  transform: translateZ(0);
+}
+
 :root {
   --background: hsl(0 0% 100%);
   --foreground: hsl(222.2 84% 4.9%);

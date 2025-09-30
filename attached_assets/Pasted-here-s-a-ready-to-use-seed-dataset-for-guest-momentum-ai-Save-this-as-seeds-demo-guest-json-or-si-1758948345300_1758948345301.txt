@@ -1,0 +1,196 @@
+here’s a ready-to-use seed dataset for guest@momentum.ai
+. Save this as seeds/demo_guest.json (or similar), and have Agent 3 load it whenever VITE_ENABLE_GUEST === "true" and the logged-in user is guest@momentum.ai.
+
+{
+  "user": {
+    "id": "usr_guest_momentum_ai",
+    "email": "guest@momentum.ai",
+    "name": "Guest User",
+    "role": "demo",
+    "read_only": true
+  },
+  "integrations": {
+    "google_calendar": {
+      "connected": true,
+      "mode": "mock"
+    },
+    "salesforce": {
+      "connected": true,
+      "mode": "mock"
+    },
+    "gmail": {
+      "connected": false,
+      "mode": "disabled"
+    }
+  },
+  "calendar": {
+    "timezone": "America/Vancouver",
+    "events": [
+      {
+        "id": "cal_evt_past_001",
+        "title": "Discovery Call — Acme Robotics",
+        "start": "2025-09-19T10:00:00-07:00",
+        "end": "2025-09-19T10:45:00-07:00",
+        "location": "Google Meet",
+        "conference_url": "https://meet.google.com/abc-defg-hij",
+        "attendees": [
+          { "name": "Jordan Kim", "email": "jordan.kim@acmerobotics.com" },
+          { "name": "Guest User", "email": "guest@momentum.ai" }
+        ],
+        "notes": "Discussed current HRIS limitations and integration pain points.",
+        "linked_account_id": "acc_acme_001",
+        "linked_opportunity_id": "opp_acme_hris_001"
+      },
+      {
+        "id": "cal_evt_today_001",
+        "title": "Technical Deep-Dive — Acme Robotics",
+        "start": "2025-09-26T13:00:00-07:00",
+        "end": "2025-09-26T13:45:00-07:00",
+        "location": "Zoom",
+        "conference_url": "https://zoom.us/j/1234567890",
+        "attendees": [
+          { "name": "Jordan Kim", "email": "jordan.kim@acmerobotics.com" },
+          { "name": "Priya Shah", "email": "priya.shah@acmerobotics.com" },
+          { "name": "Guest User", "email": "guest@momentum.ai" }
+        ],
+        "notes": "",
+        "linked_account_id": "acc_acme_001",
+        "linked_opportunity_id": "opp_acme_hris_001"
+      },
+      {
+        "id": "cal_evt_future_001",
+        "title": "Pilot Planning & Next Steps — Acme Robotics",
+        "start": "2025-10-03T09:00:00-07:00",
+        "end": "2025-10-03T09:45:00-07:00",
+        "location": "Google Meet",
+        "conference_url": "https://meet.google.com/xyz-1234-uvw",
+        "attendees": [
+          { "name": "Jordan Kim", "email": "jordan.kim@acmerobotics.com" },
+          { "name": "Guest User", "email": "guest@momentum.ai" }
+        ],
+        "notes": "",
+        "linked_account_id": "acc_acme_001",
+        "linked_opportunity_id": "opp_acme_hris_001"
+      }
+    ]
+  },
+  "salesforce": {
+    "accounts": [
+      {
+        "id": "acc_acme_001",
+        "name": "Acme Robotics Inc.",
+        "domain": "acmerobotics.com",
+        "industry": "Manufacturing / Robotics",
+        "employee_count": 420,
+        "annual_revenue": 125000000,
+        "billing_country": "USA",
+        "website": "https://www.acmerobotics.com",
+        "description": "Mid-market robotics manufacturer scaling HR operations; evaluating HRIS integration and workflow automation."
+      }
+    ],
+    "contacts": [
+      {
+        "id": "con_jordan_kim_001",
+        "account_id": "acc_acme_001",
+        "first_name": "Jordan",
+        "last_name": "Kim",
+        "title": "Director of Operations",
+        "email": "jordan.kim@acmerobotics.com",
+        "phone": "+1-415-555-0134"
+      },
+      {
+        "id": "con_priya_shah_001",
+        "account_id": "acc_acme_001",
+        "first_name": "Priya",
+        "last_name": "Shah",
+        "title": "HRIS Manager",
+        "email": "priya.shah@acmerobotics.com",
+        "phone": "+1-415-555-0179"
+      }
+    ],
+    "opportunities": [
+      {
+        "id": "opp_acme_hris_001",
+        "account_id": "acc_acme_001",
+        "name": "HRIS Integration Pilot",
+        "stage": "Discovery",
+        "amount": 48000,
+        "currency": "USD",
+        "close_date": "2025-11-15",
+        "owner": "Guest User",
+        "forecast_category": "Pipeline",
+        "next_step": "Complete technical deep-dive and confirm pilot scope",
+        "meddic": {
+          "metrics": "Reduce manual payroll data entry by 80%; save ~20 hrs/week.",
+          "economic_buyer": "CFO (not yet engaged)",
+          "decision_criteria": "Security review, SOC 2; API reliability; Salesforce + HRIS coverage",
+          "decision_process": "Ops + HR shortlist → Security review → CFO sign-off",
+          "identify_pain": "Duplicate HR/payroll data entry; error-prone manual reconciliations",
+          "champion": "Jordan Kim (Director of Ops)"
+        },
+        "competitors": ["Native HRIS add-ons", "In-house scripts"],
+        "products": [
+          { "sku": "HR-INT-BASE", "name": "HRIS Integration Base", "qty": 1, "unit_price": 24000 },
+          { "sku": "HR-INT-PILOT", "name": "Pilot Success Package", "qty": 1, "unit_price": 24000 }
+        ]
+      }
+    ],
+    "activities": [
+      {
+        "id": "act_note_001",
+        "type": "Call",
+        "subject": "Initial discovery",
+        "account_id": "acc_acme_001",
+        "opportunity_id": "opp_acme_hris_001",
+        "contact_id": "con_jordan_kim_001",
+        "date": "2025-09-19",
+        "summary": "Validated pains; agreed to deep-dive; shared security overview one-pager."
+      }
+    ]
+  },
+  "prep_defaults": {
+    "sections": [
+      { "id": "sec_notes", "title": "Notes (Your scratchpad)", "pinned": true },
+      { "id": "sec_objective", "title": "Call Objective" },
+      { "id": "sec_agenda", "title": "Proposed Agenda" },
+      { "id": "sec_research", "title": "Account & Contact Research" },
+      { "id": "sec_methodology", "title": "MEDDIC/BANT Snapshot" },
+      { "id": "sec_questions", "title": "Targeted Questions" },
+      { "id": "sec_risks", "title": "Risks & Objections" },
+      { "id": "sec_nextsteps", "title": "Next Steps & Owner" }
+    ],
+    "templates": {
+      "objective": "Confirm integration scope and success criteria; align stakeholders; secure pilot start date.",
+      "agenda": [
+        "Introductions (2m)",
+        "Current workflow & pain points (10m)",
+        "Integration approach & security (15m)",
+        "Timeline, roles, and pilot scope (10m)",
+        "Next steps & owners (5m)"
+      ],
+      "questions": [
+        "What systems are in scope (HRIS, Payroll, ATS)?",
+        "Where do errors/time sinks happen most today?",
+        "How will you measure success in the first 30 days?",
+        "Who besides you must sign off (IT/Sec, Finance)?",
+        "Any blackout periods or compliance constraints?"
+      ],
+      "risks": [
+        "Security review delays",
+        "Engineering bandwidth on customer side",
+        "Data mapping unknowns"
+      ],
+      "nextsteps": [
+        "Share pilot SoW draft",
+        "Schedule security review",
+        "Provide field-mapping spreadsheet"
+      ]
+    }
+  },
+  "ui_state": {
+    "last_selected_event_id": "cal_evt_today_001",
+    "coach_label": "AI Sales Coach",
+    "hide_mock_dashboard": true,
+    "calendar_right_panel_pinned": true
+  }
+}

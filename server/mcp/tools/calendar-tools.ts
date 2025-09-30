@@ -13,8 +13,12 @@ export async function calendarMeetingContext(
   args: unknown, 
   context: MCPToolContext
 ): Promise<{ events: CalendarEvent[]; total: number }> {
+  const startTime = Date.now();
+  console.log('[MCP-Calendar] calendarMeetingContext called with args:', JSON.stringify(args));
+  
   try {
     const params = calendarMeetingContextSchema.parse(args);
+    console.log('[MCP-Calendar] Parsed params:', params);
     
     // Import the Google Calendar service dynamically
     const { googleCalendarService } = await import('../../services/googleCalendar.js');
@@ -37,20 +41,48 @@ export async function calendarMeetingContext(
         );
       });
     } else if (params.timeRange) {
-      // Get events in specific time range
-      const startTime = new Date(params.timeRange.start);
-      const endTime = new Date(params.timeRange.end);
-      
-      // Use the time range to filter events
-      const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 100);
-      events = allEvents.filter(event => {
-        if (!event.start?.dateTime) return false;
-        const eventTime = new Date(event.start.dateTime);
-        return eventTime >= startTime && eventTime <= endTime;
+      // Get events in specific time range using the dedicated range method
+      // This properly handles past events (e.g., morning meetings when asked at 3pm)
+      console.log('[MCP-Calendar] Time range query:', {
+        start: params.timeRange.start,
+        end: params.timeRange.end
       });
+      
+      // Use the new getEventsInRange method that fetches directly from Google Calendar API
+      // without filtering by "now", so it includes past events in the range
+      events = await googleCalendarService.getEventsInRange(
+        context.userId,
+        params.timeRange.start,
+        params.timeRange.end
+      );
+      
+      console.log('[MCP-Calendar] getEventsInRange found', events.length, 'events');
     } else {
-      // Default: get recent and upcoming events
-      events = await googleCalendarService.getUpcomingEvents(context.userId, 10);
+      // Default: get more events and filter intelligently
+      // Fetch 200 events to account for recurring birthdays
+      const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 200);
+      
+      // Filter to only include events with actual times (exclude all-day birthdays)
+      // and events happening within the next 24 hours
+      const now = new Date();
+      const next24Hours = new Date(now.getTime() + (24 * 60 * 60 * 1000));
+      
+      events = allEvents.filter(event => {
+        // Normalize event start: use dateTime or convert all-day date to midnight UTC
+        const eventStartStr = event.start?.dateTime ?? (event.start?.date ? `${event.start.date}T00:00:00Z` : null);
+        if (!eventStartStr) return false;
+        
+        // Exclude all-day events (birthdays, holidays) - they only have .date, not .dateTime
+        if (!event.start?.dateTime) return false;
+        
+        const eventTime = new Date(eventStartStr);
+        
+        // Include events in the next 24 hours
+        return eventTime <= next24Hours;
+      });
+      
+      // Limit to 10 most relevant events
+      events = events.slice(0, 10);
     }
     
     // Transform to standardized format
@@ -68,20 +100,25 @@ export async function calendarMeetingContext(
       location: event.location
     }));
     
-    console.log(`[MCP-Calendar] Found ${transformedEvents.length} events for ${params.eventId || params.contactEmail || 'time range'}`);
+    const duration = Date.now() - startTime;
+    console.log(`[MCP-Calendar] ✅ SUCCESS: Found ${transformedEvents.length} events in ${duration}ms`);
     
     return {
       events: transformedEvents,
       total: transformedEvents.length
     };
   } catch (error) {
-    console.error('[MCP-Calendar] Meeting context error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[MCP-Calendar] ❌ ERROR after ${duration}ms:`, error);
+    console.error('[MCP-Calendar] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: context.userId,
+      args
+    });
     
-    // Return graceful fallback
-    return {
-      events: [],
-      total: 0
-    };
+    // THROW the error instead of returning empty array
+    throw new Error(`Calendar meeting context failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -93,8 +130,12 @@ export async function calendarAttendeeHistory(
   args: unknown, 
   context: MCPToolContext
 ): Promise<{ events: CalendarEvent[]; attendeeEmail: string; lookbackDays: number }> {
+  const startTime = Date.now();
+  console.log('[MCP-Calendar] calendarAttendeeHistory called with args:', JSON.stringify(args));
+  
   try {
     const params = calendarAttendeeHistorySchema.parse(args);
+    console.log('[MCP-Calendar] Parsed params:', params);
     
     // Import the Google Calendar service dynamically
     const { googleCalendarService } = await import('../../services/googleCalendar.js');
@@ -117,8 +158,11 @@ export async function calendarAttendeeHistory(
       if (!hasAttendee) return false;
       
       // Check if event is within date range
-      if (!event.start?.dateTime) return false;
-      const eventDate = new Date(event.start.dateTime);
+      // Normalize event start: use dateTime or convert all-day date to midnight UTC
+      const eventStartStr = event.start?.dateTime ?? (event.start?.date ? `${event.start.date}T00:00:00Z` : null);
+      if (!eventStartStr) return false;
+      
+      const eventDate = new Date(eventStartStr);
       return eventDate >= lookbackDate && eventDate <= now;
     }).slice(0, params.maxResults);
     
@@ -137,7 +181,8 @@ export async function calendarAttendeeHistory(
       location: event.location
     }));
     
-    console.log(`[MCP-Calendar] Found ${transformedEvents.length} historical events with ${params.attendeeEmail} in last ${params.lookbackDays} days`);
+    const duration = Date.now() - startTime;
+    console.log(`[MCP-Calendar] ✅ SUCCESS: Found ${transformedEvents.length} historical events in ${duration}ms`);
     
     return {
       events: transformedEvents,
@@ -145,13 +190,16 @@ export async function calendarAttendeeHistory(
       lookbackDays: params.lookbackDays
     };
   } catch (error) {
-    console.error('[MCP-Calendar] Attendee history error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[MCP-Calendar] ❌ ERROR after ${duration}ms:`, error);
+    console.error('[MCP-Calendar] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: context.userId,
+      args
+    });
     
-    // Return graceful fallback
-    return {
-      events: [],
-      attendeeEmail: typeof args === 'object' && args && 'attendeeEmail' in args ? String(args.attendeeEmail) : '',
-      lookbackDays: 90
-    };
+    // THROW the error instead of returning empty array
+    throw new Error(`Calendar attendee history failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

@@ -83,18 +83,21 @@ export default function OpusAgendaList({ onSelect }: Props) {
         const data = await response.json();
         // Transform the response to match our CalendarEvent interface
         return data.map((event: any) => {
-          // Handle nested start time structure
-          const startTime = event.start?.dateTime || event.start?.date || event.start || event.scheduledAt;
+          // Handle nested start/end time structure - properly extract the actual time string
+          const startTime = event.start?.dateTime || event.start?.date || null;
+          const endTime = event.end?.dateTime || event.end?.date || null;
           
           return {
             id: event.id,
             title: event.title || event.summary || 'Untitled Event',
             company: event.company || extractCompanyFromTitle(event.title || event.summary || ''),
-            start: startTime,
-            end: event.end?.dateTime || event.end?.date || event.end,
+            start: startTime,  // Now this is properly a string or null, not an object
+            end: endTime,      // Same here
             attendees: event.attendees || [],
             location: event.location,
             notes: event.notes || event.description,
+            // Keep the original start object for all-day detection
+            startObj: event.start,
           };
         });
       } catch (error) {
@@ -132,7 +135,7 @@ export default function OpusAgendaList({ onSelect }: Props) {
               data-testid={`agenda-event-${ev.id}`}
             >
               <div className="text-sm opacity-80">
-                {isAllDayEvent(ev.start) ? "All Day" : (ev.start ? safeTimeFormat(ev.start) : "Time TBD")}
+                {isAllDayEvent(ev.startObj || ev.start) ? "All Day" : (ev.start ? safeTimeFormat(ev.start) : "Time TBD")}
               </div>
               <div className="text-base font-semibold">{ev.title}</div>
               {ev.company && <div className="text-sm opacity-70">{ev.company}</div>}

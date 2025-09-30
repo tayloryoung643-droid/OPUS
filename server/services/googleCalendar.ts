@@ -164,6 +164,55 @@ export class GoogleCalendarService {
     }
   }
 
+  // Get events in a specific time range (supports past and future dates)
+  async getEventsInRange(userId: string, timeMinISO: string, timeMaxISO: string): Promise<CalendarEvent[]> {
+    try {
+      const googleIntegration = await storage.getGoogleIntegration(userId);
+      if (!googleIntegration || !googleIntegration.isActive) {
+        return [];
+      }
+
+      // Check if we need to refresh the token
+      if (this.isTokenExpired(googleIntegration)) {
+        await this.refreshTokenIfNeeded(userId, googleIntegration);
+      }
+
+      const calendar = googleAuth.createCalendarClient({
+        access_token: googleIntegration.accessToken,
+        refresh_token: googleIntegration.refreshToken
+      });
+
+      console.log('DEBUG getEventsInRange - Fetching from:', timeMinISO, 'to:', timeMaxISO);
+
+      const response = await calendar.events.list({
+        calendarId: 'primary',
+        timeMin: timeMinISO,
+        timeMax: timeMaxISO,
+        singleEvents: true,
+        orderBy: 'startTime',
+      });
+
+      const events = (response.data.items || [])
+        .filter(event => !!event?.id);
+      
+      console.log('DEBUG getEventsInRange - Found', events.length, 'events');
+      events.forEach((event, i) => {
+        console.log(`DEBUG Range Event ${i}:`, {
+          id: event.id,
+          summary: event.summary,
+          startDateTime: event.start?.dateTime,
+          startDate: event.start?.date,
+        });
+      });
+
+      return events.map(event => this.mapGoogleEvent(event));
+
+    } catch (error) {
+      console.error('Error fetching calendar events in range:', error);
+      return [];
+    }
+  }
+
   async getEventById(userId: string, eventId: string): Promise<CalendarEvent | null> {
     try {
       const googleIntegration = await storage.getGoogleIntegration(userId);

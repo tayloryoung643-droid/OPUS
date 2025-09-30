@@ -38,38 +38,22 @@ export async function calendarMeetingContext(
         );
       });
     } else if (params.timeRange) {
-      // Get events in specific time range
-      const startTime = new Date(params.timeRange.start);
-      const endTime = new Date(params.timeRange.end);
-      
-      console.log('[MCP-Calendar] Time range filter:', {
+      // Get events in specific time range using the dedicated range method
+      // This properly handles past events (e.g., morning meetings when asked at 3pm)
+      console.log('[MCP-Calendar] Time range query:', {
         start: params.timeRange.start,
-        end: params.timeRange.end,
-        startTime: startTime.toISOString(),
-        endTime: endTime.toISOString()
+        end: params.timeRange.end
       });
       
-      // Use the time range to filter events
-      const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 100);
-      console.log('[MCP-Calendar] Fetched', allEvents.length, 'total events');
+      // Use the new getEventsInRange method that fetches directly from Google Calendar API
+      // without filtering by "now", so it includes past events in the range
+      events = await googleCalendarService.getEventsInRange(
+        context.userId,
+        params.timeRange.start,
+        params.timeRange.end
+      );
       
-      events = allEvents.filter(event => {
-        // Normalize event start: use dateTime or convert all-day date to midnight UTC
-        const eventStartStr = event.start?.dateTime ?? (event.start?.date ? `${event.start.date}T00:00:00Z` : null);
-        if (!eventStartStr) return false;
-        
-        const eventTime = new Date(eventStartStr);
-        const matches = eventTime >= startTime && eventTime <= endTime;
-        
-        console.log('[MCP-Calendar] Event filter:', {
-          summary: event.summary,
-          eventStartStr,
-          eventTime: eventTime.toISOString(),
-          matches
-        });
-        
-        return matches;
-      });
+      console.log('[MCP-Calendar] getEventsInRange found', events.length, 'events');
     } else {
       // Default: get more events and filter intelligently
       // Fetch 200 events to account for recurring birthdays

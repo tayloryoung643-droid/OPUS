@@ -44,8 +44,11 @@ export async function calendarMeetingContext(
       // Use the time range to filter events
       const allEvents = await googleCalendarService.getUpcomingEvents(context.userId, 100);
       events = allEvents.filter(event => {
-        if (!event.start?.dateTime) return false;
-        const eventTime = new Date(event.start.dateTime);
+        // Normalize event start: use dateTime or convert all-day date to midnight UTC
+        const eventStartStr = event.start?.dateTime ?? (event.start?.date ? `${event.start.date}T00:00:00Z` : null);
+        if (!eventStartStr) return false;
+        
+        const eventTime = new Date(eventStartStr);
         return eventTime >= startTime && eventTime <= endTime;
       });
     } else {
@@ -59,10 +62,14 @@ export async function calendarMeetingContext(
       const next24Hours = new Date(now.getTime() + (24 * 60 * 60 * 1000));
       
       events = allEvents.filter(event => {
-        // Must have a dateTime (not just a date) to exclude all-day events
+        // Normalize event start: use dateTime or convert all-day date to midnight UTC
+        const eventStartStr = event.start?.dateTime ?? (event.start?.date ? `${event.start.date}T00:00:00Z` : null);
+        if (!eventStartStr) return false;
+        
+        // Exclude all-day events (birthdays, holidays) - they only have .date, not .dateTime
         if (!event.start?.dateTime) return false;
         
-        const eventTime = new Date(event.start.dateTime);
+        const eventTime = new Date(eventStartStr);
         
         // Include events in the next 24 hours
         return eventTime <= next24Hours;
@@ -136,8 +143,11 @@ export async function calendarAttendeeHistory(
       if (!hasAttendee) return false;
       
       // Check if event is within date range
-      if (!event.start?.dateTime) return false;
-      const eventDate = new Date(event.start.dateTime);
+      // Normalize event start: use dateTime or convert all-day date to midnight UTC
+      const eventStartStr = event.start?.dateTime ?? (event.start?.date ? `${event.start.date}T00:00:00Z` : null);
+      if (!eventStartStr) return false;
+      
+      const eventDate = new Date(eventStartStr);
       return eventDate >= lookbackDate && eventDate <= now;
     }).slice(0, params.maxResults);
     

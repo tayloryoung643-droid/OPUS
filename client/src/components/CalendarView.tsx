@@ -77,23 +77,28 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
 
   // Convert Google Calendar events to call format
   const upcomingCalendarEvents = Array.isArray(calendarEvents)
-    ? calendarEvents.map((event) => ({
-        id: `calendar_${event.id}`,
-        calendarEventId: event.id,
-        title: event.summary || "No Title",
-        scheduledAt:
-          event.start?.dateTime ||
-          (event.start?.date ? new Date(`${event.start.date}T00:00:00Z`).toISOString() : new Date().toISOString()),
-        status: "upcoming",
-        callType: "meeting",
-        source: "calendar" as const,
-        company: {
-          id: "google-calendar",
-          name: "Google Calendar",
-          domain: undefined,
-          industry: undefined,
-        },
-      }))
+    ? calendarEvents
+        .filter(event => {
+          // Only include events with valid start times
+          return event.start?.dateTime || event.start?.date;
+        })
+        .map((event) => ({
+          id: `calendar_${event.id}`,
+          calendarEventId: event.id,
+          title: event.summary || "No Title",
+          scheduledAt:
+            event.start?.dateTime ||
+            (event.start?.date ? new Date(`${event.start.date}T00:00:00Z`).toISOString() : ""),
+          status: "upcoming",
+          callType: "meeting",
+          source: "calendar" as const,
+          company: {
+            id: "google-calendar",
+            name: "Google Calendar",
+            domain: undefined,
+            industry: undefined,
+          },
+        }))
     : [];
 
   // Combine all upcoming calls (database + Google Calendar)
@@ -112,7 +117,13 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
   const isUpcomingLoading = upcomingLoading || calendarLoading;
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return "No date";
+    
     const date = new Date(dateString);
+    
+    // Guard against invalid dates
+    if (isNaN(date.getTime())) return "Invalid date";
+    
     return date.toLocaleDateString("en-US", {
       weekday: "short",
       month: "short",

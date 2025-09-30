@@ -137,19 +137,38 @@ export default function CalendarView({ onSelectEvent }: CalendarViewProps) {
       return "All Day";
     }
     
-    const date = new Date(dateString);
-    
-    // Guard against invalid dates
-    if (isNaN(date.getTime())) return "Invalid date";
-    
-    return date.toLocaleDateString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+    try {
+      // Handle various date formats
+      let date: Date;
+      
+      // Try parsing as ISO string first
+      if (dateString.includes('T') || dateString.includes('Z')) {
+        date = new Date(dateString);
+      } else {
+        // Try parsing as date-only string (YYYY-MM-DD)
+        date = new Date(`${dateString}T00:00:00Z`);
+      }
+      
+      // Check if date is valid
+      if (isNaN(date.getTime())) {
+        console.warn(`[CalendarView] Invalid date string: ${dateString}`);
+        return 'Invalid Date';
+      }
+      
+      // Format with proper timezone handling
+      return new Intl.DateTimeFormat("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      }).format(date);
+    } catch (error) {
+      console.error(`[CalendarView] Error formatting date "${dateString}":`, error);
+      return 'Invalid Date';
+    }
   };
 
   const getCallTypeColor = (callType?: string) => {

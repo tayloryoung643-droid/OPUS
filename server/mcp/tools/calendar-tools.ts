@@ -13,9 +13,12 @@ export async function calendarMeetingContext(
   args: unknown, 
   context: MCPToolContext
 ): Promise<{ events: CalendarEvent[]; total: number }> {
+  const startTime = Date.now();
+  console.log('[MCP-Calendar] calendarMeetingContext called with args:', JSON.stringify(args));
+  
   try {
     const params = calendarMeetingContextSchema.parse(args);
-    console.log('[MCP-Calendar] Received parameters:', JSON.stringify(params, null, 2));
+    console.log('[MCP-Calendar] Parsed params:', params);
     
     // Import the Google Calendar service dynamically
     const { googleCalendarService } = await import('../../services/googleCalendar.js');
@@ -97,20 +100,25 @@ export async function calendarMeetingContext(
       location: event.location
     }));
     
-    console.log(`[MCP-Calendar] Found ${transformedEvents.length} events for ${params.eventId || params.contactEmail || 'time range'}`);
+    const duration = Date.now() - startTime;
+    console.log(`[MCP-Calendar] ✅ SUCCESS: Found ${transformedEvents.length} events in ${duration}ms`);
     
     return {
       events: transformedEvents,
       total: transformedEvents.length
     };
   } catch (error) {
-    console.error('[MCP-Calendar] Meeting context error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[MCP-Calendar] ❌ ERROR after ${duration}ms:`, error);
+    console.error('[MCP-Calendar] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: context.userId,
+      args
+    });
     
-    // Return graceful fallback
-    return {
-      events: [],
-      total: 0
-    };
+    // THROW the error instead of returning empty array
+    throw new Error(`Calendar meeting context failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -122,8 +130,12 @@ export async function calendarAttendeeHistory(
   args: unknown, 
   context: MCPToolContext
 ): Promise<{ events: CalendarEvent[]; attendeeEmail: string; lookbackDays: number }> {
+  const startTime = Date.now();
+  console.log('[MCP-Calendar] calendarAttendeeHistory called with args:', JSON.stringify(args));
+  
   try {
     const params = calendarAttendeeHistorySchema.parse(args);
+    console.log('[MCP-Calendar] Parsed params:', params);
     
     // Import the Google Calendar service dynamically
     const { googleCalendarService } = await import('../../services/googleCalendar.js');
@@ -169,7 +181,8 @@ export async function calendarAttendeeHistory(
       location: event.location
     }));
     
-    console.log(`[MCP-Calendar] Found ${transformedEvents.length} historical events with ${params.attendeeEmail} in last ${params.lookbackDays} days`);
+    const duration = Date.now() - startTime;
+    console.log(`[MCP-Calendar] ✅ SUCCESS: Found ${transformedEvents.length} historical events in ${duration}ms`);
     
     return {
       events: transformedEvents,
@@ -177,13 +190,16 @@ export async function calendarAttendeeHistory(
       lookbackDays: params.lookbackDays
     };
   } catch (error) {
-    console.error('[MCP-Calendar] Attendee history error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[MCP-Calendar] ❌ ERROR after ${duration}ms:`, error);
+    console.error('[MCP-Calendar] Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      userId: context.userId,
+      args
+    });
     
-    // Return graceful fallback
-    return {
-      events: [],
-      attendeeEmail: typeof args === 'object' && args && 'attendeeEmail' in args ? String(args.attendeeEmail) : '',
-      lookbackDays: 90
-    };
+    // THROW the error instead of returning empty array
+    throw new Error(`Calendar attendee history failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

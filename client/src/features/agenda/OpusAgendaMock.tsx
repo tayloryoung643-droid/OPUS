@@ -489,47 +489,11 @@ export default function OpusAgendaMock() {
 
         {/* Right: Prep sheet */}
         <section className="relative p-6 md:p-8">
-          {/* Orb */}
-          <div className="hidden lg:block fixed right-6 top-24 z-50">
-            <div className="mx-auto h-64 w-64 rounded-full relative group cursor-pointer">
-            <div className="absolute inset-0 rounded-full bg-black ring-1 ring-white/15 transition-all duration-300 group-hover:ring-white/40 group-hover:scale-[1.02] shadow-[0_0_60px_rgba(168,85,247,0.5),0_0_120px_rgba(147,51,234,0.4),0_0_200px_rgba(139,92,246,0.3),0_0_280px_rgba(124,58,237,0.2),0_0_220px_rgba(168,85,247,0.35)_inset] hover:shadow-[0_0_80px_rgba(168,85,247,0.7),0_0_160px_rgba(147,51,234,0.55),0_0_240px_rgba(139,92,246,0.45),0_0_320px_rgba(124,58,237,0.35),0_0_280px_rgba(168,85,247,0.5)_inset]" />
-            <div className="absolute -inset-6 rounded-full blur-3xl bg-purple-500/20 animate-pulse transition-opacity duration-300 group-hover:opacity-80" />
-            {/* extra glow on hover */}
-            <div className="absolute -inset-10 rounded-full blur-[44px] bg-gradient-to-br from-purple-500/30 via-indigo-500/25 to-cyan-400/20 opacity-0 transition-opacity duration-300 group-hover:opacity-70" />
-          </div>
-          </div>
+          {/* Orb - removed */}
 
-          {/* Floating actions beside the Orb (desktop) */}
-          <div className="hidden lg:flex fixed right-[190px] top-28 z-50 gap-2">
-            <button onClick={handleSave} className="text-xs px-3 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300">Save</button>
-            <button onClick={generatePrep} className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700">Generate Prep</button>
-          </div>
+          {/* Floating actions beside the Orb (desktop) - removed */}
 
-          {/* Chat box */}
-          <div className="hidden lg:flex flex-col fixed right-6 top-64 w-[420px] max-w-[50vw] min-h-[260px] rounded-2xl border border-zinc-900/70 bg-black/80 backdrop-blur p-5">
-            <div className="text-xs text-zinc-400 mb-2">Opus ↔ Taylor (persists per call)</div>
-            <div className="flex-1 overflow-auto space-y-2 text-sm pr-1">
-              {thread.length === 0 && (
-                <div className="text-zinc-500 text-xs">No messages yet for this call.</div>
-              )}
-              {thread.map((m, idx) => (
-                <div key={idx} className={`max-w-[85%] px-3 py-2 rounded-lg border ${m.role === "opus" ? "self-start bg-zinc-950/60 border-zinc-900/60 italic" : "self-end bg-black/60 border-zinc-800"}`}>
-                  {m.text}
-                </div>
-              ))}
-            </div>
-            <div className="mt-3 flex gap-2">
-              <input
-                ref={chatInputRef}
-                value={chatDraft}
-                onChange={(e) => setChatDraft(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-                placeholder="Ask Opus…"
-                className="flex-1 rounded-xl bg-zinc-950/60 border border-zinc-900/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-600"
-              />
-              <button onClick={sendChat} className="px-3 py-2 text-sm rounded-xl bg-purple-600 hover:bg-purple-700">Send</button>
-            </div>
-          </div>
+          {/* Chat box - removed */}
 
           {/* Save toast */}
           {showSaved && (
@@ -570,144 +534,194 @@ export default function OpusAgendaMock() {
                   <a href="#" className="px-2 py-1 rounded bg-zinc-900/70 underline">Join link</a>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2 text-[11px]">
-                {['No EB identified','Security review pending','Low stakeholder coverage'].map((r,i)=> (
-                  <span key={i} className="px-2 py-1 rounded-full border border-zinc-800 text-zinc-300">{r}</span>
-                ))}
-              </div>
-            </div>
 
-            {loading ? (
-              <Skeleton />
-            ) : prep ? (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Stakeholders (read-only for now) */}
-                <Card title="Stakeholders" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                  {prep.stakeholders?.length ? (
-                    <ul className="space-y-3">
-                      {prep.stakeholders.map((s, i) => (
-                        <li key={i}>
-                          <div className="text-sm font-medium">{s.email}</div>
-                          <div className="text-xs text-zinc-500">{s.role}</div>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="text-zinc-500 text-sm">—</div>
-                  )}
-                </Card>
+              {/* Action buttons moved from old chat interface */}
+              <div className="flex items-center gap-3">
+                <div className="flex flex-wrap gap-2 text-[11px] mr-4">
+                  {['No EB identified','Security review pending','Low stakeholder coverage'].map((r,i)=> (
+                    <span key={i} className="px-2 py-1 rounded-full border border-zinc-800 text-zinc-400">{r}</span>
+                  ))}
+                </div>
 
-                {/* Goals & Pain (editable) */}
-                <Card title="Goals & Pain" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                  <EditableList value={prep.goalsPain} onChange={(v) => { setPrep({ ...prep, goalsPain: v }); handleSave(); }} />
-                </Card>
+                {/* Generate Prep Button */}
+                <button
+                  onClick={() => {
+                    if (!selected) return;
+                    setLoading(true);
+                    // Simulate API call delay
+                    setTimeout(() => {
+                      setPrep(prev => ({
+                        ...prev,
+                        agendaBullets: ["Discuss current CRM challenges", "Review integration requirements", "Timeline and budget alignment"],
+                        goalsPain: ["Manual data entry inefficiencies", "Lack of pipeline visibility", "Integration complexity"],
+                        methodology: {
+                          MEDDIC: {
+                            metrics: "25% increase in sales efficiency",
+                            economic: "$50K budget allocated",
+                            decision: "CTO and VP Sales involved",
+                            decisionCriteria: "ROI within 6 months",
+                            implicate: "Current system breaking down",
+                            champion: "Jennifer White"
+                          },
+                          Challenger: ["Teaching insight about industry trends", "Tailoring to their specific pain points", "Taking control of sales process"]
+                        },
+                        objections: [
+                          { objection: "Price concerns", response: "Focus on ROI and long-term value" },
+                          { objection: "Integration complexity", response: "Highlight our proven implementation process" }
+                        ],
+                        competitors: ["Salesforce", "HubSpot"],
+                        opusSummary: "High-potential opportunity with clear pain points and engaged stakeholders."
+                      }));
+                      setLoading(false);
+                    }, 2000);
+                  }}
+                  disabled={loading || !selected}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-50 text-white rounded-lg font-medium text-sm transition-colors"
+                >
+                  {loading ? "Generating..." : "Generate Prep"}
+                </button>
 
-                {/* Opus Summary */}
-                <Card title="Opus Summary (Coach Digest)" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                  <div className="space-y-2">
-                    <div className="text-sm text-zinc-300 font-medium">{prep.opusSummary?.headline || 'What matters most for this call'}</div>
-                    {prep.opusSummary?.bullets?.length ? (
-                      <List bullets={prep.opusSummary.bullets} />
-                    ) : (
-                      <div className="text-sm text-zinc-500">Generate to see Opus' summary.</div>
-                    )}
-                  </div>
-                </Card>
-
-                {/* Methodology (editable) */}
-                <Card title="Methodology (MEDDIC + Challenger)" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                  <EditableKeyValue kv={prep.methodology?.MEDDIC || {}} onChange={(kv) => { setPrep({ ...prep, methodology: { ...prep.methodology, MEDDIC: kv } }); handleSave(); }} />
-                  <div className="mt-4">
-                    <div className="text-zinc-400 text-xs mb-1">Challenger cues</div>
-                    <EditableList value={prep.methodology?.Challenger || []} onChange={(v) => { setPrep({ ...prep, methodology: { ...prep.methodology, Challenger: v } }); handleSave(); }} />
-                  </div>
-                </Card>
-
-                {/* Suggested Agenda (editable) */}
-                <Card title="Suggested Agenda" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                  <EditableList value={prep.agendaBullets} onChange={(v) => { setPrep({ ...prep, agendaBullets: v }); handleSave(); }} />
-                </Card>
-
-                {/* Next Steps (editable) */}
-                <Card title="Next Steps" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                  <EditableList value={prep.nextSteps} onChange={(v) => { setPrep({ ...prep, nextSteps: v }); handleSave(); }} />
-                </Card>
-
-                {/* Objections (editable) */}
-                <Card title="Objections & Responses" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                  <EditableObjections items={prep.objections} onChange={(items) => { setPrep({ ...prep, objections: items }); handleSave(); }} />
-                </Card>
-
-                {/* Previous Communications */}
-                <Card title="Previous Communications" full>
-                  {prep.previousComms?.length ? (
-                    <div className="space-y-3">
-                      {prep.previousComms.map((comm, i) => (
-                        <div key={i} className="border border-zinc-800 rounded-lg p-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs font-medium text-zinc-300">{comm.source}</span>
-                            <span className="text-xs text-zinc-500">{comm.when}</span>
-                          </div>
-                          <div className="text-sm text-zinc-400">{comm.summary}</div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-zinc-500 text-sm">No previous communications found.</div>
-                  )}
-                </Card>
-
-                {/* Competitors */}
-                <Card title="Competitive Intelligence" full>
-                  {prep.competitors?.length ? (
-                    <div className="space-y-4">
-                      {prep.competitors.map((comp, i) => (
-                        <div key={i} className="border border-zinc-800 rounded-lg p-3">
-                          <div className="text-sm font-medium text-zinc-200 mb-2">{comp.name}</div>
-                          <div className="text-xs text-zinc-400 mb-2">{comp.context}</div>
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                            <div>
-                              <div className="text-zinc-400 mb-1">Counters:</div>
-                              <ul className="text-zinc-300 space-y-1">
-                                {comp.counters?.map((counter, j) => (
-                                  <li key={j}>• {counter}</li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div>
-                              <div className="text-zinc-400 mb-1">Traps:</div>
-                              <ul className="text-zinc-300 space-y-1">
-                                {comp.traps?.map((trap, j) => (
-                                  <li key={j}>• {trap}</li>
-                                ))}
-                              </ul>
-                            </div>
-                            <div>
-                              <div className="text-zinc-400 mb-1">Ripcord:</div>
-                              <ul className="text-zinc-300 space-y-1">
-                                {comp.ripcord?.map((rip, j) => (
-                                  <li key={j}>• {rip}</li>
-                                ))}
-                              </ul>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-zinc-500 text-sm">No competitive intelligence available.</div>
-                  )}
-                </Card>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <div className="text-zinc-400 mb-4">Select a call and click "Generate Prep" to get started.</div>
-                <button onClick={generatePrep} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700">
-                  Generate Prep
+                {/* Save Button */}
+                <button
+                  onClick={handleSave}
+                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg font-medium text-sm transition-colors"
+                >
+                  {showSaved ? "Saved!" : "Save"}
                 </button>
               </div>
-            )}
+            </div>
           </div>
+
+          {loading ? (
+            <Skeleton />
+          ) : prep ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Stakeholders (read-only for now) */}
+              <Card title="Stakeholders" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
+                {prep.stakeholders?.length ? (
+                  <ul className="space-y-3">
+                    {prep.stakeholders.map((s, i) => (
+                      <li key={i}>
+                        <div className="text-sm font-medium">{s.email}</div>
+                        <div className="text-xs text-zinc-500">{s.role}</div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-zinc-500 text-sm">—</div>
+                )}
+              </Card>
+
+              {/* Goals & Pain (editable) */}
+              <Card title="Goals & Pain" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
+                <EditableList value={prep.goalsPain} onChange={(v) => { setPrep({ ...prep, goalsPain: v }); handleSave(); }} />
+              </Card>
+
+              {/* Opus Summary */}
+              <Card title="Opus Summary (Coach Digest)" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
+                <div className="space-y-2">
+                  <div className="text-sm text-zinc-300 font-medium">{prep.opusSummary?.headline || 'What matters most for this call'}</div>
+                  {prep.opusSummary?.bullets?.length ? (
+                    <List bullets={prep.opusSummary.bullets} />
+                  ) : (
+                    <div className="text-sm text-zinc-500">Generate to see Opus' summary.</div>
+                  )}
+                </div>
+              </Card>
+
+              {/* Methodology (editable) */}
+              <Card title="Methodology (MEDDIC + Challenger)" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
+                <EditableKeyValue kv={prep.methodology?.MEDDIC || {}} onChange={(kv) => { setPrep({ ...prep, methodology: { ...prep.methodology, MEDDIC: kv } }); handleSave(); }} />
+                <div className="mt-4">
+                  <div className="text-zinc-400 text-xs mb-1">Challenger cues</div>
+                  <EditableList value={prep.methodology?.Challenger || []} onChange={(v) => { setPrep({ ...prep, methodology: { ...prep.methodology, Challenger: v } }); handleSave(); }} />
+                </div>
+              </Card>
+
+              {/* Suggested Agenda (editable) */}
+              <Card title="Suggested Agenda" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
+                <EditableList value={prep.agendaBullets} onChange={(v) => { setPrep({ ...prep, agendaBullets: v }); handleSave(); }} />
+              </Card>
+
+              {/* Next Steps (editable) */}
+              <Card title="Next Steps" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
+                <EditableList value={prep.nextSteps} onChange={(v) => { setPrep({ ...prep, nextSteps: v }); handleSave(); }} />
+              </Card>
+
+              {/* Objections (editable) */}
+              <Card title="Objections & Responses" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
+                <EditableObjections items={prep.objections} onChange={(items) => { setPrep({ ...prep, objections: items }); handleSave(); }} />
+              </Card>
+
+              {/* Previous Communications */}
+              <Card title="Previous Communications" full>
+                {prep.previousComms?.length ? (
+                  <div className="space-y-3">
+                    {prep.previousComms.map((comm, i) => (
+                      <div key={i} className="border border-zinc-800 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-medium text-zinc-300">{comm.source}</span>
+                          <span className="text-xs text-zinc-500">{comm.when}</span>
+                        </div>
+                        <div className="text-sm text-zinc-400">{comm.summary}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-zinc-500 text-sm">No previous communications found.</div>
+                )}
+              </Card>
+
+              {/* Competitors */}
+              <Card title="Competitive Intelligence" full>
+                {prep.competitors?.length ? (
+                  <div className="space-y-4">
+                    {prep.competitors.map((comp, i) => (
+                      <div key={i} className="border border-zinc-800 rounded-lg p-3">
+                        <div className="text-sm font-medium text-zinc-200 mb-2">{comp.name}</div>
+                        <div className="text-xs text-zinc-400 mb-2">{comp.context}</div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <div className="text-zinc-400 mb-1">Counters:</div>
+                            <ul className="text-zinc-300 space-y-1">
+                              {comp.counters?.map((counter, j) => (
+                                <li key={j}>• {counter}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <div className="text-zinc-400 mb-1">Traps:</div>
+                            <ul className="text-zinc-300 space-y-1">
+                              {comp.traps?.map((trap, j) => (
+                                <li key={j}>• {trap}</li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <div className="text-zinc-400 mb-1">Ripcord:</div>
+                            <ul className="text-zinc-300 space-y-1">
+                              {comp.ripcord?.map((rip, j) => (
+                                <li key={j}>• {rip}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-zinc-500 text-sm">No competitive intelligence available.</div>
+                )}
+              </Card>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="text-zinc-400 mb-4">Select a call and click "Generate Prep" to get started.</div>
+              <button onClick={generatePrep} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700">
+                Generate Prep
+              </button>
+            </div>
+          )}
         </section>
       </main>
     </div>

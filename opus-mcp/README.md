@@ -403,6 +403,10 @@ All errors return JSON with the following structure:
 - **`CONFIG_ERROR`** (500): Server configuration issue (missing env vars)
 - **`INTERNAL_ERROR`** (500): Unexpected server error
 
+### Important: All Tool Requests Must Include userId
+
+All tool endpoints require a `userId` field in the request body for user context and data isolation. This is validated before tool execution.
+
 ## Troubleshooting
 
 ### Service won't start

@@ -6,7 +6,17 @@ import { registerTools, getToolContracts } from './tools/index.js';
 const app: Express = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
+const allowedOrigins = [
+  process.env.APP_ORIGIN,
+  process.env.API_ORIGIN,
+  'http://localhost:5000',
+  'http://localhost:4000'
+].filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins.length > 0 ? allowedOrigins : false,
+  credentials: false
+}));
 app.use(express.json());
 
 app.use((req: Request, res: Response, next: NextFunction) => {

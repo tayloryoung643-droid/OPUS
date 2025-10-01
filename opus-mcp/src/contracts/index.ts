@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 // Salesforce tool schemas - v1
 export const salesforceContactLookupSchemaV1 = z.object({
+  userId: z.string(),
   email: z.string().email().optional(),
   company: z.string().optional(),
   fields: z.array(z.string()).optional().default([
@@ -10,6 +11,7 @@ export const salesforceContactLookupSchemaV1 = z.object({
 });
 
 export const salesforceOpportunityLookupSchemaV1 = z.object({
+  userId: z.string(),
   opportunityId: z.string().optional(),
   contactId: z.string().optional(),
   accountId: z.string().optional(),
@@ -19,6 +21,7 @@ export const salesforceOpportunityLookupSchemaV1 = z.object({
 });
 
 export const salesforceAccountLookupSchemaV1 = z.object({
+  userId: z.string(),
   accountId: z.string().optional(),
   name: z.string().optional(),
   domain: z.string().optional(),
@@ -29,6 +32,7 @@ export const salesforceAccountLookupSchemaV1 = z.object({
 
 // Google Calendar tool schemas - v1
 export const calendarMeetingContextSchemaV1 = z.object({
+  userId: z.string(),
   eventId: z.string().optional(),
   contactEmail: z.string().email().optional(),
   timeRange: z.object({
@@ -41,6 +45,7 @@ export const calendarMeetingContextSchemaV1 = z.object({
 });
 
 export const calendarAttendeeHistorySchemaV1 = z.object({
+  userId: z.string(),
   attendeeEmail: z.string().email(),
   lookbackDays: z.number().min(1).max(365).default(90),
   maxResults: z.number().min(1).max(50).default(10)
@@ -48,12 +53,13 @@ export const calendarAttendeeHistorySchemaV1 = z.object({
 
 // Database tool schemas - v1
 export const prepNotesSearchSchemaV1 = z.object({
+  userId: z.string(),
   query: z.string().min(1),
-  userId: z.string().optional(),
   limit: z.number().min(1).max(50).default(10)
 });
 
 export const callHistoryLookupSchemaV1 = z.object({
+  userId: z.string(),
   contactEmail: z.string().email().optional(),
   companyName: z.string().optional(),
   companyDomain: z.string().optional(),

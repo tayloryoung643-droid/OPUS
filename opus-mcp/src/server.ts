@@ -2,13 +2,14 @@ import express, { Request, Response, NextFunction, Express } from 'express';
 import cors from 'cors';
 import { HttpError, configError } from './errors.js';
 import { registerTools, getToolContracts } from './tools/index.js';
+import { env } from './config.js';
 
 const app: Express = express();
-const PORT = process.env.PORT || 4000;
+const port = Number(env.PORT);
 
 const allowedOrigins = [
-  process.env.APP_ORIGIN,
-  process.env.API_ORIGIN,
+  env.APP_ORIGIN,
+  env.API_ORIGIN,
   'http://localhost:5000',
   'http://localhost:4000'
 ].filter(Boolean);
@@ -63,23 +64,19 @@ app.use((error: Error | HttpError, req: Request, res: Response, next: NextFuncti
 
 async function startServer() {
   try {
-    const requiredEnvVars = [
-      'MCP_SERVICE_TOKEN',
-      'DATABASE_URL'
-    ];
-
-    const missingVars = requiredEnvVars.filter(v => !process.env[v]);
-    if (missingVars.length > 0) {
-      throw configError(`Missing required environment variables: ${missingVars.join(', ')}`);
-    }
-
     console.log('[MCP-Server] Registering tools...');
     await registerTools(app);
 
-    app.listen(PORT, () => {
-      console.log(`[MCP-Server] ✅ Opus MCP Service running on port ${PORT}`);
-      console.log(`[MCP-Server] Health check: http://localhost:${PORT}/healthz`);
-      console.log(`[MCP-Server] Contracts: http://localhost:${PORT}/contracts`);
+    app.listen(port, () => {
+      console.log(`[MCP-Server] ✅ Opus MCP Service running on port ${port}`);
+      console.log(`[MCP-Server] Health check: http://localhost:${port}/healthz`);
+      console.log(`[MCP-Server] Contracts: http://localhost:${port}/contracts`);
+    }).on("error", (err: any) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(`[MCP-Server] ❌ Port ${port} is already in use. Set PORT=4000 and try again.`);
+        process.exit(1);
+      }
+      throw err;
     });
   } catch (error) {
     console.error('[MCP-Server] ❌ Failed to start:', error);

@@ -213,6 +213,10 @@ export class McpClient {
       throw new Error('HTTP base URL not configured');
     }
 
+    // Generate 6-char request ID for logging
+    const requestId = Math.random().toString(36).substring(2, 8);
+    console.log(`[MCP-Remote] ${method} [${requestId}]`);
+
     const url = `${this.config.httpBaseUrl}/tools/${method}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
@@ -230,10 +234,13 @@ export class McpClient {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
+      console.error(`[MCP-Remote] ${method} [${requestId}] FAILED: ${error.error?.message || response.statusText}`);
       throw new Error(error.error?.message || `HTTP ${response.status}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    console.log(`[MCP-Remote] ${method} [${requestId}] SUCCESS`);
+    return result;
   }
 
   async ping(): Promise<void> {

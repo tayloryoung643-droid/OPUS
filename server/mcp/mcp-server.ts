@@ -9,6 +9,7 @@ import {
   type MCPToolName 
 } from './types/mcp-types.js';
 import { MCP_TOOL_HANDLERS } from './tools/index.js';
+import { ENV } from '../config/env.js';
 
 /**
  * Model Context Protocol Server for Momentum AI
@@ -172,9 +173,117 @@ export class MomentumMCPServer {
 }
 
 /**
- * Factory function to create MCP server instance
+ * Remote MCP Client Wrapper
+ * Wraps HTTP calls to the opus-mcp service to match MomentumMCPServer interface
  */
-export function createMCPServer(context: MCPToolContext): MomentumMCPServer {
-  console.log(`[MCP-Server] Creating MCP server for user: ${context.userId}`);
+class RemoteMCPClient {
+  private context: MCPToolContext;
+  private baseUrl: string;
+  private authToken: string;
+
+  constructor(context: MCPToolContext, baseUrl: string, authToken: string) {
+    this.context = context;
+    this.baseUrl = baseUrl;
+    this.authToken = authToken;
+    console.log(`[MCP-Remote] Creating remote MCP client for user: ${context.userId}, baseUrl: ${baseUrl}`);
+  }
+
+  getOpenAIFunctions(): any[] {
+    return Object.values(MCP_TOOL_DEFINITIONS);
+  }
+
+  async executeTool(toolName: MCPToolName, args: unknown): Promise<any> {
+    const requestId = Math.random().toString(36).substring(2, 8);
+    console.log(`[MCP-Remote] ${toolName} [${requestId}]`);
+
+    try {
+      const url = `${this.baseUrl}/tools/${toolName}`;
+      
+      // Build request body with userId last to prevent spoofing
+      const requestBody = {
+        ...(args && typeof args === 'object' ? args : {}),
+        userId: this.context.userId  // Always use context userId, prevent override
+      };
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.authToken}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ 
+          error: { message: response.statusText } 
+        }));
+        throw new Error(errorData.error?.message || `HTTP ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log(`[MCP-Remote] ${toolName} [${requestId}] SUCCESS`);
+      return result;
+    } catch (error) {
+      console.error(`[MCP-Remote] ${toolName} [${requestId}] FAILED:`, error);
+      throw error;
+    }
+  }
+
+  updateContext(newContext: MCPToolContext): void {
+    this.context = newContext;
+    console.log(`[MCP-Remote] Context updated for user: ${newContext.userId}`);
+  }
+
+  getServer(): Server | null {
+    // Return null instead of throwing to prevent crashes
+    // Remote mode doesn't have a local server instance
+    return null as any;
+  }
+
+  async checkIntegrationStatus(): Promise<{ google: boolean; salesforce: boolean }> {
+    try {
+      const storage = this.context.storage;
+      const googleIntegration = await storage.getGoogleIntegration(this.context.userId);
+      const salesforceIntegration = await storage.getSalesforceIntegration(this.context.userId);
+      
+      return {
+        google: !!googleIntegration?.isActive,
+        salesforce: !!salesforceIntegration?.isActive
+      };
+    } catch (error) {
+      console.error('[MCP-Remote] Error checking integration status:', error);
+      return { google: false, salesforce: false };
+    }
+  }
+}
+
+/**
+ * Factory function to create MCP server instance
+ * Uses remote HTTP service when MCP_REMOTE_ENABLED is true
+ */
+export function createMCPServer(context: MCPToolContext): MomentumMCPServer | RemoteMCPClient {
+  const isRemoteEnabled = ENV.MCP_REMOTE_ENABLED;
+  
+  if (isRemoteEnabled) {
+    const baseUrl = ENV.MCP_BASE_URL;
+    const authToken = ENV.MCP_SERVICE_TOKEN;
+    
+    // Validate required config for remote mode
+    if (!authToken) {
+      console.warn('[MCP] MCP_REMOTE_ENABLED is true but MCP_SERVICE_TOKEN is missing, falling back to local mode');
+      return new MomentumMCPServer(context);
+    }
+    
+    if (!baseUrl || !baseUrl.trim()) {
+      console.warn('[MCP] MCP_REMOTE_ENABLED is true but MCP_BASE_URL is missing, falling back to local mode');
+      return new MomentumMCPServer(context);
+    }
+    
+    console.log(`[MCP] Using REMOTE mode: ${baseUrl}`);
+    return new RemoteMCPClient(context, baseUrl, authToken) as any;
+  }
+  
+  console.log(`[MCP] Using LOCAL mode`);
   return new MomentumMCPServer(context);
 }

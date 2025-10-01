@@ -45,6 +45,64 @@ app.get('/ws', (req: Request, res: Response) => {
   });
 });
 
+// Agent endpoint for high-level actions like prep sheet generation
+app.post('/agent/act', async (req: Request, res: Response, next: NextFunction) => {
+  const requestId = (req as any).requestId || 'unknown';
+  console.log(`[${requestId}] POST /agent/act`);
+
+  try {
+    // Import auth and agent handler
+    const { bearerAuth } = await import('./auth.js');
+    const { handleAgentAction } = await import('./agent/prepAgent.js');
+    const { storage } = await import('../../server/storage.js');
+
+    // Apply authentication
+    await new Promise<void>((resolve, reject) => {
+      bearerAuth(req as any, res, (err?: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+
+    // Extract userId from request body
+    const userId = req.body.userId;
+    if (!userId) {
+      return res.status(400).json({
+        error: {
+          code: 'BAD_REQUEST',
+          message: 'userId is required in request body'
+        }
+      });
+    }
+
+    // Create context
+    const context = {
+      userId,
+      storage,
+      user: { id: userId }
+    };
+
+    // Handle the agent action
+    const result = await handleAgentAction(req.body, context);
+
+    console.log(`[${requestId}] Agent action SUCCESS`);
+    res.json(result);
+  } catch (error) {
+    console.error(`[${requestId}] Agent action ERROR:`, error);
+
+    if (error instanceof HttpError) {
+      return res.status(error.statusCode).json(error.toJSON());
+    }
+
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: error instanceof Error ? error.message : 'Unexpected error'
+      }
+    });
+  }
+});
+
 app.use((error: Error | HttpError, req: Request, res: Response, next: NextFunction) => {
   const requestId = (req as any).requestId || 'unknown';
 

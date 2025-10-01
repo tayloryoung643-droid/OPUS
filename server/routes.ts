@@ -521,6 +521,130 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     }
   });
 
+  // MCP Proxy Routes - Server-to-server forwarding to MCP service
+  // POST /api/mcp/:toolName → forwards to MCP at ${MCP_BASE_URL}/tools/:toolName
+  app.post("/api/mcp/:toolName", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!ENV.MCP_REMOTE_ENABLED) {
+        return res.status(503).json({ 
+          error: { 
+            code: "MCP_DISABLED", 
+            message: "MCP service is not enabled" 
+          } 
+        });
+      }
+
+      if (!ENV.MCP_SERVICE_TOKEN) {
+        console.error('[MCP-Proxy] MCP_SERVICE_TOKEN not configured');
+        return res.status(500).json({ 
+          error: { 
+            code: "CONFIG_ERROR", 
+            message: "MCP service not properly configured" 
+          } 
+        });
+      }
+
+      const toolName = req.params.toolName;
+      const userId = req.user.claims.sub;
+      const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+      
+      console.log(`[MCP-Proxy:${requestId}] ${toolName} for user ${userId}`);
+
+      // Forward request to MCP service
+      const mcpUrl = `${ENV.MCP_BASE_URL}/tools/${toolName}`;
+      const mcpResponse = await fetch(mcpUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...req.body,
+          userId // Ensure userId is always included
+        })
+      });
+
+      const responseData = await mcpResponse.json();
+      
+      // Log errors for debugging
+      if (!mcpResponse.ok) {
+        console.error(`[MCP-Proxy:${requestId}] Error: ${mcpResponse.status}`, responseData);
+      }
+
+      // Return response with same status code
+      res.status(mcpResponse.status).json(responseData);
+    } catch (error) {
+      console.error('[MCP-Proxy] Error forwarding request:', error);
+      res.status(500).json({ 
+        error: { 
+          code: "PROXY_ERROR", 
+          message: "Failed to communicate with MCP service" 
+        } 
+      });
+    }
+  });
+
+  // POST /api/agent/act → forwards to ${MCP_BASE_URL}/agent/act
+  app.post("/api/agent/act", isAuthenticated, async (req: any, res) => {
+    try {
+      if (!ENV.MCP_REMOTE_ENABLED) {
+        return res.status(503).json({ 
+          error: { 
+            code: "MCP_DISABLED", 
+            message: "MCP service is not enabled" 
+          } 
+        });
+      }
+
+      if (!ENV.MCP_SERVICE_TOKEN) {
+        console.error('[Agent-Proxy] MCP_SERVICE_TOKEN not configured');
+        return res.status(500).json({ 
+          error: { 
+            code: "CONFIG_ERROR", 
+            message: "Agent service not properly configured" 
+          } 
+        });
+      }
+
+      const userId = req.user.claims.sub;
+      const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+      
+      console.log(`[Agent-Proxy:${requestId}] ${req.body.intent || 'unknown intent'} for user ${userId}`);
+
+      // Forward request to MCP agent endpoint
+      const mcpUrl = `${ENV.MCP_BASE_URL}/agent/act`;
+      const mcpResponse = await fetch(mcpUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          ...req.body,
+          userId // Ensure userId is always included
+        })
+      });
+
+      const responseData = await mcpResponse.json();
+      
+      // Log errors for debugging
+      if (!mcpResponse.ok) {
+        console.error(`[Agent-Proxy:${requestId}] Error: ${mcpResponse.status}`, responseData);
+      }
+
+      // Return response with same status code
+      res.status(mcpResponse.status).json(responseData);
+    } catch (error) {
+      console.error('[Agent-Proxy] Error forwarding request:', error);
+      res.status(500).json({ 
+        error: { 
+          code: "PROXY_ERROR", 
+          message: "Failed to communicate with agent service" 
+        } 
+      });
+    }
+  });
+
   // Combined integrations status endpoint
   app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {

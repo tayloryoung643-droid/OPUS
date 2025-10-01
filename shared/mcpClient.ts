@@ -1,4 +1,4 @@
-// MCP (Model Control Protocol) client for WebSocket communication
+// MCP (Model Control Protocol) client for WebSocket and HTTP communication
 // Used by both the main app and Chrome extension
 
 export interface McpTool {
@@ -25,6 +25,14 @@ export interface McpResponse {
   };
 }
 
+interface McpClientConfig {
+  mode?: 'websocket' | 'http';
+  wsUrl?: string;
+  httpBaseUrl?: string;
+  httpAuthToken?: string;
+  jwt?: string;
+}
+
 export class McpClient {
   private ws: WebSocket | null = null;
   private requestId = 0;
@@ -33,24 +41,37 @@ export class McpClient {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private heartbeatInterval: NodeJS.Timeout | null = null;
-  private url: string;
-  private jwt: string;
+  private config: McpClientConfig;
   public onConnectionChange?: (connected: boolean) => void;
 
-  constructor(url: string, jwt: string) {
-    this.url = url;
-    this.jwt = jwt;
+  constructor(url: string, jwt: string);
+  constructor(config: McpClientConfig);
+  constructor(urlOrConfig: string | McpClientConfig, jwt?: string) {
+    if (typeof urlOrConfig === 'string') {
+      this.config = {
+        mode: 'websocket',
+        wsUrl: urlOrConfig,
+        jwt: jwt
+      };
+    } else {
+      this.config = urlOrConfig;
+    }
   }
 
   async connect(): Promise<void> {
+    if (this.config.mode === 'http') {
+      this.isConnected = true;
+      this.onConnectionChange?.(true);
+      return Promise.resolve();
+    }
+
     if (this.ws?.readyState === WebSocket.OPEN) {
       return;
     }
 
     return new Promise((resolve, reject) => {
       try {
-        // Create WebSocket with JWT in subprotocol or query parameter
-        const wsUrl = `${this.url}?token=${encodeURIComponent(this.jwt)}`;
+        const wsUrl = `${this.config.wsUrl}?token=${encodeURIComponent(this.config.jwt || '')}`;
         this.ws = new WebSocket(wsUrl);
 
         this.ws.onopen = () => {
@@ -77,13 +98,11 @@ export class McpClient {
           this.stopHeartbeat();
           this.onConnectionChange?.(false);
           
-          // Reject pending requests
           this.pendingRequests.forEach(({ reject }) => {
             reject(new Error('WebSocket connection closed'));
           });
           this.pendingRequests.clear();
 
-          // Attempt to reconnect if not a clean close
           if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
             this.scheduleReconnect();
           }
@@ -96,7 +115,6 @@ export class McpClient {
           reject(new Error('WebSocket connection failed'));
         };
 
-        // Timeout for connection
         setTimeout(() => {
           if (this.ws?.readyState !== WebSocket.OPEN) {
             this.ws?.close();
@@ -130,7 +148,7 @@ export class McpClient {
           console.warn('[MCP] Heartbeat failed:', error);
         });
       }
-    }, 30000); // 30 second heartbeat
+    }, 30000);
   }
 
   private stopHeartbeat() {
@@ -154,6 +172,10 @@ export class McpClient {
   }
 
   async call(method: string, params?: any): Promise<any> {
+    if (this.config.mode === 'http') {
+      return this.httpCall(method, params);
+    }
+
     if (!this.isConnected || this.ws?.readyState !== WebSocket.OPEN) {
       throw new Error('MCP WebSocket not connected');
     }
@@ -172,7 +194,6 @@ export class McpClient {
       try {
         this.ws!.send(JSON.stringify(request));
         
-        // Request timeout
         setTimeout(() => {
           if (this.pendingRequests.has(id)) {
             this.pendingRequests.delete(id);
@@ -187,7 +208,47 @@ export class McpClient {
     });
   }
 
+  private async httpCall(method: string, params?: any): Promise<any> {
+    if (!this.config.httpBaseUrl) {
+      throw new Error('HTTP base URL not configured');
+    }
+
+    // Generate 6-char request ID for logging
+    const requestId = Math.random().toString(36).substring(2, 8);
+    console.log(`[MCP-Remote] ${method} [${requestId}]`);
+
+    const url = `${this.config.httpBaseUrl}/tools/${method}`;
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+
+    if (this.config.httpAuthToken) {
+      headers['Authorization'] = `Bearer ${this.config.httpAuthToken}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(params || {})
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
+      console.error(`[MCP-Remote] ${method} [${requestId}] FAILED: ${error.error?.message || response.statusText}`);
+      throw new Error(error.error?.message || `HTTP ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log(`[MCP-Remote] ${method} [${requestId}] SUCCESS`);
+    return result;
+  }
+
   async ping(): Promise<void> {
+    if (this.config.mode === 'http') {
+      const response = await fetch(`${this.config.httpBaseUrl}/healthz`);
+      if (!response.ok) throw new Error('Health check failed');
+      return;
+    }
     await this.call('ping');
   }
 

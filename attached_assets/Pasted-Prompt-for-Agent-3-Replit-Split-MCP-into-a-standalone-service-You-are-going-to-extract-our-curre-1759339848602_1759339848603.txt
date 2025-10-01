@@ -1,0 +1,230 @@
+Prompt for Agent 3 (Replit): Split MCP into a standalone service
+
+You are going to extract our current MCP into a small, independently runnable service while keeping behavior and schemas intact. Do not rewrite logic—lift and wire. Deliverables must be fully testable with curl before we touch the UI.
+
+Objectives (must all be met)
+
+Create a new repo/folder opus-mcp that runs an HTTP server on port 4000 with:
+
+GET /healthz (no auth) → { ok: true }
+
+GET /contracts (no auth) → lists tool names + versions + input/output schema summaries
+
+POST /tools/<toolName> (auth required) → calls the corresponding tool handler
+
+Optional now, stub WebSocket at GET /ws or /ws upgrade that accepts and pings (for the Orb/voice path)
+
+Auth: Bearer MCP_SERVICE_TOKEN (env). Missing/invalid → 401 JSON error.
+
+Contracts: move our Zod schemas & TS types into src/contracts/, version every public tool as .v1.
+
+Tools: move existing tool handlers (Calendar, Gmail, Salesforce, DB, Prep) into src/tools/ with a tiny registration layer.
+
+Orchestrator/context: move our contextResolver/contextLoader into src/orchestrator/ with zero functional changes (not exposed yet).
+
+Error handling: central JSON errors { error: { code, message, details? } }. No sample/fake fallbacks anywhere.
+
+Dev UX: README with setup, envs, and curl tests for health, contracts, and at least 3 tools.
+
+Patch the webapp so shared/mcpClient.ts points to the new service via MCP_BASE_URL + Authorization: Bearer <MCP_SERVICE_TOKEN>. Gate via MCP_REMOTE_ENABLED (default false).
+
+Tech/Structure
+
+Create this structure in opus-mcp/:
+
+opus-mcp/
+  package.json
+  tsconfig.json
+  .gitignore
+  README.md
+  src/
+    server.ts              # express app, routes, error handler, ws stub
+    auth.ts                # bearer guard
+    errors.ts              # HttpError + helpers
+    contracts/             # zod schemas + types (versioned)
+      index.ts
+    tools/                 # tool modules register here
+      index.ts             # registerTools(): name, inputSchema, outputSchema, handler
+      calendar.next_events.v1.ts
+      gmail.search_threads.v1.ts
+      gmail.read_thread.v1.ts
+      salesforce.lookup_account.v1.ts
+      salesforce.lookup_opportunity.v1.ts
+      db.search_prep_notes.v1.ts
+      db.call_history.v1.ts
+      prep.generate.v1.ts
+    orchestrator/
+      contextResolver.ts   # moved from server/mcp/contextResolver.ts
+      contextLoader.ts     # moved from server/mcp/contextLoader.ts
+
+
+Dependencies: express, cors, zod, jsonwebtoken (prep for JWT later), ts-node-dev (dev), TypeScript types.
+
+Env vars (fail closed if missing):
+
+PORT=4000
+MCP_SERVICE_TOKEN=...
+DATABASE_URL=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+GOOGLE_REDIRECT_URI=...
+SFDC_CLIENT_ID=...
+SFDC_CLIENT_SECRET=...
+
+Migration (map our current files)
+
+Move:
+
+server/mcp/mcp-server.ts → logic split into src/server.ts + src/tools/index.ts
+
+server/mcp/tools/** → src/tools/** (one file per tool, keep logic & schemas)
+
+server/mcp/types/mcp-types.ts → src/contracts/index.ts (export Zod + TS types)
+
+server/mcp/contextResolver.ts → src/orchestrator/contextResolver.ts
+
+server/mcp/contextLoader.ts → src/orchestrator/contextLoader.ts
+
+Keep in webapp:
+
+shared/mcpClient.ts (just change base URL + add bearer header; keep WS support)
+
+Version tool names explicitly with .v1 in file names and route registration.
+
+Endpoint behavior (must match)
+
+GET /healthz → 200 { ok: true }
+
+GET /contracts → 200 { tools: [{ name, version, inputSchemaSummary, outputSchemaSummary }] }
+
+POST /tools/<name>:
+
+Auth check → 401 with { error: { code:"UNAUTHORIZED", message:"…" } } on fail
+
+Zod-validate input → 400 with issues on fail
+
+Execute tool handler → 200 with validated output
+
+Any thrown error → 500 { error: { code:"INTERNAL_ERROR", message:"Unexpected error" } }
+
+Important: If a tool lacks required third-party creds or scope, return a typed error such as:
+
+401 { "error": { "code":"GOOGLE_NOT_CONNECTED", "message":"Connect Google Calendar" } }
+
+
+Never return mock/sample data.
+
+Registration layer (sketch)
+
+Create src/tools/index.ts that exports registerTools(app) which:
+
+Imports each tool module { name, inputSchema, outputSchema, handler }
+
+Mounts POST /tools/${name} with auth, validation, handler, and output validation
+
+Adds each to the /contracts listing with a minimal schema summary (field names + required/optional)
+
+Server (sketch)
+
+src/server.ts:
+
+express + cors + json
+
+GET /healthz
+
+GET /contracts reads from a registry populated by registerTools
+
+registerTools(app) to attach all tool routes
+
+WS stub (/ws) if trivial; otherwise a TODO but don’t break HTTP
+
+central error middleware logging requestId and returning JSON errors
+
+listen on process.env.PORT || 4000
+
+Webapp patch
+
+Add envs: MCP_REMOTE_ENABLED, MCP_BASE_URL, MCP_SERVICE_TOKEN
+
+In shared/mcpClient.ts:
+
+If MCP_REMOTE_ENABLED=true, use MCP_BASE_URL and add Authorization: Bearer ${MCP_SERVICE_TOKEN}
+
+Keep the old local path when disabled
+
+No other UI changes. The UI must display connect CTAs on error payloads instead of placeholders.
+
+README (must include)
+
+Setup steps, envs, npm run dev
+
+Curl tests for:
+
+/healthz
+
+/contracts
+
+calendar.next_events.v1
+
+gmail.search_threads.v1
+
+salesforce.lookup_account.v1
+
+Troubleshooting: missing env → 500 CONFIG_ERROR; auth → 401; validation → 400
+
+Acceptance Criteria (Definition of Done)
+
+opus-mcp runs locally with npm run dev and passes all curl tests.
+
+At least these tools reachable and returning real handler output or typed errors (no mock):
+
+calendar.next_events.v1
+
+gmail.search_threads.v1
+
+salesforce.lookup_account.v1
+
+/contracts lists all registered tools with versions.
+
+The webapp compiles with a patch to shared/mcpClient.ts and, when MCP_REMOTE_ENABLED=true, calls the new service (verified via logs).
+
+No sample/demo data code paths remain in tools; missing integrations produce typed errors.
+
+Commit includes the new repo and a small webapp patch behind a feature flag.
+
+Validation commands (run and paste outputs)
+# Health
+curl -s http://localhost:4000/healthz
+
+# Contracts
+curl -s http://localhost:4000/contracts | jq
+
+# Calendar
+curl -s -X POST http://localhost:4000/tools/calendar.next_events.v1 \
+  -H "Authorization: Bearer ${MCP_SERVICE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"u_123","startIso":"2025-10-01T00:00:00Z","endIso":"2025-10-02T00:00:00Z"}' | jq
+
+# Gmail
+curl -s -X POST http://localhost:4000/tools/gmail.search_threads.v1 \
+  -H "Authorization: Bearer ${MCP_SERVICE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"u_123","q":"newer_than:90d from:prospect@example.com"}' | jq
+
+# Salesforce
+curl -s -X POST http://localhost:4000/tools/salesforce.lookup_account.v1 \
+  -H "Authorization: Bearer ${MCP_SERVICE_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"tenantId":"t_1","domain":"acme.com"}' | jq
+
+Guardrails (non-negotiable)
+
+Remove any “fallback sample data.” Return typed errors instead.
+
+Centralize schemas in src/contracts/ and validate input & output for every tool.
+
+Log a requestId per request in server logs.
+
+Do not couple MCP to browser auth/cookies; only accept the bearer service token.
+
+Deliver the new repo, the small patch in the webapp, and the curl outputs showing success.

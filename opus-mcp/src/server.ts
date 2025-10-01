@@ -2,10 +2,9 @@ import express, { Request, Response, NextFunction, Express } from 'express';
 import cors from 'cors';
 import { HttpError, configError } from './errors.js';
 import { registerTools, getToolContracts } from './tools/index.js';
-import { env } from './config.js';
+import { env, port, portSource } from './config.js';
 
 const app: Express = express();
-const port = Number(env.PORT);
 
 const allowedOrigins = [
   env.APP_ORIGIN,
@@ -70,7 +69,7 @@ async function startServer() {
     await registerTools(app);
 
     app.listen(port, () => {
-      console.log(`[MCP-Server] ✅ Opus MCP Service running on port ${port}`);
+      console.log(`[MCP-Server] ✅ Opus MCP Service running on http://localhost:${port} (source: ${portSource})`);
       console.log(`[MCP-Server] Health check: http://localhost:${port}/healthz`);
       console.log(`[MCP-Server] Contracts: http://localhost:${port}/contracts`);
     }).on("error", (err: any) => {

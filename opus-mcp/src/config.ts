@@ -1,8 +1,10 @@
 import "dotenv/config";
 import { z } from "zod";
 
+const rawPort = process.env.MCP_PORT || process.env.PORT || "4000";
+
 const Env = z.object({
-  PORT: z.string().default("4000"),
+  PORT: z.string().default(rawPort),
   MCP_SERVICE_TOKEN: z.string().min(10),
   DATABASE_URL: z.string(),
   APP_ORIGIN: z.string().optional(),
@@ -19,3 +21,7 @@ const Env = z.object({
 }));
 
 export const env = Env.parse(process.env);
+export const port = Number(env.PORT);
+export const portSource = process.env.MCP_PORT
+  ? "MCP_PORT"
+  : process.env.PORT ? "PORT" : "default(4000)";

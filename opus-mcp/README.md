@@ -51,11 +51,13 @@ opus-mcp/
 
 Create a `.env` file in the `opus-mcp` directory (or copy from `.env.example`):
 
-**Important:** MCP runs on port 4000; the main app uses port 5000. This separation prevents port collisions.
+**Important:** MCP runs on port 4000 by default; the main app uses port 5000. This separation prevents port collisions.
+
+**Note:** Set `MCP_PORT` if Replit or another host injects `PORT`; default is 4000.
 
 ```bash
 # Required
-PORT=4000
+PORT=4000  # Or use MCP_PORT to override if PORT is injected by your host
 MCP_SERVICE_TOKEN=your-secret-service-token-here
 DATABASE_URL=postgresql://...
 

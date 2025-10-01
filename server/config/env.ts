@@ -29,6 +29,11 @@ export interface EnvConfig {
   NODE_ENV: string;
   USE_MOCKS: boolean;
   DEMO_MODE: boolean;
+
+  // MCP Remote Service
+  MCP_REMOTE_ENABLED: boolean;
+  MCP_BASE_URL: string;
+  MCP_SERVICE_TOKEN: string;
 }
 
 /**
@@ -124,7 +129,11 @@ export function getEnvConfig(): EnvConfig {
     
     NODE_ENV: process.env.NODE_ENV || 'development',
     USE_MOCKS: process.env.USE_MOCKS === 'true',
-    DEMO_MODE: process.env.DEMO_MODE === 'true'
+    DEMO_MODE: process.env.DEMO_MODE === 'true',
+
+    MCP_REMOTE_ENABLED: process.env.MCP_REMOTE_ENABLED === 'true',
+    MCP_BASE_URL: process.env.MCP_BASE_URL || 'http://localhost:4000',
+    MCP_SERVICE_TOKEN: process.env.MCP_SERVICE_TOKEN || ''
   };
 }
 

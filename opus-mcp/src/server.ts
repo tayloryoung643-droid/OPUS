@@ -73,7 +73,7 @@ async function startServer() {
       console.log(`[MCP-Server] Contracts: http://localhost:${port}/contracts`);
     }).on("error", (err: any) => {
       if (err.code === "EADDRINUSE") {
-        console.error(`[MCP-Server] ❌ Port ${port} is already in use. Set PORT=4000 and try again.`);
+        console.error(`[MCP-Server] ❌ Port ${port} is already in use. Set PORT to a free port (e.g., 4000) and try again.`);
         process.exit(1);
       }
       throw err;

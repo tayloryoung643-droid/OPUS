@@ -12,6 +12,10 @@ const Env = z.object({
   GOOGLE_REDIRECT_URI: z.string().optional(),
   SFDC_CLIENT_ID: z.string().optional(),
   SFDC_CLIENT_SECRET: z.string().optional(),
-});
+}).transform((data) => ({
+  ...data,
+  SFDC_CLIENT_ID: data.SFDC_CLIENT_ID || process.env.SALESFORCE_CLIENT_ID,
+  SFDC_CLIENT_SECRET: data.SFDC_CLIENT_SECRET || process.env.SALESFORCE_CLIENT_SECRET,
+}));
 
 export const env = Env.parse(process.env);

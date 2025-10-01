@@ -164,6 +164,18 @@ export class GoogleCalendarService {
     }
   }
 
+  // Helper to normalize ISO date strings to ensure proper timezone format
+  private normalizeISOString(isoString: string): string {
+    // If the string already has timezone info (Z or +/-HH:MM), return as is
+    if (isoString.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(isoString)) {
+      return isoString;
+    }
+    
+    // If it's missing timezone, add Z for UTC
+    // This handles formats like "2023-10-23T00:00:00"
+    return isoString + 'Z';
+  }
+
   // Get events in a specific time range (supports past and future dates)
   async getEventsInRange(userId: string, timeMinISO: string, timeMaxISO: string): Promise<CalendarEvent[]> {
     try {
@@ -182,12 +194,16 @@ export class GoogleCalendarService {
         refresh_token: googleIntegration.refreshToken
       });
 
-      console.log('DEBUG getEventsInRange - Fetching from:', timeMinISO, 'to:', timeMaxISO);
+      // Normalize the ISO strings to ensure proper timezone format
+      const normalizedTimeMin = this.normalizeISOString(timeMinISO);
+      const normalizedTimeMax = this.normalizeISOString(timeMaxISO);
+
+      console.log('DEBUG getEventsInRange - Fetching from:', normalizedTimeMin, 'to:', normalizedTimeMax);
 
       const response = await calendar.events.list({
         calendarId: 'primary',
-        timeMin: timeMinISO,
-        timeMax: timeMaxISO,
+        timeMin: normalizedTimeMin,
+        timeMax: normalizedTimeMax,
         singleEvents: true,
         orderBy: 'startTime',
       });

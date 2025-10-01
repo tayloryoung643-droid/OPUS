@@ -49,7 +49,9 @@ opus-mcp/
 
 ### Environment Variables
 
-Create a `.env` file in the `opus-mcp` directory:
+Create a `.env` file in the `opus-mcp` directory (or copy from `.env.example`):
+
+**Important:** MCP runs on port 4000; the main app uses port 5000. This separation prevents port collisions.
 
 ```bash
 # Required

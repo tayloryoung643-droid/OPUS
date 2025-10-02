@@ -320,29 +320,6 @@ export default function CallPrep() {
     }
   }, [notesText, userNote?.text, debouncedSaveNotes]);
 
-  // Auto-retry prep generation after OAuth completion
-  useEffect(() => {
-    if (hasTriggeredRetry || !resolvedCallId) return;
-    
-    // Check URL for retry parameter
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('retry') === 'true') {
-      setHasTriggeredRetry(true);
-      
-      // Remove retry parameter from URL
-      urlParams.delete('retry');
-      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
-      window.history.replaceState({}, '', newUrl);
-      
-      // Trigger prep generation
-      toast({
-        title: "Integration connected",
-        description: "Generating AI prep sheet...",
-      });
-      generatePrepMutation.mutate(resolvedCallId);
-    }
-  }, [resolvedCallId, hasTriggeredRetry, generatePrepMutation, toast]);
-
   // Handle account candidate selection (MUST be before conditional returns)
   const selectCandidateMutation = useMutation({
     mutationFn: async ({ callId, companyId }: { callId: string; companyId: string }) => {
@@ -481,6 +458,29 @@ export default function CallPrep() {
       });
     },
   });
+
+  // Auto-retry prep generation after OAuth completion
+  useEffect(() => {
+    if (hasTriggeredRetry || !resolvedCallId) return;
+    
+    // Check URL for retry parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('retry') === 'true') {
+      setHasTriggeredRetry(true);
+      
+      // Remove retry parameter from URL
+      urlParams.delete('retry');
+      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      window.history.replaceState({}, '', newUrl);
+      
+      // Trigger prep generation
+      toast({
+        title: "Integration connected",
+        description: "Generating AI prep sheet...",
+      });
+      generatePrepMutation.mutate(resolvedCallId);
+    }
+  }, [resolvedCallId, hasTriggeredRetry, generatePrepMutation, toast]);
 
   const combinedError = (ensureCalendarError as Error | null) || (callDetailsError as Error | null);
   const isLoading =

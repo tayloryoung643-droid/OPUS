@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Zap } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Zap, ChevronDown, ChevronUp, Mail } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import Navigation from "@/components/ui/navigation";
@@ -192,6 +193,28 @@ interface CalendarCallEnsureResult extends CallDetails {
   };
 }
 
+// Helper to parse integration errors from API response
+function parseIntegrationError(error: Error): { code: string; message: string; raw: any } | null {
+  try {
+    const errorText = error.message;
+    // Error format is: "500: {json}"
+    const jsonMatch = errorText.match(/^\d+:\s*(\{.*\})$/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[1]);
+      if (parsed.error && parsed.error.code) {
+        return {
+          code: parsed.error.code,
+          message: parsed.error.message || parsed.message || errorText,
+          raw: parsed
+        };
+      }
+    }
+  } catch (e) {
+    // If parsing fails, return null
+  }
+  return null;
+}
+
 export default function CallPrep() {
   const [, params] = useRoute("/call/:id");
   const [, navigate] = useLocation();
@@ -202,6 +225,10 @@ export default function CallPrep() {
   const [partialPrepData, setPartialPrepData] = useState<PartialPrepResponse | null>(null);
   const [notesText, setNotesText] = useState("");
   const [selectedCandidate, setSelectedCandidate] = useState<string | null>(null);
+  
+  // State for integration errors
+  const [integrationError, setIntegrationError] = useState<{ code: string; message: string; raw: any } | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
 
   const isCalendarSelection = !!callId && callId.startsWith("calendar_");
   const calendarEventId = isCalendarSelection ? callId.replace(/^calendar_/, "") : null;
@@ -315,6 +342,9 @@ export default function CallPrep() {
       return response.json() as Promise<GeneratePrepResponse>;
     },
     onSuccess: (data) => {
+      // Clear any previous integration errors on success
+      setIntegrationError(null);
+      
       if ('mode' in data && data.mode === 'partial') {
         // Handle partial response
         setPartialPrepData(data);
@@ -338,11 +368,46 @@ export default function CallPrep() {
       }
     },
     onError: (error) => {
-      toast({
-        title: "Error",
-        description: "Failed to generate AI preparation: " + (error as Error).message,
-        variant: "destructive",
-      });
+      const parsedError = parseIntegrationError(error as Error);
+      
+      if (parsedError) {
+        // Store integration error for UI display
+        setIntegrationError(parsedError);
+        
+        // Show user-friendly error message
+        if (parsedError.code === "GOOGLE_NOT_CONNECTED") {
+          toast({
+            title: "Google Calendar not connected",
+            description: "Connect your Google Calendar to generate AI prep sheets.",
+            variant: "destructive",
+          });
+        } else if (parsedError.code === "SALESFORCE_NOT_CONNECTED" || parsedError.code === "SFDC_NOT_CONNECTED") {
+          toast({
+            title: "Salesforce not connected",
+            description: "Connect your Salesforce CRM to generate AI prep sheets.",
+            variant: "destructive",
+          });
+        } else if (parsedError.code === "NO_UPCOMING_EVENTS") {
+          toast({
+            title: "No upcoming events",
+            description: "No upcoming calendar events found to generate prep sheets.",
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Error",
+            description: parsedError.message,
+            variant: "destructive",
+          });
+        }
+      } else {
+        // Generic error handling
+        toast({
+          title: "Error",
+          description: "Failed to generate AI preparation: " + (error as Error).message,
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -529,6 +594,73 @@ export default function CallPrep() {
               variant="inline"
             />
           </div>
+
+          {/* Integration Error Card */}
+          {integrationError && (
+            <Card className="mb-6 border-destructive">
+              <CardContent className="p-6">
+                <div className="flex items-start space-x-4">
+                  <AlertTriangle className="h-6 w-6 text-destructive flex-shrink-0 mt-1" />
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-foreground mb-2" data-testid="text-integration-error-title">
+                      {integrationError.code === "GOOGLE_NOT_CONNECTED" && "Google Calendar Not Connected"}
+                      {(integrationError.code === "SALESFORCE_NOT_CONNECTED" || integrationError.code === "SFDC_NOT_CONNECTED") && "Salesforce CRM Not Connected"}
+                      {integrationError.code === "NO_UPCOMING_EVENTS" && "No Upcoming Events"}
+                      {!["GOOGLE_NOT_CONNECTED", "SALESFORCE_NOT_CONNECTED", "SFDC_NOT_CONNECTED", "NO_UPCOMING_EVENTS"].includes(integrationError.code) && "Integration Error"}
+                    </h3>
+                    <p className="text-muted-foreground mb-4" data-testid="text-integration-error-message">
+                      {integrationError.message}
+                    </p>
+                    
+                    <div className="flex flex-wrap items-center gap-3">
+                      {integrationError.code === "GOOGLE_NOT_CONNECTED" && (
+                        <Button
+                          onClick={() => window.location.href = '/settings'}
+                          className="flex items-center space-x-2"
+                          data-testid="button-connect-google"
+                        >
+                          <Calendar className="h-4 w-4" />
+                          <span>Connect Google Calendar</span>
+                        </Button>
+                      )}
+                      
+                      {(integrationError.code === "SALESFORCE_NOT_CONNECTED" || integrationError.code === "SFDC_NOT_CONNECTED") && (
+                        <Button
+                          onClick={() => window.location.href = '/settings'}
+                          className="flex items-center space-x-2"
+                          data-testid="button-connect-salesforce"
+                        >
+                          <Building2 className="h-4 w-4" />
+                          <span>Connect Salesforce</span>
+                        </Button>
+                      )}
+                      
+                      <Collapsible open={showErrorDetails} onOpenChange={setShowErrorDetails}>
+                        <CollapsibleTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center space-x-2"
+                            data-testid="button-toggle-error-details"
+                          >
+                            {showErrorDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            <span>{showErrorDetails ? "Hide" : "Show"} error details</span>
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent className="mt-4">
+                          <div className="bg-muted rounded-lg p-4 overflow-auto max-h-64">
+                            <pre className="text-xs text-muted-foreground whitespace-pre-wrap" data-testid="text-error-details">
+                              {JSON.stringify(integrationError.raw, null, 2)}
+                            </pre>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Partial Prep Mode */}
           {partialPrepData && (

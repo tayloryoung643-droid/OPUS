@@ -229,6 +229,9 @@ export default function CallPrep() {
   // State for integration errors
   const [integrationError, setIntegrationError] = useState<{ code: string; message: string; raw: any } | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
+  
+  // Check for retry parameter in URL
+  const [hasTriggeredRetry, setHasTriggeredRetry] = useState(false);
 
   const isCalendarSelection = !!callId && callId.startsWith("calendar_");
   const calendarEventId = isCalendarSelection ? callId.replace(/^calendar_/, "") : null;
@@ -316,6 +319,29 @@ export default function CallPrep() {
       debouncedSaveNotes(notesText);
     }
   }, [notesText, userNote?.text, debouncedSaveNotes]);
+
+  // Auto-retry prep generation after OAuth completion
+  useEffect(() => {
+    if (hasTriggeredRetry || !resolvedCallId) return;
+    
+    // Check URL for retry parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('retry') === 'true') {
+      setHasTriggeredRetry(true);
+      
+      // Remove retry parameter from URL
+      urlParams.delete('retry');
+      const newUrl = window.location.pathname + (urlParams.toString() ? '?' + urlParams.toString() : '');
+      window.history.replaceState({}, '', newUrl);
+      
+      // Trigger prep generation
+      toast({
+        title: "Integration connected",
+        description: "Generating AI prep sheet...",
+      });
+      generatePrepMutation.mutate(resolvedCallId);
+    }
+  }, [resolvedCallId, hasTriggeredRetry, generatePrepMutation, toast]);
 
   // Handle account candidate selection (MUST be before conditional returns)
   const selectCandidateMutation = useMutation({
@@ -615,7 +641,16 @@ export default function CallPrep() {
                     <div className="flex flex-wrap items-center gap-3">
                       {integrationError.code === "GOOGLE_NOT_CONNECTED" && (
                         <Button
-                          onClick={() => window.location.href = '/settings'}
+                          onClick={() => {
+                            // Store call ID for retry after OAuth
+                            if (resolvedCallId) {
+                              localStorage.setItem('pendingPrepRetry', JSON.stringify({
+                                callId: resolvedCallId,
+                                timestamp: Date.now()
+                              }));
+                            }
+                            window.location.href = '/settings';
+                          }}
                           className="flex items-center space-x-2"
                           data-testid="button-connect-google"
                         >
@@ -626,7 +661,16 @@ export default function CallPrep() {
                       
                       {(integrationError.code === "SALESFORCE_NOT_CONNECTED" || integrationError.code === "SFDC_NOT_CONNECTED") && (
                         <Button
-                          onClick={() => window.location.href = '/settings'}
+                          onClick={() => {
+                            // Store call ID for retry after OAuth
+                            if (resolvedCallId) {
+                              localStorage.setItem('pendingPrepRetry', JSON.stringify({
+                                callId: resolvedCallId,
+                                timestamp: Date.now()
+                              }));
+                            }
+                            window.location.href = '/settings';
+                          }}
                           className="flex items-center space-x-2"
                           data-testid="button-connect-salesforce"
                         >

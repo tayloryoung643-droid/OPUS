@@ -47,6 +47,16 @@ app.use((req, res, next) => {
     throw err;
   });
 
+  // API-only terminal middleware: prevents API responses from falling through to Vite catch-all
+  // This ensures API routes that already sent headers stop here and don't get HTML from Vite
+  app.use('/api', (req, res, next) => {
+    if (res.headersSent) {
+      return; // Response already sent by API route, stop here
+    }
+    // Unmatched API route - return JSON 404
+    res.status(404).json({ error: 'Not found', path: req.path });
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes

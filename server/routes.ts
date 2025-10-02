@@ -386,6 +386,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint - Echo active userId and email as App resolves it
+  app.get('/api/debug/me', async (req: any, res) => {
+    try {
+      // Check if user is authenticated (session-based or JWT)
+      const userId = req.user?.claims?.sub || req.user?.sub;
+      const email = req.user?.claims?.email || req.user?.email;
+      
+      // In dev mode, provide dev_user if not authenticated
+      const isDev = process.env.NODE_ENV !== 'production' || process.env.APP_DEV_BYPASS === 'true';
+      
+      const response = {
+        userId: userId || (isDev ? 'dev_user' : null),
+        email: email || (isDev ? 'dev@example.com' : null),
+        authenticated: !!userId,
+        devMode: isDev
+      };
+      
+      // Explicitly set content type
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(response);
+    } catch (error) {
+      console.error("Error in /api/debug/me:", error);
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(500).json({ 
+        error: "Failed to resolve user identity",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // OpenAI Realtime API - Generate ephemeral tokens for WebRTC voice sessions with MCP integration
   app.post('/api/openai/realtime/token', isAuthenticated, async (req: any, res) => {
     try {

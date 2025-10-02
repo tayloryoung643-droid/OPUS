@@ -552,28 +552,60 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
   });
 
   // MCP Proxy Routes - Server-to-server forwarding to MCP service
-  // Development auth bypass for MCP proxy routes
+  // Auth middleware that derives userId from server session (never trusts client)
   const mcpAuthBypass = (req: any, res: any, next: any) => {
     const isDev = process.env.NODE_ENV !== 'production' || process.env.APP_DEV_BYPASS === 'true';
     
     if (isDev) {
-      // In dev mode, inject default userId if missing
+      // Dev-only impersonation support
+      const impersonateUser = req.headers['x-dev-user'] || req.query.as;
+      const sessionUserId = req.user?.claims?.sub;
+      
+      // Use impersonation if provided, otherwise session user, otherwise default
+      const userId = impersonateUser || sessionUserId || 'dev_user';
+      
+      // Initialize body if needed and OVERWRITE userId (never trust client)
       if (!req.body) req.body = {};
-      req.body.userId ??= 'dev_user';
+      req.body.userId = userId;
+      
       return next();
     }
     
     // Production: require authentication
-    return isAuthenticated(req, res, next);
+    return isAuthenticated(req, res, (err?: any) => {
+      if (err) return next(err);
+      
+      // In production, ALWAYS derive userId from session (never trust client)
+      const sessionUserId = req.user?.claims?.sub;
+      if (!sessionUserId) {
+        return res.status(401).json({ 
+          error: { code: "UNAUTHORIZED", message: "User not authenticated" }
+        });
+      }
+      
+      // Initialize body if needed and OVERWRITE userId
+      if (!req.body) req.body = {};
+      req.body.userId = sessionUserId;
+      
+      next();
+    });
   };
 
   // POST /api/mcp/:toolName → forwards to MCP at ${MCP_BASE_URL}/mcp/:toolName
   app.post("/api/mcp/:toolName", mcpAuthBypass, async (req: any, res) => {
+    const startMs = Date.now();
     const rid = req.headers['x-request-id'] || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const toolName = req.params.toolName;
+    const route = `/api/mcp/${toolName}`;
+    
+    // userId is ALWAYS set by mcpAuthBypass middleware (never trust client)
+    const userId = req.body.userId;
     
     try {
       if (!ENV.MCP_REMOTE_ENABLED) {
-        return res.status(503).json({ 
+        const status = 503;
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        return res.status(status).json({ 
           error: { 
             code: "MCP_DISABLED", 
             message: "MCP service is not enabled" 
@@ -583,7 +615,9 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
       if (!ENV.MCP_SERVICE_TOKEN) {
         console.error('[MCP-Proxy] MCP_SERVICE_TOKEN not configured');
-        return res.status(500).json({ 
+        const status = 500;
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        return res.status(status).json({ 
           error: { 
             code: "CONFIG_ERROR", 
             message: "MCP service not properly configured" 
@@ -591,14 +625,9 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
         });
       }
 
-      const toolName = req.params.toolName;
-      const userId = req.user?.claims?.sub || req.body.userId;
-      
       // Normalize MCP_BASE_URL: remove trailing slashes, ensure https in production
       const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
       const url = `${mcpBaseUrl}/mcp/${toolName}`;
-      
-      console.log(`[MCP-Proxy:${rid}] ${toolName} for user ${userId}`);
 
       // Forward request to MCP service with 15s timeout
       const controller = new AbortController();
@@ -612,29 +641,31 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
             'Content-Type': 'application/json',
             'x-request-id': rid as string
           },
-          body: JSON.stringify({
-            ...req.body,
-            userId // Ensure userId is always included
-          }),
+          body: JSON.stringify(req.body), // userId already set by middleware
           signal: controller.signal
         });
 
         clearTimeout(timeoutId);
         const responseData = await mcpResponse.json();
+        const status = mcpResponse.status;
+        
+        // Structured logging: {rid, route, userId, status, ms}
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
         
         // Log errors for debugging
         if (!mcpResponse.ok) {
-          console.error(`[MCP-Proxy:${rid}] Error: ${mcpResponse.status}`, responseData);
+          console.error(`[MCP-Proxy:${rid}] Error: ${status}`, responseData);
         }
 
         // Return response with same status code
-        res.status(mcpResponse.status).json(responseData);
+        res.status(status).json(responseData);
       } finally {
         clearTimeout(timeoutId);
       }
     } catch (error: any) {
       const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
-      const url = `${mcpBaseUrl}/mcp/${req.params.toolName}`;
+      const url = `${mcpBaseUrl}/mcp/${toolName}`;
+      const status = 502;
       
       console.error(JSON.stringify({ 
         rid, 
@@ -646,7 +677,10 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
         message: error.message 
       }));
       
-      res.status(502).json({ 
+      // Structured logging for proxy errors
+      console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+      
+      res.status(status).json({ 
         error: { 
           code: "PROXY_ERROR" 
         } 
@@ -656,11 +690,18 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
   // POST /api/agent/act → forwards to ${MCP_BASE_URL}/agent/act
   app.post("/api/agent/act", mcpAuthBypass, async (req: any, res) => {
+    const startMs = Date.now();
     const rid = req.headers['x-request-id'] || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = '/api/agent/act';
+    
+    // userId is ALWAYS set by mcpAuthBypass middleware (never trust client)
+    const userId = req.body.userId;
     
     try {
       if (!ENV.MCP_REMOTE_ENABLED) {
-        return res.status(503).json({ 
+        const status = 503;
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        return res.status(status).json({ 
           error: { 
             code: "MCP_DISABLED", 
             message: "MCP service is not enabled" 
@@ -670,7 +711,9 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
       if (!ENV.MCP_SERVICE_TOKEN) {
         console.error('[Agent-Proxy] MCP_SERVICE_TOKEN not configured');
-        return res.status(500).json({ 
+        const status = 500;
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        return res.status(status).json({ 
           error: { 
             code: "CONFIG_ERROR", 
             message: "Agent service not properly configured" 
@@ -678,13 +721,9 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
         });
       }
 
-      const userId = req.user?.claims?.sub || req.body.userId;
-      
       // Normalize MCP_BASE_URL: remove trailing slashes
       const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
       const url = `${mcpBaseUrl}/agent/act`;
-      
-      console.log(`[Agent-Proxy:${rid}] ${req.body.intent || 'unknown intent'} for user ${userId}`);
 
       // Forward request to MCP agent endpoint with 15s timeout
       const controller = new AbortController();
@@ -698,29 +737,31 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
             'Content-Type': 'application/json',
             'x-request-id': rid as string
           },
-          body: JSON.stringify({
-            ...req.body,
-            userId // Ensure userId is always included
-          }),
+          body: JSON.stringify(req.body), // userId already set by middleware
           signal: controller.signal
         });
 
         clearTimeout(timeoutId);
         const responseData = await mcpResponse.json();
+        const status = mcpResponse.status;
+        
+        // Structured logging: {rid, route, userId, status, ms}
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
         
         // Log errors for debugging
         if (!mcpResponse.ok) {
-          console.error(`[Agent-Proxy:${rid}] Error: ${mcpResponse.status}`, responseData);
+          console.error(`[Agent-Proxy:${rid}] Error: ${status}`, responseData);
         }
 
         // Return response with same status code
-        res.status(mcpResponse.status).json(responseData);
+        res.status(status).json(responseData);
       } finally {
         clearTimeout(timeoutId);
       }
     } catch (error: any) {
       const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
       const url = `${mcpBaseUrl}/agent/act`;
+      const status = 502;
       
       console.error(JSON.stringify({ 
         rid, 
@@ -732,7 +773,10 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
         message: error.message 
       }));
       
-      res.status(502).json({ 
+      // Structured logging for proxy errors
+      console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+      
+      res.status(status).json({ 
         error: { 
           code: "PROXY_ERROR" 
         } 

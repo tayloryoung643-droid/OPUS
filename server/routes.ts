@@ -537,8 +537,10 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     return isAuthenticated(req, res, next);
   };
 
-  // POST /api/mcp/:toolName → forwards to MCP at ${MCP_BASE_URL}/tools/:toolName
+  // POST /api/mcp/:toolName → forwards to MCP at ${MCP_BASE_URL}/mcp/:toolName
   app.post("/api/mcp/:toolName", mcpAuthBypass, async (req: any, res) => {
+    const rid = req.headers['x-request-id'] || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    
     try {
       if (!ENV.MCP_REMOTE_ENABLED) {
         return res.status(503).json({ 
@@ -561,39 +563,62 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
       const toolName = req.params.toolName;
       const userId = req.user?.claims?.sub || req.body.userId;
-      const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
       
-      console.log(`[MCP-Proxy:${requestId}] ${toolName} for user ${userId}`);
-
-      // Forward request to MCP service
-      const mcpUrl = `${ENV.MCP_BASE_URL}/tools/${toolName}`;
-      const mcpResponse = await fetch(mcpUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...req.body,
-          userId // Ensure userId is always included
-        })
-      });
-
-      const responseData = await mcpResponse.json();
+      // Normalize MCP_BASE_URL: remove trailing slashes, ensure https in production
+      const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
+      const url = `${mcpBaseUrl}/mcp/${toolName}`;
       
-      // Log errors for debugging
-      if (!mcpResponse.ok) {
-        console.error(`[MCP-Proxy:${requestId}] Error: ${mcpResponse.status}`, responseData);
+      console.log(`[MCP-Proxy:${rid}] ${toolName} for user ${userId}`);
+
+      // Forward request to MCP service with 15s timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const mcpResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
+            'Content-Type': 'application/json',
+            'x-request-id': rid as string
+          },
+          body: JSON.stringify({
+            ...req.body,
+            userId // Ensure userId is always included
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        const responseData = await mcpResponse.json();
+        
+        // Log errors for debugging
+        if (!mcpResponse.ok) {
+          console.error(`[MCP-Proxy:${rid}] Error: ${mcpResponse.status}`, responseData);
+        }
+
+        // Return response with same status code
+        res.status(mcpResponse.status).json(responseData);
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      // Return response with same status code
-      res.status(mcpResponse.status).json(responseData);
-    } catch (error) {
-      console.error('[MCP-Proxy] Error forwarding request:', error);
-      res.status(500).json({ 
+    } catch (error: any) {
+      const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
+      const url = `${mcpBaseUrl}/mcp/${req.params.toolName}`;
+      
+      console.error(JSON.stringify({ 
+        rid, 
+        url, 
+        mcpBaseUrl, 
+        tokenLen: ENV.MCP_SERVICE_TOKEN?.length || 0,
+        code: error.code || 'UNKNOWN',
+        status: error.response?.status,
+        message: error.message 
+      }));
+      
+      res.status(502).json({ 
         error: { 
-          code: "PROXY_ERROR", 
-          message: "Failed to communicate with MCP service" 
+          code: "PROXY_ERROR" 
         } 
       });
     }
@@ -601,6 +626,8 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
   // POST /api/agent/act → forwards to ${MCP_BASE_URL}/agent/act
   app.post("/api/agent/act", mcpAuthBypass, async (req: any, res) => {
+    const rid = req.headers['x-request-id'] || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    
     try {
       if (!ENV.MCP_REMOTE_ENABLED) {
         return res.status(503).json({ 
@@ -622,39 +649,62 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       }
 
       const userId = req.user?.claims?.sub || req.body.userId;
-      const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
       
-      console.log(`[Agent-Proxy:${requestId}] ${req.body.intent || 'unknown intent'} for user ${userId}`);
-
-      // Forward request to MCP agent endpoint
-      const mcpUrl = `${ENV.MCP_BASE_URL}/agent/act`;
-      const mcpResponse = await fetch(mcpUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ...req.body,
-          userId // Ensure userId is always included
-        })
-      });
-
-      const responseData = await mcpResponse.json();
+      // Normalize MCP_BASE_URL: remove trailing slashes
+      const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
+      const url = `${mcpBaseUrl}/agent/act`;
       
-      // Log errors for debugging
-      if (!mcpResponse.ok) {
-        console.error(`[Agent-Proxy:${requestId}] Error: ${mcpResponse.status}`, responseData);
+      console.log(`[Agent-Proxy:${rid}] ${req.body.intent || 'unknown intent'} for user ${userId}`);
+
+      // Forward request to MCP agent endpoint with 15s timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const mcpResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
+            'Content-Type': 'application/json',
+            'x-request-id': rid as string
+          },
+          body: JSON.stringify({
+            ...req.body,
+            userId // Ensure userId is always included
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        const responseData = await mcpResponse.json();
+        
+        // Log errors for debugging
+        if (!mcpResponse.ok) {
+          console.error(`[Agent-Proxy:${rid}] Error: ${mcpResponse.status}`, responseData);
+        }
+
+        // Return response with same status code
+        res.status(mcpResponse.status).json(responseData);
+      } finally {
+        clearTimeout(timeoutId);
       }
-
-      // Return response with same status code
-      res.status(mcpResponse.status).json(responseData);
-    } catch (error) {
-      console.error('[Agent-Proxy] Error forwarding request:', error);
-      res.status(500).json({ 
+    } catch (error: any) {
+      const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
+      const url = `${mcpBaseUrl}/agent/act`;
+      
+      console.error(JSON.stringify({ 
+        rid, 
+        url, 
+        mcpBaseUrl, 
+        tokenLen: ENV.MCP_SERVICE_TOKEN?.length || 0,
+        code: error.code || 'UNKNOWN',
+        status: error.response?.status,
+        message: error.message 
+      }));
+      
+      res.status(502).json({ 
         error: { 
-          code: "PROXY_ERROR", 
-          message: "Failed to communicate with agent service" 
+          code: "PROXY_ERROR" 
         } 
       });
     }

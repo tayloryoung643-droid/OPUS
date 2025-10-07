@@ -16,6 +16,7 @@ import jwt from "jsonwebtoken";
 import gmailRoutes from "./routes/gmail";
 import orbRoutes from "./routes/orb";
 import orbExtensionRoutes from "./routes/orbExtension";
+import internalTokensRoutes from "./routes/internalTokens";
 import { generateRhythmInsights, generateOpusFeed } from "./services/insights";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -936,6 +937,9 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // Internal routes - Server-to-server only (NO CORS, uses bearer token auth)
+  app.use("/internal", internalTokensRoutes);
 
   // Gmail routes - Mount the Gmail router
   app.use("/api/gmail", isAuthenticatedOrGuest, gmailRoutes);

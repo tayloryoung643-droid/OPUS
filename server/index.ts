@@ -1,10 +1,19 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { randomUUID } from 'crypto';
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Add x-request-id to all requests (generate if not present)
+app.use((req, res, next) => {
+  const requestId = req.header('x-request-id') || randomUUID();
+  (req as any).rid = requestId;
+  res.setHeader('x-request-id', requestId);
+  next();
+});
 
 app.use((req, res, next) => {
   const start = Date.now();

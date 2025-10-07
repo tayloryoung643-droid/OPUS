@@ -828,23 +828,27 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
   // Combined integrations status endpoint
   app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      // Support ?as=<email> query param for dev mode
+      const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+      const asEmail = req.query.as as string;
+      const userId = (APP_DEV_BYPASS && asEmail) ? asEmail : req.user.claims.sub;
       
       // Get Google integration status
       const googleIntegration = await storage.getGoogleIntegration(userId);
       const googleStatus = {
-        connected: !!googleIntegration?.isActive,
+        userId,
+        connected: !!(googleIntegration?.accessToken || googleIntegration?.refreshToken),
         scopes: googleIntegration?.scopes || [],
-        connectedAt: googleIntegration?.createdAt,
+        expiry: googleIntegration?.tokenExpiry,
         service: "google"
       };
 
       // Get Salesforce integration status
       const salesforceIntegration = await storage.getSalesforceIntegration(userId);
       const salesforceStatus = {
-        connected: !!salesforceIntegration?.isActive,
-        instanceUrl: salesforceIntegration?.instanceUrl,
-        connectedAt: salesforceIntegration?.createdAt,
+        userId,
+        connected: !!(salesforceIntegration?.accessToken || salesforceIntegration?.refreshToken),
+        instanceUrlPresent: !!salesforceIntegration?.instanceUrl,
         service: "salesforce"
       };
 
@@ -856,8 +860,10 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       };
 
       res.json({
-        googleCalendar: googleStatus,
+        userId,
+        google: googleStatus,
         salesforce: salesforceStatus,
+        googleCalendar: googleStatus, // Keep for backward compatibility
         outlook: outlookStatus
       });
     } catch (error) {

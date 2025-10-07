@@ -1,0 +1,89 @@
+Prompt for Agent 3 — App Repl (frontend+backend)
+
+Goal: expose a server-to-server token provider endpoint and make sure dev-impersonation works so calls hit MCP as Taylor (not dev_user). Add structured logs + x-request-id.
+You have: Express server with /api/mcp/* proxy already deriving userId from session and allowing dev ?as= when APP_DEV_BYPASS=true.
+
+Paste this to Agent 3 in the App Repl:
+
+You are working in the App Repl.
+
+OBJECTIVE
+1) Add a server-only token provider endpoint:
+   GET /internal/integrations/tokens?userId=
+   - Requires Authorization: Bearer <MCP_TOKEN_PROVIDER_SECRET>
+   - Returns Google + Salesforce tokens for that userId from our DB/store
+   - JSON shape:
+     {
+       "google": {
+         "accessToken": "...",
+         "refreshToken": "...",
+         "expiry": 1735689600,
+         "scopes": ["https://www.googleapis.com/auth/calendar.readonly","https://www.googleapis.com/auth/gmail.readonly"]
+       },
+       "salesforce": {
+         "accessToken": "...",
+         "refreshToken": "...",
+         "instanceUrl": "https://<instance>.my.salesforce.com"
+       }
+     }
+   - If not found, return {} (empty object), NOT an error.
+   - NEVER expose this to the browser (no CORS, no docs). Server-to-server only.
+
+2) Ensure dev impersonation path is wired:
+   - APP_DEV_BYPASS=true allows ?as=<email> to override userId for PROXY ONLY.
+   - In all proxy handlers, confirm we set effectiveUserId = session.userId unless APP_DEV_BYPASS && req.query.as.
+   - Log the effective userId.
+
+3) Observability:
+   - On every request (all /api and /internal routes), if x-request-id not present, generate a uuid and set it.
+   - Log compact structured lines: {rid, route, userId, status, ms}
+
+IMPLEMENTATION DETAILS
+- Create server/routes/internalTokens.ts (or similar) with the route.
+- Add strong shared secret guard:
+    const SHARED = process.env.MCP_TOKEN_PROVIDER_SECRET
+    if (!SHARED || req.header('authorization') !== `Bearer ${SHARED}`) return 401
+- Read tokens from our existing persistence (where the UI marks “Connected”).
+  If we don’t have a helper yet, stub a function getTokensForUser(userId) that returns from DB; if DB not wired, return {} for now.
+
+- Mount at app.use('/internal', internalTokensRouter)
+
+- Do NOT leak this route in any client bundle.
+
+SECURITY
+- No CORS headers for /internal.
+- No logs printing raw tokens.
+- Only log provider hits as: {rid, route:'/internal/integrations/tokens', userId, status, ms}
+
+ENV/VARS TO ADD (set in Replit Secrets)
+- MCP_TOKEN_PROVIDER_SECRET=<make a long random value>
+- APP_DEV_BYPASS=true  (dev only)
+
+TEST PLAN (run these in the App shell after you implement)
+1) Confirm who I am:
+   curl -s http://localhost:5000/api/debug/me
+
+2) Dev-only impersonation smoke test to MCP proxy:
+   REAL_EMAIL="tayloryoung643@gmail.com"
+   curl -s -X POST "http://localhost:5000/api/mcp/calendar.next_events.v1?as=$REAL_EMAIL" \
+     -H "Content-Type: application/json" -d '{"daysAhead":1}'
+
+   curl -s -X POST "http://localhost:5000/api/mcp/salesforce.lookup_account.v1?as=$REAL_EMAIL" \
+     -H "Content-Type: application/json" -d '{"name":"Acme"}'
+
+(We still expect *_NOT_CONNECTED until MCP can fetch tokens; that’s OK.)
+
+3) Token provider auth check:
+   SECRET="$MCP_TOKEN_PROVIDER_SECRET"
+   curl -i "http://localhost:5000/internal/integrations/tokens?userId=$REAL_EMAIL" \
+     -H "Authorization: Bearer $SECRET"
+
+EXPECTED:
+- 200 with {} if not wired to DB yet, or populated token JSON if wired.
+- Logs print {rid, route, userId, status, ms} lines.
+
+Deliverables
+- New /internal/integrations/tokens route with auth guard
+- Effective userId logic confirmed in proxy
+- x-request-id + structured logs implemented
+- ENV secrets set and documented in README snippet at repo root

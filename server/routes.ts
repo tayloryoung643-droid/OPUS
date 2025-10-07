@@ -3228,7 +3228,7 @@ RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, th
               <ul>
                 <li>Access Token: ${googleStatus.hasAccessToken ? '✓' : '✗'}</li>
                 <li>Refresh Token: ${googleStatus.hasRefreshToken ? '✓' : '✗'}</li>
-                <li>Scopes: ${googleStatus.scopes.join(', ')}</li>
+                <li>Scopes: ${(googleStatus.scopes || []).join(', ')}</li>
               </ul>
             ` : ''}
             <button class="google-btn" onclick="window.location.href='/api/integrations/google/auth'">

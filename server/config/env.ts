@@ -34,6 +34,10 @@ export interface EnvConfig {
   MCP_REMOTE_ENABLED: boolean;
   MCP_BASE_URL: string;
   MCP_SERVICE_TOKEN: string;
+  MCP_TOKEN_PROVIDER_SECRET: string;
+  
+  // Dev impersonation
+  APP_DEV_BYPASS: boolean;
 }
 
 /**

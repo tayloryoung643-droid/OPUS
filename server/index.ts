@@ -66,6 +66,15 @@ app.use((req, res, next) => {
     res.status(404).json({ error: 'Not found', path: req.path });
   });
 
+  // Internal-only terminal middleware: prevents internal routes from falling through to Vite
+  app.use('/internal', (req, res, next) => {
+    if (res.headersSent) {
+      return; // Response already sent by internal route, stop here
+    }
+    // Unmatched internal route - return JSON 404
+    res.status(404).json({ error: 'Not found', path: req.path });
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes

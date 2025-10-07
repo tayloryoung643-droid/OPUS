@@ -881,6 +881,13 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
   // Google Calendar and Gmail integration routes
   app.get("/api/integrations/google/auth", isAuthenticatedOrGuest, async (req, res) => {
+    const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = "/api/integrations/google/connect";
+    const userId = req.user.claims.sub;
+    
+    // Structured logging: connect start
+    console.log(JSON.stringify({ rid, route, userId }));
+    
     try {
       if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
         return res.status(501).json({
@@ -902,16 +909,24 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
   });
 
   app.get("/api/integrations/google/callback", async (req: any, res) => {
+    const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = "/api/integrations/google/oauth2/callback";
+    
     try {
-      const { code } = req.query;
+      const { code, as } = req.query;
       if (!code) {
         return res.status(400).json({ message: "Missing authorization code" });
       }
 
       const { googleAuth } = await import('./services/googleAuth');
       // Get user ID from session
-      const userId = (req as any).session.googleUserId;
-      if (!userId) {
+      const sessionUserId = (req as any).session.googleUserId;
+      
+      // Implement effectiveUserId logic with APP_DEV_BYPASS
+      const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+      const effectiveUserId = (APP_DEV_BYPASS && as) ? as : sessionUserId;
+      
+      if (!effectiveUserId) {
         return res.status(400).json({ message: "Missing user session" });
       }
 
@@ -920,11 +935,23 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
       const tokens = await googleAuth.getTokens(code);
       
+      // Structured logging: callback with token info (no secrets)
+      console.log(JSON.stringify({
+        rid,
+        route,
+        userId: effectiveUserId,
+        received: {
+          accessToken: !!tokens.access_token,
+          refreshToken: !!tokens.refresh_token,
+          scopes: tokens.scope?.split(' ') || []
+        }
+      }));
+      
       // Check if user already has a Google integration
-      const existingIntegration = await storage.getGoogleIntegration(userId);
+      const existingIntegration = await storage.getGoogleIntegration(effectiveUserId);
       
       const googleIntegrationData = {
-        userId,
+        userId: effectiveUserId,
         accessToken: tokens.access_token!,
         refreshToken: tokens.refresh_token || null,
         tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
@@ -933,16 +960,19 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       };
 
       if (existingIntegration) {
-        await storage.updateGoogleIntegration(userId, googleIntegrationData);
+        await storage.updateGoogleIntegration(effectiveUserId, googleIntegrationData);
       } else {
         await storage.createGoogleIntegration(googleIntegrationData);
       }
 
-      // Redirect back to settings page with success
-      res.redirect('/?google_connected=true');
+      // Redirect back to appropriate page
+      const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?google_connected=true';
+      res.redirect(redirectUrl);
     } catch (error) {
       console.error("Error handling Google OAuth callback:", error);
-      res.redirect('/?google_error=true');
+      const { as } = req.query;
+      const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?google_error=true';
+      res.redirect(redirectUrl);
     }
   });
 
@@ -1300,6 +1330,13 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
 
   // Salesforce CRM integration routes
   app.get("/api/integrations/salesforce/auth", isAuthenticatedOrGuest, async (req, res) => {
+    const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = "/api/integrations/salesforce/connect";
+    const userId = req.user.claims.sub;
+    
+    // Structured logging: connect start
+    console.log(JSON.stringify({ rid, route, userId }));
+    
     try {
       if (!process.env.SALESFORCE_CLIENT_ID || !process.env.SALESFORCE_CLIENT_SECRET) {
         return res.status(501).json({
@@ -1327,8 +1364,11 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
   });
 
   app.get("/api/integrations/salesforce/callback", async (req: any, res) => {
+    const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = "/api/integrations/salesforce/oauth2/callback";
+    
     try {
-      const { code, state } = req.query;
+      const { code, state, as } = req.query;
       
       if (!code) {
         return res.status(400).json({ message: "Missing authorization code" });
@@ -1340,8 +1380,13 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       }
 
       // Get user ID from session
-      const userId = (req as any).session.salesforceUserId;
-      if (!userId) {
+      const sessionUserId = (req as any).session.salesforceUserId;
+      
+      // Implement effectiveUserId logic with APP_DEV_BYPASS
+      const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+      const effectiveUserId = (APP_DEV_BYPASS && as) ? as : sessionUserId;
+      
+      if (!effectiveUserId) {
         return res.status(400).json({ message: "Missing user session" });
       }
 
@@ -1352,11 +1397,23 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       const { salesforceAuth } = await import('./services/salesforceAuth');
       const tokens = await salesforceAuth.getTokens(code);
       
+      // Structured logging: callback with token info (no secrets)
+      console.log(JSON.stringify({
+        rid,
+        route,
+        userId: effectiveUserId,
+        received: {
+          accessToken: !!tokens.access_token,
+          refreshToken: !!tokens.refresh_token,
+          instanceUrlPresent: !!tokens.instance_url
+        }
+      }));
+      
       // Check if user already has a Salesforce integration
-      const existingIntegration = await storage.getSalesforceIntegration(userId);
+      const existingIntegration = await storage.getSalesforceIntegration(effectiveUserId);
       
       const salesforceIntegrationData = {
-        userId,
+        userId: effectiveUserId,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || null,
         instanceUrl: tokens.instance_url,
@@ -1365,16 +1422,19 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       };
 
       if (existingIntegration) {
-        await storage.updateSalesforceIntegration(userId, salesforceIntegrationData);
+        await storage.updateSalesforceIntegration(effectiveUserId, salesforceIntegrationData);
       } else {
         await storage.createSalesforceIntegration(salesforceIntegrationData);
       }
 
-      // Redirect back to settings page with success
-      res.redirect('/?salesforce_connected=true');
+      // Redirect back to appropriate page
+      const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?salesforce_connected=true';
+      res.redirect(redirectUrl);
     } catch (error) {
       console.error("Error handling Salesforce OAuth callback:", error);
-      res.redirect('/?salesforce_error=true');
+      const { as } = req.query;
+      const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?salesforce_error=true';
+      res.redirect(redirectUrl);
     }
   });
 

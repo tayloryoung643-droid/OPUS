@@ -417,6 +417,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint - Show integration connection status (NO TOKENS)
+  app.get('/api/debug/integrations', async (req: any, res) => {
+    try {
+      const targetEmail = req.query.as as string;
+      
+      if (!targetEmail) {
+        return res.status(400).json({ error: 'Missing ?as=<email> query parameter' });
+      }
+
+      // Fetch integration status from storage (same source as UI uses)
+      const [googleIntegration, salesforceIntegration] = await Promise.all([
+        storage.getGoogleIntegration(targetEmail),
+        storage.getSalesforceIntegration(targetEmail)
+      ]);
+
+      const response = {
+        userId: targetEmail,
+        google: {
+          connected: !!googleIntegration?.isActive,
+          scopes: googleIntegration?.scopes || [],
+          expiry: googleIntegration?.tokenExpiry ? Math.floor(googleIntegration.tokenExpiry.getTime() / 1000) : null
+        },
+        salesforce: {
+          connected: !!salesforceIntegration?.isActive,
+          instanceUrlPresent: !!salesforceIntegration?.instanceUrl
+        }
+      };
+
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(response);
+    } catch (error) {
+      console.error("Error in /api/debug/integrations:", error);
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(500).json({ 
+        error: "Failed to check integrations",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // OpenAI Realtime API - Generate ephemeral tokens for WebRTC voice sessions with MCP integration
   app.post('/api/openai/realtime/token', isAuthenticated, async (req: any, res) => {
     try {

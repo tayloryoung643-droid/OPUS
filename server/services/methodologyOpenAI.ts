@@ -8,13 +8,14 @@ import type { Call, Company, Contact } from '@shared/schema';
 import { analyzeCallContext, type AnalysisInputs } from './callContextAnalyzer';
 import { 
   calculateMethodologyWeights, 
-  generateMethodologySummary,
-  type CallContext 
+  type CallContext,
+  type MethodologyWeights
 } from './salesMethodologies';
 import { 
   generateCallPrepPrompt,
   generateLiveCoachingPrompt,
   generateObjectionHandlingPrompt,
+  generateMethodologySummary,
   type ProspectResearchInput,
   type MethodologyPromptContext
 } from './methodologyPrompts';

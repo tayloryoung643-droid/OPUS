@@ -3353,6 +3353,127 @@ RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, th
     `);
   });
 
+  // Force reconnect endpoint - ensures clean re-auth with proper scopes
+  app.get("/debug/force-reconnect", async (req, res) => {
+    const asEmail = req.query.as as string;
+    
+    if (!asEmail) {
+      return res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Force Reconnect OAuth</title>
+            <style>
+              body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+              .error { background: #fee; border: 1px solid #f88; padding: 15px; border-radius: 5px; }
+            </style>
+          </head>
+          <body>
+            <h1>Force Reconnect OAuth</h1>
+            <div class="error">
+              <strong>Missing email parameter</strong>
+              <p>Usage: /debug/force-reconnect?as=email@example.com</p>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    // Fetch current status
+    let googleStatus, salesforceStatus;
+    try {
+      const googleIntegration = await storage.getGoogleIntegration(asEmail);
+      googleStatus = {
+        connected: !!(googleIntegration?.accessToken || googleIntegration?.refreshToken),
+        hasAccessToken: !!googleIntegration?.accessToken,
+        hasRefreshToken: !!googleIntegration?.refreshToken,
+        scopes: googleIntegration?.scopes || []
+      };
+
+      const salesforceIntegration = await storage.getSalesforceIntegration(asEmail);
+      salesforceStatus = {
+        connected: !!(salesforceIntegration?.accessToken || salesforceIntegration?.refreshToken),
+        hasAccessToken: !!salesforceIntegration?.accessToken,
+        hasRefreshToken: !!salesforceIntegration?.refreshToken,
+        hasInstanceUrl: !!salesforceIntegration?.instanceUrl
+      };
+    } catch (error) {
+      console.error("Error fetching integration status:", error);
+      googleStatus = { connected: false, error: true };
+      salesforceStatus = { connected: false, error: true };
+    }
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Force Reconnect OAuth - ${asEmail}</title>
+          <style>
+            body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+            h1 { color: #333; }
+            .status { margin: 20px 0; padding: 15px; border-radius: 5px; }
+            .connected { background: #d4edda; border: 1px solid #c3e6cb; }
+            .disconnected { background: #f8d7da; border: 1px solid #f5c6cb; }
+            button { padding: 12px 24px; margin: 10px 5px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; }
+            .google-btn { background: #4285f4; color: white; }
+            .salesforce-btn { background: #00a1e0; color: white; }
+            button:hover { opacity: 0.9; }
+            .info { background: #d1ecf1; border: 1px solid #bee5eb; padding: 10px; border-radius: 5px; margin: 10px 0; }
+            .warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
+          </style>
+        </head>
+        <body>
+          <h1>Force Reconnect OAuth</h1>
+          <div class="info">
+            <strong>Testing for:</strong> ${asEmail}
+          </div>
+          <div class="warning">
+            <strong>⚠️ Force Reconnect Mode</strong>
+            <p>This will trigger a clean re-authentication with full consent prompts to ensure all tokens and scopes are properly saved.</p>
+          </div>
+
+          <div class="status ${googleStatus.connected ? 'connected' : 'disconnected'}">
+            <h3>Google Integration</h3>
+            <p>Status: ${googleStatus.connected ? '✓ Connected' : '✗ Not Connected'}</p>
+            ${googleStatus.connected ? `
+              <ul>
+                <li>Access Token: ${googleStatus.hasAccessToken ? '✓' : '✗'}</li>
+                <li>Refresh Token: ${googleStatus.hasRefreshToken ? '✓' : '✗'}</li>
+                <li>Scopes: ${(googleStatus.scopes || []).join(', ')}</li>
+              </ul>
+            ` : ''}
+            <p><strong>Scopes:</strong> calendar.readonly, gmail.readonly, profile, email</p>
+            <p><strong>Params:</strong> access_type=offline, prompt=consent</p>
+            <button class="google-btn" onclick="window.location.href='/api/integrations/google/auth?as=${encodeURIComponent(asEmail)}'">
+              Reconnect Google (Force Consent)
+            </button>
+          </div>
+
+          <div class="status ${salesforceStatus.connected ? 'connected' : 'disconnected'}">
+            <h3>Salesforce Integration</h3>
+            <p>Status: ${salesforceStatus.connected ? '✓ Connected' : '✗ Not Connected'}</p>
+            ${salesforceStatus.connected ? `
+              <ul>
+                <li>Access Token: ${salesforceStatus.hasAccessToken ? '✓' : '✗'}</li>
+                <li>Refresh Token: ${salesforceStatus.hasRefreshToken ? '✓' : '✗'}</li>
+                <li>Instance URL: ${salesforceStatus.hasInstanceUrl ? '✓' : '✗'}</li>
+              </ul>
+            ` : ''}
+            <p><strong>Scopes:</strong> api, refresh_token</p>
+            <p><strong>Params:</strong> prompt=consent</p>
+            <button class="salesforce-btn" onclick="window.location.href='/api/integrations/salesforce/auth?as=${encodeURIComponent(asEmail)}'">
+              Reconnect Salesforce (Force Consent)
+            </button>
+          </div>
+
+          <div class="info">
+            <strong>Note:</strong> This is a dev-only endpoint for testing OAuth flows with APP_DEV_BYPASS=true
+          </div>
+        </body>
+      </html>
+    `);
+  });
+
   const httpServer = createServer(app);
   
   // Initialize Coach WebSocket service

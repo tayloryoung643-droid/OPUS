@@ -912,10 +912,22 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
   });
 
   // Google Calendar and Gmail integration routes
-  app.get("/api/integrations/google/auth", isAuthenticatedOrGuest, async (req, res) => {
+  app.get("/api/integrations/google/auth", async (req, res) => {
     const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
     const route = "/api/integrations/google/connect";
-    const userId = req.user.claims.sub;
+    
+    // Allow bypass with ?as= parameter in dev mode
+    const asParam = req.query.as as string;
+    const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+    
+    if (!asParam || !APP_DEV_BYPASS) {
+      // Require authentication if no ?as= parameter or not in dev mode
+      if (!req.user?.claims?.sub) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+    }
+    
+    const userId = asParam || req.user?.claims?.sub;
     
     // Structured logging: connect start
     console.log(JSON.stringify({ rid, route, userId }));
@@ -929,13 +941,12 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       }
 
       // Store user ID in session for callback
-      (req as any).session.googleUserId = req.user.claims.sub;
+      (req as any).session.googleUserId = userId;
 
       const { googleAuth } = await import('./services/googleAuth');
       const authUrl = googleAuth.getAuthUrl();
       
       // If ?as= parameter is present (from debug page), store it in session and redirect
-      const asParam = req.query.as as string;
       if (asParam) {
         (req as any).session.googleDebugAs = asParam;
         return res.redirect(authUrl);
@@ -1384,10 +1395,22 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
   });
 
   // Salesforce CRM integration routes
-  app.get("/api/integrations/salesforce/auth", isAuthenticatedOrGuest, async (req, res) => {
+  app.get("/api/integrations/salesforce/auth", async (req, res) => {
     const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
     const route = "/api/integrations/salesforce/connect";
-    const userId = req.user.claims.sub;
+    
+    // Allow bypass with ?as= parameter in dev mode
+    const asParam = req.query.as as string;
+    const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+    
+    if (!asParam || !APP_DEV_BYPASS) {
+      // Require authentication if no ?as= parameter or not in dev mode
+      if (!req.user?.claims?.sub) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+    }
+    
+    const userId = asParam || req.user?.claims?.sub;
     
     // Structured logging: connect start
     console.log(JSON.stringify({ rid, route, userId }));
@@ -1407,13 +1430,12 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       const state = crypto.randomBytes(16).toString('hex');
       
       // Store user ID and state in session for callback
-      (req as any).session.salesforceUserId = req.user.claims.sub;
+      (req as any).session.salesforceUserId = userId;
       (req as any).session.salesforceState = state;
       
       const authUrl = salesforceAuth.getAuthUrl(state);
       
       // If ?as= parameter is present (from debug page), store it in session and redirect
-      const asParam = req.query.as as string;
       if (asParam) {
         (req as any).session.salesforceDebugAs = asParam;
         return res.redirect(authUrl);

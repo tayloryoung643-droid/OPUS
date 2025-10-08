@@ -417,6 +417,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint - Version and environment info
+  app.get('/api/debug/version', async (req: any, res) => {
+    try {
+      const response = {
+        gitSha: process.env.REPL_ID || 'dev',
+        buildTime: new Date().toISOString(),
+        env: {
+          APP_DEV_BYPASS: !!ENV.APP_DEV_BYPASS,
+          MCP_TOKEN_PROVIDER_SECRET: !!ENV.MCP_TOKEN_PROVIDER_SECRET
+        }
+      };
+      
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(response);
+    } catch (error) {
+      console.error("Error in /api/debug/version:", error);
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(500).json({ 
+        error: "Failed to get version info",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Debug endpoint - Show integration connection status (NO TOKENS)
   app.get('/api/debug/integrations', async (req: any, res) => {
     try {
@@ -680,7 +704,8 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
           headers: {
             'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
             'Content-Type': 'application/json',
-            'x-request-id': rid as string
+            'x-request-id': rid as string,
+            'x-effective-user': userId
           },
           body: JSON.stringify(req.body), // userId already set by middleware
           signal: controller.signal
@@ -776,7 +801,8 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
           headers: {
             'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
             'Content-Type': 'application/json',
-            'x-request-id': rid as string
+            'x-request-id': rid as string,
+            'x-effective-user': userId
           },
           body: JSON.stringify(req.body), // userId already set by middleware
           signal: controller.signal
@@ -970,6 +996,19 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       } else {
         await storage.createGoogleIntegration(googleIntegrationData);
       }
+
+      // Structured logging: callback save result (no secrets)
+      console.log(JSON.stringify({
+        rid,
+        route: 'google/callback',
+        userId: effectiveUserId,
+        saved: {
+          hasAccess: !!tokens.access_token,
+          hasRefresh: !!tokens.refresh_token,
+          scopesCount: googleIntegrationData.scopes.length,
+          hasInstanceUrl: false // Google doesn't use instance URL
+        }
+      }));
 
       // Redirect back to appropriate page
       const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?google_connected=true';
@@ -1432,6 +1471,19 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       } else {
         await storage.createSalesforceIntegration(salesforceIntegrationData);
       }
+
+      // Structured logging: callback save result (no secrets)
+      console.log(JSON.stringify({
+        rid,
+        route: 'salesforce/callback',
+        userId: effectiveUserId,
+        saved: {
+          hasAccess: !!tokens.access_token,
+          hasRefresh: !!tokens.refresh_token,
+          scopesCount: 0, // Salesforce doesn't return scopes in token response
+          hasInstanceUrl: !!tokens.instance_url
+        }
+      }));
 
       // Redirect back to appropriate page
       const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?salesforce_connected=true';

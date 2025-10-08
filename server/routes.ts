@@ -933,6 +933,14 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
 
       const { googleAuth } = await import('./services/googleAuth');
       const authUrl = googleAuth.getAuthUrl();
+      
+      // If ?as= parameter is present (from debug page), store it in session and redirect
+      const asParam = req.query.as as string;
+      if (asParam) {
+        (req as any).session.googleDebugAs = asParam;
+        return res.redirect(authUrl);
+      }
+      
       res.json({ authUrl });
     } catch (error) {
       console.error("Error generating Google auth URL:", error);
@@ -953,17 +961,19 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       const { googleAuth } = await import('./services/googleAuth');
       // Get user ID from session
       const sessionUserId = (req as any).session.googleUserId;
+      const sessionDebugAs = (req as any).session.googleDebugAs;
       
       // Implement effectiveUserId logic with APP_DEV_BYPASS
       const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
-      const effectiveUserId = (APP_DEV_BYPASS && as) ? as : sessionUserId;
+      const effectiveUserId = (APP_DEV_BYPASS && (as || sessionDebugAs)) ? (as || sessionDebugAs) : sessionUserId;
       
       if (!effectiveUserId) {
         return res.status(400).json({ message: "Missing user session" });
       }
 
-      // Clear user ID from session
+      // Clear user ID and debug email from session
       delete (req as any).session.googleUserId;
+      delete (req as any).session.googleDebugAs;
 
       const tokens = await googleAuth.getTokens(code);
       
@@ -1401,6 +1411,14 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       (req as any).session.salesforceState = state;
       
       const authUrl = salesforceAuth.getAuthUrl(state);
+      
+      // If ?as= parameter is present (from debug page), store it in session and redirect
+      const asParam = req.query.as as string;
+      if (asParam) {
+        (req as any).session.salesforceDebugAs = asParam;
+        return res.redirect(authUrl);
+      }
+      
       res.json({ authUrl });
     } catch (error) {
       console.error("Error generating Salesforce auth URL:", error);
@@ -1426,18 +1444,20 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
 
       // Get user ID from session
       const sessionUserId = (req as any).session.salesforceUserId;
+      const sessionDebugAs = (req as any).session.salesforceDebugAs;
       
       // Implement effectiveUserId logic with APP_DEV_BYPASS
       const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
-      const effectiveUserId = (APP_DEV_BYPASS && as) ? as : sessionUserId;
+      const effectiveUserId = (APP_DEV_BYPASS && (as || sessionDebugAs)) ? (as || sessionDebugAs) : sessionUserId;
       
       if (!effectiveUserId) {
         return res.status(400).json({ message: "Missing user session" });
       }
 
-      // Clear state and user ID from session
+      // Clear state, user ID, and debug email from session
       delete req.session.salesforceState;
       delete (req as any).session.salesforceUserId;
+      delete (req as any).session.salesforceDebugAs;
 
       const { salesforceAuth } = await import('./services/salesforceAuth');
       const tokens = await salesforceAuth.getTokens(code);
@@ -3283,7 +3303,7 @@ RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, th
                 <li>Scopes: ${(googleStatus.scopes || []).join(', ')}</li>
               </ul>
             ` : ''}
-            <button class="google-btn" onclick="window.location.href='/api/integrations/google/auth'">
+            <button class="google-btn" onclick="window.location.href='/api/integrations/google/auth?as=${encodeURIComponent(asEmail)}'">
               ${googleStatus.connected ? 'Reconnect' : 'Connect'} Google
             </button>
           </div>
@@ -3298,7 +3318,7 @@ RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, th
                 <li>Instance URL: ${salesforceStatus.hasInstanceUrl ? '✓' : '✗'}</li>
               </ul>
             ` : ''}
-            <button class="salesforce-btn" onclick="window.location.href='/api/integrations/salesforce/auth'">
+            <button class="salesforce-btn" onclick="window.location.href='/api/integrations/salesforce/auth?as=${encodeURIComponent(asEmail)}'">
               ${salesforceStatus.connected ? 'Reconnect' : 'Connect'} Salesforce
             </button>
           </div>

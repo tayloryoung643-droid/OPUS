@@ -338,34 +338,36 @@ export default function CallPrep() {
     },
   });
 
-  // Generate AI prep mutation (uses MCP service)
+  // Generate AI prep mutation (updated to handle partial responses)
   const generatePrepMutation = useMutation({
-    mutationFn: async (eventId: string) => {
-      const response = await apiRequest("POST", `/api/generate-prep`, { 
-        eventId,
-        timeMin: new Date().toISOString(),
-        timeMax: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
-      });
-      return response.json();
+    mutationFn: async (targetCallId: string) => {
+      const response = await apiRequest("POST", `/api/calls/${targetCallId}/generate-prep`);
+      return response.json() as Promise<GeneratePrepResponse>;
     },
     onSuccess: (data) => {
       // Clear any previous integration errors on success
       setIntegrationError(null);
       
-      // MCP returns { prepId, url }
-      if ('prepId' in data && 'url' in data) {
+      if ('mode' in data && data.mode === 'partial') {
+        // Handle partial response
+        setPartialPrepData(data);
+        toast({
+          title: "Prep sheet ready",
+          description: data.candidates.length > 0 
+            ? `Found ${data.candidates.length} account suggestion(s). Link an account for full AI insights.`
+            : "Basic prep sheet ready. Link an account for AI insights.",
+        });
+      } else {
+        // Handle full response
+        setPartialPrepData(null);
         toast({
           title: "AI prep generated",
-          description: `Prep ${data.prepId} created successfully. View at ${data.url}`,
+          description: "Your call preparation sheet has been updated with AI insights.",
         });
-        // Invalidate queries to refetch fresh data
-        queryClient.invalidateQueries({ queryKey: ["/api/calls", resolvedCallId] });
-      } else {
-        // Fallback for unexpected response format
-        toast({
-          title: "Prep generation completed",
-          description: "Your call preparation has been generated.",
-        });
+        // Only update query data for full responses that have call.id
+        if ('call' in data && data.call?.id) {
+          queryClient.setQueryData(["/api/calls", data.call.id], data);
+        }
       }
     },
     onError: (error) => {
@@ -548,7 +550,7 @@ export default function CallPrep() {
       <div className="p-6">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-6">
             <div className="flex items-start justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-foreground mb-2" data-testid={`text-call-title-${call.id}`}>
@@ -610,6 +612,26 @@ export default function CallPrep() {
               </div>
             </div>
           </div>
+
+          {/* My Notes Section - Now directly below header */}
+          <Card className="mb-6">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center">
+                <FileText className="h-5 w-5 mr-2" />
+                My Notes
+              </h3>
+              <Textarea
+                placeholder="Add your notes for this call..."
+                value={notesText}
+                onChange={(e) => setNotesText(e.target.value)}
+                className="min-h-[120px]"
+                data-testid="textarea-prep-notes"
+              />
+              {saveNotesMutation.isPending && (
+                <div className="text-xs text-muted-foreground mt-2">Saving...</div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Sales Coach Integration */}
           <div className="mb-6">
@@ -751,26 +773,6 @@ export default function CallPrep() {
                 </Card>
               )}
 
-              {/* Notes Section (appears first in partial mode) */}
-              <Card className="mb-6">
-                <CardContent className="p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <FileText className="h-5 w-5 mr-2" />
-                    Your Notes
-                  </h3>
-                  <Textarea
-                    placeholder="Add your notes for this call..."
-                    value={notesText}
-                    onChange={(e) => setNotesText(e.target.value)}
-                    className="min-h-[120px]"
-                    data-testid="textarea-prep-notes"
-                  />
-                  {saveNotesMutation.isPending && (
-                    <div className="text-xs text-muted-foreground mt-2">Saving...</div>
-                  )}
-                </CardContent>
-              </Card>
-
               {/* Event Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <Card>
@@ -880,26 +882,6 @@ export default function CallPrep() {
 
               {/* Right Column */}
               <div className="space-y-6">
-                {/* User Notes */}
-                <Card>
-                  <CardContent className="p-6">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <FileText className="h-5 w-5 mr-2" />
-                      Your Notes
-                    </h3>
-                    <Textarea
-                      placeholder="Add your notes for this call..."
-                      value={notesText}
-                      onChange={(e) => setNotesText(e.target.value)}
-                      className="min-h-[100px] mb-2"
-                      data-testid="textarea-prep-notes-full"
-                    />
-                    {saveNotesMutation.isPending && (
-                      <div className="text-xs text-muted-foreground">Saving...</div>
-                    )}
-                  </CardContent>
-                </Card>
-                
                 <KeyStakeholders contacts={contacts} />
                 <RecentNews news={company?.recentNews || []} />
                 <SuggestedOpportunities 

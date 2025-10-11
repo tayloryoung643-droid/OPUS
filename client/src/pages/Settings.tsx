@@ -24,7 +24,7 @@ export default function Settings() {
     const savedTheme = localStorage.getItem('theme');
     const prefersDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
     setIsDarkMode(prefersDark);
-    
+
     if (prefersDark) {
       document.documentElement.classList.add('dark');
     } else {
@@ -35,7 +35,7 @@ export default function Settings() {
   const toggleTheme = () => {
     const newIsDarkMode = !isDarkMode;
     setIsDarkMode(newIsDarkMode);
-    
+
     if (newIsDarkMode) {
       document.documentElement.classList.add('dark');
       localStorage.setItem('theme', 'dark');
@@ -106,7 +106,7 @@ export default function Settings() {
       try {
         const response = await fetch("/api/integrations/google/auth");
         const data = await response.json();
-        
+
         if (response.status === 501) {
           // Not configured message
           alert(data.message);
@@ -125,7 +125,7 @@ export default function Settings() {
       try {
         const response = await fetch("/api/integrations/outlook/setup");
         const data = await response.json();
-        
+
         if (response.status === 501) {
           // Coming soon message
           alert(data.message);
@@ -141,7 +141,7 @@ export default function Settings() {
       try {
         const response = await fetch("/api/integrations/salesforce/auth");
         const data = await response.json();
-        
+
         if (response.status === 501) {
           // Not configured message
           alert(data.message);
@@ -170,7 +170,7 @@ export default function Settings() {
           method: "DELETE"
         });
         const data = await response.json();
-        
+
         if (response.ok) {
           alert("Google integration disconnected successfully!");
           refetchGoogle();
@@ -188,7 +188,7 @@ export default function Settings() {
           method: "DELETE"
         });
         const data = await response.json();
-        
+
         if (response.ok) {
           alert("Outlook integration disconnected successfully!");
           refetchOutlook();
@@ -206,7 +206,7 @@ export default function Settings() {
           method: "DELETE"
         });
         const data = await response.json();
-        
+
         if (response.ok) {
           alert("Salesforce integration disconnected successfully!");
           refetchSalesforce();
@@ -230,7 +230,7 @@ export default function Settings() {
               <ArrowLeft className="w-4 h-4 mr-2" />
               Back to Overview
             </Button>
-            
+
             <div className="flex items-center space-x-2">
               <SettingsIcon className="w-6 h-6 text-primary" />
               <span className="text-xl font-semibold text-foreground">Settings</span>
@@ -247,16 +247,16 @@ export default function Settings() {
               />
             )}
             <span className="text-sm text-muted-foreground">
-              {typedUser?.firstName && typedUser?.lastName 
+              {typedUser?.firstName && typedUser?.lastName
                 ? `${typedUser.firstName} ${typedUser.lastName}`
                 : typedUser?.email
               }
             </span>
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
-              onClick={handleLogout} 
-              className="flex items-center space-x-2" 
+              onClick={handleLogout}
+              className="flex items-center space-x-2"
               data-testid="button-logout"
             >
               <LogOut className="h-4 w-4" />
@@ -273,7 +273,7 @@ export default function Settings() {
             Integrations & Settings
           </h1>
           <p className="text-muted-foreground">
-            Connect your tools to unlock AI-powered call preparation. The more data you connect, 
+            Connect your tools to unlock AI-powered call preparation. The more data you connect,
             the better insights Opus can provide for your sales calls.
           </p>
         </div>
@@ -301,7 +301,7 @@ export default function Settings() {
                 <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
                   {integration.description}
                 </p>
-                
+
                 <div className="flex space-x-2">
                   {integration.status === "connected" ? (
                     <>
@@ -309,9 +309,9 @@ export default function Settings() {
                         <SettingsIcon className="w-4 h-4 mr-2" />
                         Configure
                       </Button>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
+                      <Button
+                        variant="outline"
+                        size="sm"
                         className="flex-1"
                         onClick={() => handleDisconnectIntegration(integration.id)}
                         disabled={connectingId === integration.id}
@@ -320,8 +320,8 @@ export default function Settings() {
                       </Button>
                     </>
                   ) : (
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       className="flex-1"
                       onClick={() => handleConnectIntegration(integration.id)}
                       disabled={connectingId === integration.id}
@@ -353,7 +353,7 @@ export default function Settings() {
                   Edit
                 </Button>
               </div>
-              
+
               <div className="flex justify-between items-center py-2">
                 <div>
                   <p className="font-medium">Email Preferences</p>
@@ -378,7 +378,7 @@ export default function Settings() {
                     )}
                     <span className="text-sm">{isDarkMode ? 'Dark' : 'Light'}</span>
                   </Label>
-                  <Switch 
+                  <Switch
                     id="theme-toggle"
                     checked={isDarkMode}
                     onCheckedChange={toggleTheme}
@@ -403,7 +403,7 @@ export default function Settings() {
                   Configure
                 </Button>
               </div>
-              
+
               <div className="flex justify-between items-center py-2">
                 <div>
                   <p className="font-medium">Data Usage</p>

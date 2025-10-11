@@ -985,6 +985,61 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     }
   });
 
+  // Fetch recent prep sheets from MCP
+  app.get("/api/recent-prep", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log(`[MCP-Recent-Prep] Fetching prep sheets for userId=${userId}`);
+
+      const mcpUrl = `${ENV.MCP_BASE_URL}/prep?userId=${encodeURIComponent(userId)}`;
+      const mcpToken = ENV.MCP_SERVICE_TOKEN;
+
+      if (!mcpToken) {
+        console.error('[MCP-Recent-Prep] MCP_SERVICE_TOKEN not configured');
+        return res.status(500).json({ error: "MCP service token not configured" });
+      }
+
+      const response = await fetch(mcpUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${mcpToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[MCP-Recent-Prep] MCP returned error: ${response.status} - ${errorText}`);
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          return res.status(response.status).json(errorJson);
+        } catch {
+          return res.status(response.status).json({ 
+            error: "MCP service error",
+            message: errorText 
+          });
+        }
+      }
+
+      const data = await response.json();
+      console.log(`[MCP-Recent-Prep] MCP returned ${Array.isArray(data) ? data.length : 0} prep sheets`);
+      
+      res.json(data);
+    } catch (error) {
+      console.error('[MCP-Recent-Prep] Error fetching from MCP:', error);
+      res.status(500).json({ 
+        error: "Failed to fetch prep sheets",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Combined integrations status endpoint
   app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {

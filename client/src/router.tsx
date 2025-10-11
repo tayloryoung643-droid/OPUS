@@ -6,6 +6,7 @@ import Login from "./pages/Login";
 import Overview from "./pages/Overview";
 import Agenda from "./pages/Agenda";
 import Settings from "./pages/Settings";
+import RecentPrep from "./pages/RecentPrep";
 
 const LoadingSpinner = () => (
   <div className="min-h-screen bg-gradient-to-br from-black via-indigo-900/80 to-violet-900/60 text-white flex items-center justify-center">
@@ -39,6 +40,7 @@ export const router = createBrowserRouter([
       { path: "login", element: <Login /> },
       { path: "overview", element: <Protected element={<Overview />} /> },
       { path: "agenda", element: <Protected element={<Agenda />} /> },
+      { path: "recent-prep", element: <Protected element={<RecentPrep />} /> },
       { path: "settings", element: <Protected element={<Settings />} /> },
       { path: "*", element: <Navigate to="/" replace /> },
     ]

@@ -405,16 +405,14 @@ export default function OpusAgendaMock() {
           <span className="text-sm text-zinc-400">Agenda</span>
         </div>
         <nav className="hidden md:flex items-center gap-6 text-sm">
-          {["Overview", "Agenda", "Pipeline", "Tasks", "Coach", "Insights"].map((tab) => (
+          {["Overview", "Agenda"].map((tab) => (
             <button 
               key={tab} 
               onClick={() => {
                 if (tab === "Overview") navigate("/overview");
                 else if (tab === "Agenda") navigate("/agenda");
-                // Other tabs are disabled for now
               }}
-              disabled={!["Overview", "Agenda"].includes(tab)}
-              className={`relative ${tab === "Agenda" ? "text-white font-semibold" : !["Overview", "Agenda"].includes(tab) ? "text-zinc-600 cursor-not-allowed" : "text-zinc-400 hover:text-white cursor-pointer"}`}
+              className={`relative ${tab === "Agenda" ? "text-white font-semibold" : "text-zinc-400 hover:text-white cursor-pointer"}`}
               data-testid={`nav-${tab.toLowerCase()}`}
             >
               {tab}

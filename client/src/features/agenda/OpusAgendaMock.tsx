@@ -683,6 +683,7 @@ export default function OpusAgendaMock() {
               </button>
             </div>
           )}
+          </div>
         </section>
       </main>
     </div>

@@ -1,10 +1,22 @@
 import { useState } from "react";
 import SettingsModal from "../SettingsModal";
 
-type Props = { active: "Agenda"; onAgendaClick: () => void };
+type Props = { 
+  active: "Agenda"; 
+  onAgendaClick: () => void;
+  onSettingsClick?: () => void;
+};
 
-export default function OpusTopNav({ active, onAgendaClick }: Props) {
+export default function OpusTopNav({ active, onAgendaClick, onSettingsClick }: Props) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  
+  const handleSettingsClick = () => {
+    if (onSettingsClick) {
+      onSettingsClick();
+    } else {
+      setSettingsOpen(true);
+    }
+  };
   const Tab = ({
     name,
     active,
@@ -42,7 +54,7 @@ export default function OpusTopNav({ active, onAgendaClick }: Props) {
       </nav>
       <div className="flex items-center gap-3">
         <button 
-          onClick={() => setSettingsOpen(true)}
+          onClick={handleSettingsClick}
           className="rounded-lg p-2 hover:bg-white/5 transition" 
           data-testid="button-settings"
         >

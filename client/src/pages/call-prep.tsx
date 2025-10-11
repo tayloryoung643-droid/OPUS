@@ -338,36 +338,34 @@ export default function CallPrep() {
     },
   });
 
-  // Generate AI prep mutation (updated to handle partial responses)
+  // Generate AI prep mutation (uses MCP service)
   const generatePrepMutation = useMutation({
-    mutationFn: async (targetCallId: string) => {
-      const response = await apiRequest("POST", `/api/calls/${targetCallId}/generate-prep`);
-      return response.json() as Promise<GeneratePrepResponse>;
+    mutationFn: async (eventId: string) => {
+      const response = await apiRequest("POST", `/api/generate-prep`, { 
+        eventId,
+        timeMin: new Date().toISOString(),
+        timeMax: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
+      });
+      return response.json();
     },
     onSuccess: (data) => {
       // Clear any previous integration errors on success
       setIntegrationError(null);
       
-      if ('mode' in data && data.mode === 'partial') {
-        // Handle partial response
-        setPartialPrepData(data);
-        toast({
-          title: "Prep sheet ready",
-          description: data.candidates.length > 0 
-            ? `Found ${data.candidates.length} account suggestion(s). Link an account for full AI insights.`
-            : "Basic prep sheet ready. Link an account for AI insights.",
-        });
-      } else {
-        // Handle full response
-        setPartialPrepData(null);
+      // MCP returns { prepId, url }
+      if ('prepId' in data && 'url' in data) {
         toast({
           title: "AI prep generated",
-          description: "Your call preparation sheet has been updated with AI insights.",
+          description: `Prep ${data.prepId} created successfully. View at ${data.url}`,
         });
-        // Only update query data for full responses that have call.id
-        if ('call' in data && data.call?.id) {
-          queryClient.setQueryData(["/api/calls", data.call.id], data);
-        }
+        // Invalidate queries to refetch fresh data
+        queryClient.invalidateQueries({ queryKey: ["/api/calls", resolvedCallId] });
+      } else {
+        // Fallback for unexpected response format
+        toast({
+          title: "Prep generation completed",
+          description: "Your call preparation has been generated.",
+        });
       }
     },
     onError: (error) => {

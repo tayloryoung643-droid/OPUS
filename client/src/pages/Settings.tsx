@@ -2,10 +2,12 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink, LogOut } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink, LogOut, Moon, Sun } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { logout, clearSession } from "../services/authService";
 import { queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
@@ -14,7 +16,34 @@ export default function Settings() {
   const { user } = useAuth();
   const typedUser = user as User | undefined;
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const navigate = useNavigate();
+
+  // Initialize theme from localStorage or default to dark
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    setIsDarkMode(prefersDark);
+    
+    if (prefersDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const newIsDarkMode = !isDarkMode;
+    setIsDarkMode(newIsDarkMode);
+    
+    if (newIsDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
+  };
 
   const handleLogout = () => {
     // Use the existing Replit auth logout mechanism
@@ -333,6 +362,29 @@ export default function Settings() {
                 <Button variant="outline" size="sm" data-testid="button-email-preferences">
                   Manage
                 </Button>
+              </div>
+
+              <div className="flex justify-between items-center py-2">
+                <div>
+                  <p className="font-medium">Theme</p>
+                  <p className="text-sm text-muted-foreground">Switch between dark and light mode</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Label htmlFor="theme-toggle" className="flex items-center gap-2 cursor-pointer">
+                    {isDarkMode ? (
+                      <Moon className="h-4 w-4" />
+                    ) : (
+                      <Sun className="h-4 w-4" />
+                    )}
+                    <span className="text-sm">{isDarkMode ? 'Dark' : 'Light'}</span>
+                  </Label>
+                  <Switch 
+                    id="theme-toggle"
+                    checked={isDarkMode}
+                    onCheckedChange={toggleTheme}
+                    data-testid="switch-theme"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>

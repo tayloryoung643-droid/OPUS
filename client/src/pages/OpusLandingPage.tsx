@@ -122,16 +122,14 @@ export default function OpusLandingPage() {
         </div>
 
         <nav className="hidden md:flex items-center gap-6 text-sm text-zinc-300">
-          {["Overview", "Agenda", "Pipeline", "Tasks", "Coach", "Insights"].map((tab) => (
+          {["Overview", "Agenda"].map((tab) => (
             <button
               key={tab}
               onClick={() => {
                 if (tab === "Overview") navigate("/overview");
                 else if (tab === "Agenda") navigate("/agenda");
-                // Other tabs are disabled for now
               }}
-              disabled={!["Overview", "Agenda"].includes(tab)}
-              className={`relative ${tab === "Overview" ? "text-white font-semibold" : !["Overview", "Agenda"].includes(tab) ? "text-zinc-600 cursor-not-allowed" : "hover:text-white cursor-pointer"}`}
+              className={`relative ${tab === "Overview" ? "text-white font-semibold" : "hover:text-white cursor-pointer"}`}
               data-testid={`nav-${tab.toLowerCase()}`}
             >
               {tab}

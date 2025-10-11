@@ -502,28 +502,9 @@ export default function OpusAgendaMock() {
             </div>
           )}
 
-          {/* Notes */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-4 mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">My Notes</h2>
-              <div className="flex items-center gap-2 lg:hidden">
-                <button onClick={handleSave} className="text-xs px-3 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300">Save</button>
-                <button onClick={generatePrep} className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700">Generate Prep</button>
-              </div>
-            </div>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              onBlur={handleSave}
-              placeholder="Type notes for this call…"
-              className="w-full min-h-[96px] rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
-            />
-          </div>
-
-          {/* Prep content */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5">
-            {/* Sticky context bar */}
-            <div className="flex items-baseline justify-between gap-4 mb-3 sticky top-16 z-10 bg-zinc-950/80 backdrop-blur px-2 py-2 rounded-xl border border-zinc-900/60">
+          {/* Event Title and Action Buttons at Top */}
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5 mb-6">
+            <div className="flex items-baseline justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div>
                   <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{selected?.title || "—"}</h1>
@@ -535,46 +516,11 @@ export default function OpusAgendaMock() {
                 </div>
               </div>
 
-              {/* Action buttons moved from old chat interface */}
+              {/* Action buttons */}
               <div className="flex items-center gap-3">
-                <div className="flex flex-wrap gap-2 text-[11px] mr-4">
-                  {['No EB identified','Security review pending','Low stakeholder coverage'].map((r,i)=> (
-                    <span key={i} className="px-2 py-1 rounded-full border border-zinc-800 text-zinc-400">{r}</span>
-                  ))}
-                </div>
-
                 {/* Generate Prep Button */}
                 <button
-                  onClick={() => {
-                    if (!selected) return;
-                    setLoading(true);
-                    // Simulate API call delay
-                    setTimeout(() => {
-                      setPrep(prev => ({
-                        ...prev,
-                        agendaBullets: ["Discuss current CRM challenges", "Review integration requirements", "Timeline and budget alignment"],
-                        goalsPain: ["Manual data entry inefficiencies", "Lack of pipeline visibility", "Integration complexity"],
-                        methodology: {
-                          MEDDIC: {
-                            metrics: "25% increase in sales efficiency",
-                            economic: "$50K budget allocated",
-                            decision: "CTO and VP Sales involved",
-                            decisionCriteria: "ROI within 6 months",
-                            implicate: "Current system breaking down",
-                            champion: "Jennifer White"
-                          },
-                          Challenger: ["Teaching insight about industry trends", "Tailoring to their specific pain points", "Taking control of sales process"]
-                        },
-                        objections: [
-                          { objection: "Price concerns", response: "Focus on ROI and long-term value" },
-                          { objection: "Integration complexity", response: "Highlight our proven implementation process" }
-                        ],
-                        competitors: ["Salesforce", "HubSpot"],
-                        opusSummary: "High-potential opportunity with clear pain points and engaged stakeholders."
-                      }));
-                      setLoading(false);
-                    }, 2000);
-                  }}
+                  onClick={generatePrep}
                   disabled={loading || !selected}
                   className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-50 text-white rounded-lg font-medium text-sm transition-colors"
                 >
@@ -591,6 +537,21 @@ export default function OpusAgendaMock() {
               </div>
             </div>
           </div>
+
+          {/* Notes Section - Now below title */}
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-4 mb-6">
+            <h2 className="text-lg font-semibold mb-3">My Notes</h2>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={handleSave}
+              placeholder="Type notes for this call…"
+              className="w-full min-h-[96px] rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+            />
+          </div>
+
+          {/* Prep content */}
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5">
 
           {loading ? (
             <Skeleton />

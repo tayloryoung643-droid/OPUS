@@ -861,6 +861,63 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     }
   });
 
+  // Agent Builder integration - Generate sales prep using Agent Builder
+  app.post("/api/agent/generate", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+      const AGENT_ID = process.env.AGENT_ID;
+      const userId = req.user?.claims?.sub;
+      
+      if (!OPENAI_API_KEY) {
+        console.error('[Agent-Generate] OPENAI_API_KEY environment variable not set');
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+      
+      if (!AGENT_ID) {
+        console.error('[Agent-Generate] AGENT_ID environment variable not set');
+        return res.status(500).json({ error: "Agent ID not configured" });
+      }
+
+      const { eventId, timeMin, timeMax } = req.body;
+      
+      if (!eventId) {
+        return res.status(400).json({ error: "eventId is required" });
+      }
+
+      console.log(`[Agent-Generate] Triggering Agent Builder for userId=${userId}, eventId=${eventId}`);
+
+      const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+      
+      // Create agent run with instruction to generate and save prep
+      const run = await openai.responses.create({
+        agent_id: AGENT_ID,
+        input: [
+          { 
+            role: "user", 
+            content: `Generate and save a sales prep for event ${eventId}. userId=${userId}. timeMin=${timeMin || new Date().toISOString()}. timeMax=${timeMax || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()}.` 
+          }
+        ],
+        metadata: { userId, eventId, timeMin, timeMax }
+      });
+
+      console.log(`[Agent-Generate] Agent run created: ${(run as any).id}`);
+
+      // Return the run ID so UI can track progress or poll for results
+      res.json({ 
+        runId: (run as any).id || null,
+        eventId,
+        userId,
+        message: "Prep generation started. The agent will call MCP tools and save the prep."
+      });
+    } catch (error) {
+      console.error('[Agent-Generate] Error creating agent run:', error);
+      res.status(500).json({ 
+        error: "Failed to start prep generation",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Combined integrations status endpoint
   app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {

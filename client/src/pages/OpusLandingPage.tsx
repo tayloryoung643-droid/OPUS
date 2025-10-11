@@ -1,12 +1,10 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import SettingsModal from "@/components/SettingsModal";
 import { useAuth } from "@/hooks/useAuth";
 import { CONFIG } from "@/config";
 
 export default function OpusLandingPage() {
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
 
   // Get current user for voice recording
@@ -142,7 +140,7 @@ export default function OpusLandingPage() {
 
         <div className="flex items-center gap-3 md:gap-4">
           <button
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => navigate("/settings")}
             className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"
             data-testid="button-settings"
           >
@@ -302,11 +300,6 @@ export default function OpusLandingPage() {
         </div>
       </main>
 
-      {/* Settings Modal */}
-      <SettingsModal
-        isOpen={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
-      />
-    </div>
+      </div>
   );
 }

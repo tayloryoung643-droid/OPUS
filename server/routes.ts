@@ -918,6 +918,73 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     }
   });
 
+  // MCP-only prep generation - Forward to MCP service
+  app.post("/api/generate-prep", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { eventId, timeMin, timeMax } = req.body;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+      
+      if (!eventId) {
+        return res.status(400).json({ error: "eventId is required" });
+      }
+
+      console.log(`[MCP-Generate] Forwarding prep generation to MCP: userId=${userId}, eventId=${eventId}`);
+
+      const mcpUrl = `${ENV.MCP_BASE_URL}/mcp/prep.generate.v1`;
+      const mcpToken = ENV.MCP_SERVICE_TOKEN;
+
+      if (!mcpToken) {
+        console.error('[MCP-Generate] MCP_SERVICE_TOKEN not configured');
+        return res.status(500).json({ error: "MCP service token not configured" });
+      }
+
+      const response = await fetch(mcpUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${mcpToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          userId, 
+          eventId, 
+          timeMin: timeMin || new Date().toISOString(),
+          timeMax: timeMax || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[MCP-Generate] MCP returned error: ${response.status} - ${errorText}`);
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          return res.status(response.status).json(errorJson);
+        } catch {
+          return res.status(response.status).json({ 
+            error: "MCP service error",
+            message: errorText 
+          });
+        }
+      }
+
+      const data = await response.json();
+      console.log(`[MCP-Generate] MCP returned success:`, data);
+      
+      // Return { prepId, url } or whatever MCP returns
+      res.json(data);
+    } catch (error) {
+      console.error('[MCP-Generate] Error forwarding to MCP:', error);
+      res.status(500).json({ 
+        error: "Failed to generate prep",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Combined integrations status endpoint
   app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {

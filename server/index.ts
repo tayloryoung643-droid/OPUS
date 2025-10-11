@@ -1,10 +1,19 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { randomUUID } from 'crypto';
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Add x-request-id to all requests (generate if not present)
+app.use((req, res, next) => {
+  const requestId = req.header('x-request-id') || randomUUID();
+  (req as any).rid = requestId;
+  res.setHeader('x-request-id', requestId);
+  next();
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -45,6 +54,25 @@ app.use((req, res, next) => {
 
     res.status(status).json({ message });
     throw err;
+  });
+
+  // API-only terminal middleware: prevents API responses from falling through to Vite catch-all
+  // This ensures API routes that already sent headers stop here and don't get HTML from Vite
+  app.use('/api', (req, res, next) => {
+    if (res.headersSent) {
+      return; // Response already sent by API route, stop here
+    }
+    // Unmatched API route - return JSON 404
+    res.status(404).json({ error: 'Not found', path: req.path });
+  });
+
+  // Internal-only terminal middleware: prevents internal routes from falling through to Vite
+  app.use('/internal', (req, res, next) => {
+    if (res.headersSent) {
+      return; // Response already sent by internal route, stop here
+    }
+    // Unmatched internal route - return JSON 404
+    res.status(404).json({ error: 'Not found', path: req.path });
   });
 
   // importantly only setup vite in development and after

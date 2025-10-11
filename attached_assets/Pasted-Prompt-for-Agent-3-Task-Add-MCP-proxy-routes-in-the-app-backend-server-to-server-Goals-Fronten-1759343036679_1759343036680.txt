@@ -1,0 +1,109 @@
+Prompt for Agent 3
+
+Task: Add MCP proxy routes in the app backend (server-to-server).
+Goals: Frontend calls our app at /api/mcp/..., and the app forwards to MCP at MCP_BASE_URL using the secret MCP_SERVICE_TOKEN.
+
+Env (in the app project):
+
+MCP_REMOTE_ENABLED=true
+MCP_BASE_URL=http://localhost:4000         # dev: MCP on port 4000
+MCP_SERVICE_TOKEN=<same token set in MCP>  # server-side only, never to browser
+
+
+Add routes (Express):
+
+POST /api/mcp/:toolName → forwards JSON to POST ${MCP_BASE_URL}/tools/:toolName with headers:
+
+Authorization: Bearer ${MCP_SERVICE_TOKEN}
+
+Content-Type: application/json
+Return JSON and status code unchanged.
+
+POST /api/agent/act → forwards to ${MCP_BASE_URL}/agent/act (same header rules).
+
+Add basic request logging: tool name + 6-char requestId.
+
+Do not expose MCP_SERVICE_TOKEN to the browser.
+
+Frontend change:
+Replace any direct MCP calls with:
+
+fetch('/api/mcp/calendar.next_events.v1', { method:'POST', body:… })
+
+fetch('/api/agent/act', { method:'POST', body:… })
+
+CORS:
+
+Browser → App backend: already allowed.
+
+App backend → MCP: server-to-server (no browser CORS needed).
+
+Step 2 — Map MCP errors to “Connect” buttons (no fake data)
+Prompt for Agent 3
+
+Task: Friendly UI for integration errors.
+
+If proxy returns { error: { code: "GOOGLE_NOT_CONNECTED" } }, show a “Connect Google Calendar” button.
+
+If { code: "SFDC_NOT_CONNECTED" }, show “Connect Salesforce”.
+
+Remove any sample data fallbacks.
+
+Add a small “Show details” link that expands raw error JSON (for debugging).
+
+Step 3 — Make sure OAuth tokens flow to MCP
+
+(You already have Google & Salesforce OAuth—this just lets the MCP use the stored tokens.)
+
+Prompt for Agent 3
+
+Task: Wire stored tokens to MCP providers.
+
+In MCP (opus-mcp), implement getStoredGoogleTokens(userId) and getStoredSFDCTokens(tenantId) to read tokens from our DB.
+
+On 401 from Google/SFDC, try refresh once; if it fails, return GOOGLE_AUTH_EXPIRED or SFDC_AUTH_EXPIRED.
+
+Never return sample data—always typed errors.
+
+Step 4 — Add one “agent” endpoint for Prep
+Prompt for Agent 3
+
+Task: Implement /agent/act in MCP.
+Request: { intent: "PREP_SHEET", userId }
+Logic:
+
+Call calendar.next_events.v1 (next ~3 hours).
+
+If none → { error: { code:"NO_UPCOMING_EVENTS" } }.
+
+Try salesforce.lookup_account.v1 using attendee domain (if present).
+
+Return:
+
+{
+  "eventId": "...",
+  "sections": {
+    "company_brief": "",
+    "stakeholders": [],
+    "risks": [],
+    "objections": [],
+    "agenda": [],
+    "cheatsheet": []
+  }
+}
+
+
+Validate input/output with zod. No sample text—empty fields are OK.
+
+Step 5 — Frontend calls the agent for Prep
+Prompt for Agent 3
+
+Task: Use /api/agent/act to render the Prep panel.
+
+On open, POST { intent: "PREP_SHEET", userId } to /api/agent/act.
+
+Render the returned sections.
+
+If NO_UPCOMING_EVENTS, show a friendly “No meetings in the next few hours.”
+
+If GOOGLE_NOT_CONNECTED, show the Google connect CTA.

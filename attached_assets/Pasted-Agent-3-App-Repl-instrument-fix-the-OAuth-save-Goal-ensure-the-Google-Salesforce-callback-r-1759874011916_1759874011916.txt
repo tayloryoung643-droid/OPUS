@@ -1,0 +1,71 @@
+Agent 3 — App Repl: instrument & fix the OAuth save
+
+Goal: ensure the Google + Salesforce callback routes actually persist tokens for userId = "tayloryoung643@gmail.com", and that the status + provider read from the same store.
+
+Paste to Agent 3 (App Repl):
+
+You are in the App Repl.
+
+OBJECTIVE
+Instrument and harden our OAuth flows so tokens are saved and discoverable by:
+  - GET /api/integrations/status?as=<email>
+  - GET /internal/integrations/tokens?userId=<email> (Bearer-protected)
+
+TASKS
+1) Add structured logs in BOTH Google and Salesforce OAuth handlers:
+   - In "connect" (auth start): log {"rid","route":"/api/integrations/<provider>/connect","userId"}
+   - In "callback": after exchanging "code" for tokens, log:
+     {"rid","route":"/api/integrations/<provider>/oauth2/callback","userId","received":{
+        "accessToken": !!token, "refreshToken": !!refreshToken, "scopes": [... or count],
+        "instanceUrlPresent": <for SFDC>
+     }}
+
+2) Ensure we request refresh tokens:
+   - Google: include access_type=offline and prompt=consent,
+     scopes must include at least "https://www.googleapis.com/auth/calendar.readonly"
+     (and "https://www.googleapis.com/auth/gmail.readonly" if we want email threads)
+   - Salesforce: request scopes include "refresh_token" and "api".
+
+3) Persist tokens on callback:
+   - Determine effectiveUserId using the same logic as the proxy:
+       effectiveUserId = (APP_DEV_BYPASS && req.query.as) ? req.query.as : session.userId
+   - UPSERT the user’s integration record in our DB (no console logging of secrets).
+     Example model shape:
+       User {
+         email,
+         googleIntegration: { accessToken, refreshToken, expiry, scopes },
+         salesforceIntegration: { accessToken, refreshToken, instanceUrl }
+       }
+   - If we already persist elsewhere, unify readers/writers so that:
+       a) /api/integrations/status
+       b) /internal/integrations/tokens
+     both read the same fields.
+
+4) Make /api/integrations/status authoritative:
+   - Return booleans by checking the actual presence of stored tokens (not UI flags).
+     {
+       userId, 
+       google: { connected: !!refreshToken || !!accessToken, scopes, expiry },
+       salesforce: { connected: !!refreshToken || !!accessToken, instanceUrlPresent: !!instanceUrl }
+     }
+
+5) Provider route must mirror the same store:
+   - /internal/integrations/tokens?userId= returns:
+     {} if nothing,
+     else { google:{...}, salesforce:{...} } with tokens (still no logging of secrets).
+   - Keep Authorization: Bearer ${MCP_TOKEN_PROVIDER_SECRET} check.
+
+6) Add a dev-only helper:
+   - GET /debug/connect?as=<email> renders a minimal HTML with two buttons:
+       "Connect Google" → /api/integrations/google/connect?as=<email>
+       "Connect Salesforce" → /api/integrations/salesforce/connect?as=<email>
+     Make sure callback routes redirect back to /debug/connect?as=<email> and show current status.
+
+7) Fix UI "Connected" badge if it’s reading a stale flag:
+   - Update the UI to derive "Connected" from /api/integrations/status.
+
+DELIVERABLES
+- Logs appear for connect + callback with userId
+- Tokens saved to DB on callback for effectiveUserId
+- /api/integrations/status?as=<email> now reflects real token presence
+- /internal/integrations/tokens returns google/salesforce keys (no secrets in logs)

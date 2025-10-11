@@ -1,0 +1,48 @@
+Agent 3 — App Repl: prove the provider returns tokens for your email
+
+Goal: Show, definitively, whether /internal/integrations/tokens?userId=<email> has Google/SFDC tokens for tayloryoung643@gmail.com
+. If it returns {}, MCP will correctly say NOT_CONNECTED.
+
+Paste this to Agent 3 (App Repl):
+
+Add a temporary debug endpoint GET /api/debug/integrations that:
+- Requires query ?as=<email>
+- Returns JSON:
+  {
+    "userId": "<email>",
+    "google": { "connected": true|false, "scopes": ["..."], "expiry": 1234567890 },
+    "salesforce": { "connected": true|false, "instanceUrlPresent": true|false }
+  }
+Rules:
+- Absolutely DO NOT include token strings.
+- Derive the same data source that the UI uses to show “Connected”.
+
+Also, in /internal/integrations/tokens:
+- Before returning, compute booleans hasGoogle and hasSalesforce (no tokens in logs).
+- Log one structured line:
+  {"rid": "...", "route":"/internal/integrations/tokens", "userId":"...", "status":200|404, "ms":123, "hasGoogle":true|false, "hasSalesforce":true|false}
+- If nothing is stored for that userId, return {} (empty object) with 200.
+
+Deliverables:
+- New /api/debug/integrations
+- Structured logs as above (no secrets)
+
+
+Now you run (App shell):
+
+# 1) See what the App thinks about your connections (no secrets)
+curl -s "http://localhost:5000/api/debug/integrations?as=$REAL_EMAIL" | jq
+
+# 2) Hit the token provider directly with the shared secret
+SECRET="$MCP_TOKEN_PROVIDER_SECRET"
+curl -s "http://localhost:5000/internal/integrations/tokens?userId=$REAL_EMAIL" \
+  -H "Authorization: Bearer $SECRET" | jq
+
+
+Interpretation
+
+If google.connected: true (and/or provider shows a "google": {...} object), great — tokens exist.
+
+If both google.connected and salesforce.connected are false (or the provider returns {}), then you simply haven’t stored tokens for that email yet → MCP will keep returning *_NOT_CONNECTED correctly. Connect them via your Settings → Integrations flow while logged in as that same email.
+
+If the UI says “Connected”, but /api/debug/integrations says false/{} → the UI is reading a flag that isn’t tied to real tokens. Ask Agent 3 (App) to fix getTokensForUser(userId) in the provider to read the actual token store.

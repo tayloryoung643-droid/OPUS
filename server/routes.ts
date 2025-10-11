@@ -16,6 +16,7 @@ import jwt from "jsonwebtoken";
 import gmailRoutes from "./routes/gmail";
 import orbRoutes from "./routes/orb";
 import orbExtensionRoutes from "./routes/orbExtension";
+import internalTokensRoutes from "./routes/internalTokens";
 import { generateRhythmInsights, generateOpusFeed } from "./services/insights";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -386,6 +387,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint - Echo active userId and email as App resolves it
+  app.get('/api/debug/me', async (req: any, res) => {
+    try {
+      // Check if user is authenticated (session-based or JWT)
+      const userId = req.user?.claims?.sub || req.user?.sub;
+      const email = req.user?.claims?.email || req.user?.email;
+      
+      // In dev mode, provide dev_user if not authenticated
+      const isDev = process.env.NODE_ENV !== 'production' || process.env.APP_DEV_BYPASS === 'true';
+      
+      const response = {
+        userId: userId || (isDev ? 'dev_user' : null),
+        email: email || (isDev ? 'dev@example.com' : null),
+        authenticated: !!userId,
+        devMode: isDev
+      };
+      
+      // Explicitly set content type
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(response);
+    } catch (error) {
+      console.error("Error in /api/debug/me:", error);
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(500).json({ 
+        error: "Failed to resolve user identity",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Debug endpoint - Version and environment info
+  app.get('/api/debug/version', async (req: any, res) => {
+    try {
+      const response = {
+        gitSha: process.env.REPL_ID || 'dev',
+        buildTime: new Date().toISOString(),
+        env: {
+          APP_DEV_BYPASS: !!ENV.APP_DEV_BYPASS,
+          MCP_TOKEN_PROVIDER_SECRET: !!ENV.MCP_TOKEN_PROVIDER_SECRET
+        }
+      };
+      
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(response);
+    } catch (error) {
+      console.error("Error in /api/debug/version:", error);
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(500).json({ 
+        error: "Failed to get version info",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Debug endpoint - Show integration connection status (NO TOKENS)
+  app.get('/api/debug/integrations', async (req: any, res) => {
+    try {
+      const targetEmail = req.query.as as string;
+      
+      if (!targetEmail) {
+        return res.status(400).json({ error: 'Missing ?as=<email> query parameter' });
+      }
+
+      // Fetch integration status from storage (same source as UI uses)
+      const [googleIntegration, salesforceIntegration] = await Promise.all([
+        storage.getGoogleIntegration(targetEmail),
+        storage.getSalesforceIntegration(targetEmail)
+      ]);
+
+      const response = {
+        userId: targetEmail,
+        google: {
+          connected: !!googleIntegration?.isActive,
+          scopes: googleIntegration?.scopes || [],
+          expiry: googleIntegration?.tokenExpiry ? Math.floor(googleIntegration.tokenExpiry.getTime() / 1000) : null
+        },
+        salesforce: {
+          connected: !!salesforceIntegration?.isActive,
+          instanceUrlPresent: !!salesforceIntegration?.instanceUrl
+        }
+      };
+
+      res.setHeader('Content-Type', 'application/json');
+      return res.json(response);
+    } catch (error) {
+      console.error("Error in /api/debug/integrations:", error);
+      res.setHeader('Content-Type', 'application/json');
+      return res.status(500).json({ 
+        error: "Failed to check integrations",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // OpenAI Realtime API - Generate ephemeral tokens for WebRTC voice sessions with MCP integration
   app.post('/api/openai/realtime/token', isAuthenticated, async (req: any, res) => {
     try {
@@ -521,26 +616,265 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     }
   });
 
+  // MCP Proxy Routes - Server-to-server forwarding to MCP service
+  // Auth middleware that derives userId from server session (never trusts client)
+  const mcpAuthBypass = (req: any, res: any, next: any) => {
+    const isDev = process.env.NODE_ENV !== 'production' || process.env.APP_DEV_BYPASS === 'true';
+    
+    if (isDev) {
+      // Dev-only impersonation support
+      const impersonateUser = req.headers['x-dev-user'] || req.query.as;
+      const sessionUserId = req.user?.claims?.sub;
+      
+      // Use impersonation if provided, otherwise session user, otherwise default
+      const userId = impersonateUser || sessionUserId || 'dev_user';
+      
+      // Initialize body if needed and OVERWRITE userId (never trust client)
+      if (!req.body) req.body = {};
+      req.body.userId = userId;
+      
+      return next();
+    }
+    
+    // Production: require authentication
+    return isAuthenticated(req, res, (err?: any) => {
+      if (err) return next(err);
+      
+      // In production, ALWAYS derive userId from session (never trust client)
+      const sessionUserId = req.user?.claims?.sub;
+      if (!sessionUserId) {
+        return res.status(401).json({ 
+          error: { code: "UNAUTHORIZED", message: "User not authenticated" }
+        });
+      }
+      
+      // Initialize body if needed and OVERWRITE userId
+      if (!req.body) req.body = {};
+      req.body.userId = sessionUserId;
+      
+      next();
+    });
+  };
+
+  // POST /api/mcp/:toolName → forwards to MCP at ${MCP_BASE_URL}/mcp/:toolName
+  app.post("/api/mcp/:toolName", mcpAuthBypass, async (req: any, res) => {
+    const startMs = Date.now();
+    const rid = req.headers['x-request-id'] || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const toolName = req.params.toolName;
+    const route = `/api/mcp/${toolName}`;
+    
+    // userId is ALWAYS set by mcpAuthBypass middleware (never trust client)
+    const userId = req.body.userId;
+    
+    try {
+      if (!ENV.MCP_REMOTE_ENABLED) {
+        const status = 503;
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        return res.status(status).json({ 
+          error: { 
+            code: "MCP_DISABLED", 
+            message: "MCP service is not enabled" 
+          } 
+        });
+      }
+
+      if (!ENV.MCP_SERVICE_TOKEN) {
+        console.error('[MCP-Proxy] MCP_SERVICE_TOKEN not configured');
+        const status = 500;
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        return res.status(status).json({ 
+          error: { 
+            code: "CONFIG_ERROR", 
+            message: "MCP service not properly configured" 
+          } 
+        });
+      }
+
+      // Normalize MCP_BASE_URL: remove trailing slashes, ensure https in production
+      const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
+      const url = `${mcpBaseUrl}/mcp/${toolName}`;
+
+      // Forward request to MCP service with 15s timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const mcpResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
+            'Content-Type': 'application/json',
+            'x-request-id': rid as string,
+            'x-effective-user': userId
+          },
+          body: JSON.stringify(req.body), // userId already set by middleware
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        const responseData = await mcpResponse.json();
+        const status = mcpResponse.status;
+        
+        // Structured logging: {rid, route, userId, status, ms}
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        
+        // Log errors for debugging
+        if (!mcpResponse.ok) {
+          console.error(`[MCP-Proxy:${rid}] Error: ${status}`, responseData);
+        }
+
+        // Return response with same status code
+        res.status(status).json(responseData);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    } catch (error: any) {
+      const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
+      const url = `${mcpBaseUrl}/mcp/${toolName}`;
+      const status = 502;
+      
+      console.error(JSON.stringify({ 
+        rid, 
+        url, 
+        mcpBaseUrl, 
+        tokenLen: ENV.MCP_SERVICE_TOKEN?.length || 0,
+        code: error.code || 'UNKNOWN',
+        status: error.response?.status,
+        message: error.message 
+      }));
+      
+      // Structured logging for proxy errors
+      console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+      
+      res.status(status).json({ 
+        error: { 
+          code: "PROXY_ERROR" 
+        } 
+      });
+    }
+  });
+
+  // POST /api/agent/act → forwards to ${MCP_BASE_URL}/agent/act
+  app.post("/api/agent/act", mcpAuthBypass, async (req: any, res) => {
+    const startMs = Date.now();
+    const rid = req.headers['x-request-id'] || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = '/api/agent/act';
+    
+    // userId is ALWAYS set by mcpAuthBypass middleware (never trust client)
+    const userId = req.body.userId;
+    
+    try {
+      if (!ENV.MCP_REMOTE_ENABLED) {
+        const status = 503;
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        return res.status(status).json({ 
+          error: { 
+            code: "MCP_DISABLED", 
+            message: "MCP service is not enabled" 
+          } 
+        });
+      }
+
+      if (!ENV.MCP_SERVICE_TOKEN) {
+        console.error('[Agent-Proxy] MCP_SERVICE_TOKEN not configured');
+        const status = 500;
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        return res.status(status).json({ 
+          error: { 
+            code: "CONFIG_ERROR", 
+            message: "Agent service not properly configured" 
+          } 
+        });
+      }
+
+      // Normalize MCP_BASE_URL: remove trailing slashes
+      const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
+      const url = `${mcpBaseUrl}/agent/act`;
+
+      // Forward request to MCP agent endpoint with 15s timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const mcpResponse = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${ENV.MCP_SERVICE_TOKEN}`,
+            'Content-Type': 'application/json',
+            'x-request-id': rid as string,
+            'x-effective-user': userId
+          },
+          body: JSON.stringify(req.body), // userId already set by middleware
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        const responseData = await mcpResponse.json();
+        const status = mcpResponse.status;
+        
+        // Structured logging: {rid, route, userId, status, ms}
+        console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+        
+        // Log errors for debugging
+        if (!mcpResponse.ok) {
+          console.error(`[Agent-Proxy:${rid}] Error: ${status}`, responseData);
+        }
+
+        // Return response with same status code
+        res.status(status).json(responseData);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    } catch (error: any) {
+      const mcpBaseUrl = ENV.MCP_BASE_URL.replace(/\/+$/, '');
+      const url = `${mcpBaseUrl}/agent/act`;
+      const status = 502;
+      
+      console.error(JSON.stringify({ 
+        rid, 
+        url, 
+        mcpBaseUrl, 
+        tokenLen: ENV.MCP_SERVICE_TOKEN?.length || 0,
+        code: error.code || 'UNKNOWN',
+        status: error.response?.status,
+        message: error.message 
+      }));
+      
+      // Structured logging for proxy errors
+      console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+      
+      res.status(status).json({ 
+        error: { 
+          code: "PROXY_ERROR" 
+        } 
+      });
+    }
+  });
+
   // Combined integrations status endpoint
   app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      // Support ?as=<email> query param for dev mode
+      const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+      const asEmail = req.query.as as string;
+      const userId = (APP_DEV_BYPASS && asEmail) ? asEmail : req.user.claims.sub;
       
       // Get Google integration status
       const googleIntegration = await storage.getGoogleIntegration(userId);
       const googleStatus = {
-        connected: !!googleIntegration?.isActive,
+        userId,
+        connected: !!(googleIntegration?.accessToken || googleIntegration?.refreshToken),
         scopes: googleIntegration?.scopes || [],
-        connectedAt: googleIntegration?.createdAt,
+        expiry: googleIntegration?.tokenExpiry,
         service: "google"
       };
 
       // Get Salesforce integration status
       const salesforceIntegration = await storage.getSalesforceIntegration(userId);
       const salesforceStatus = {
-        connected: !!salesforceIntegration?.isActive,
-        instanceUrl: salesforceIntegration?.instanceUrl,
-        connectedAt: salesforceIntegration?.createdAt,
+        userId,
+        connected: !!(salesforceIntegration?.accessToken || salesforceIntegration?.refreshToken),
+        instanceUrlPresent: !!salesforceIntegration?.instanceUrl,
         service: "salesforce"
       };
 
@@ -552,8 +886,10 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       };
 
       res.json({
-        googleCalendar: googleStatus,
+        userId,
+        google: googleStatus,
         salesforce: salesforceStatus,
+        googleCalendar: googleStatus, // Keep for backward compatibility
         outlook: outlookStatus
       });
     } catch (error) {
@@ -576,7 +912,26 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
   });
 
   // Google Calendar and Gmail integration routes
-  app.get("/api/integrations/google/auth", isAuthenticatedOrGuest, async (req, res) => {
+  app.get("/api/integrations/google/auth", async (req, res) => {
+    const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = "/api/integrations/google/connect";
+    
+    // Allow bypass with ?as= parameter in dev mode
+    const asParam = req.query.as as string;
+    const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+    
+    if (!asParam || !APP_DEV_BYPASS) {
+      // Require authentication if no ?as= parameter or not in dev mode
+      if (!req.user?.claims?.sub) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+    }
+    
+    const userId = asParam || req.user?.claims?.sub;
+    
+    // Structured logging: connect start
+    console.log(JSON.stringify({ rid, route, userId }));
+    
     try {
       if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
         return res.status(501).json({
@@ -586,10 +941,17 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       }
 
       // Store user ID in session for callback
-      (req as any).session.googleUserId = req.user.claims.sub;
+      (req as any).session.googleUserId = userId;
 
       const { googleAuth } = await import('./services/googleAuth');
       const authUrl = googleAuth.getAuthUrl();
+      
+      // If ?as= parameter is present (from debug page), store it in session and redirect
+      if (asParam) {
+        (req as any).session.googleDebugAs = asParam;
+        return res.redirect(authUrl);
+      }
+      
       res.json({ authUrl });
     } catch (error) {
       console.error("Error generating Google auth URL:", error);
@@ -598,29 +960,51 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
   });
 
   app.get("/api/integrations/google/callback", async (req: any, res) => {
+    const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = "/api/integrations/google/oauth2/callback";
+    
     try {
-      const { code } = req.query;
+      const { code, as } = req.query;
       if (!code) {
         return res.status(400).json({ message: "Missing authorization code" });
       }
 
       const { googleAuth } = await import('./services/googleAuth');
       // Get user ID from session
-      const userId = (req as any).session.googleUserId;
-      if (!userId) {
+      const sessionUserId = (req as any).session.googleUserId;
+      const sessionDebugAs = (req as any).session.googleDebugAs;
+      
+      // Implement effectiveUserId logic with APP_DEV_BYPASS
+      const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+      const effectiveUserId = (APP_DEV_BYPASS && (as || sessionDebugAs)) ? (as || sessionDebugAs) : sessionUserId;
+      
+      if (!effectiveUserId) {
         return res.status(400).json({ message: "Missing user session" });
       }
 
-      // Clear user ID from session
+      // Clear user ID and debug email from session
       delete (req as any).session.googleUserId;
+      delete (req as any).session.googleDebugAs;
 
       const tokens = await googleAuth.getTokens(code);
       
+      // Structured logging: callback with token info (no secrets)
+      console.log(JSON.stringify({
+        rid,
+        route,
+        userId: effectiveUserId,
+        received: {
+          accessToken: !!tokens.access_token,
+          refreshToken: !!tokens.refresh_token,
+          scopes: tokens.scope?.split(' ') || []
+        }
+      }));
+      
       // Check if user already has a Google integration
-      const existingIntegration = await storage.getGoogleIntegration(userId);
+      const existingIntegration = await storage.getGoogleIntegration(effectiveUserId);
       
       const googleIntegrationData = {
-        userId,
+        userId: effectiveUserId,
         accessToken: tokens.access_token!,
         refreshToken: tokens.refresh_token || null,
         tokenExpiry: tokens.expiry_date ? new Date(tokens.expiry_date) : null,
@@ -629,16 +1013,32 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       };
 
       if (existingIntegration) {
-        await storage.updateGoogleIntegration(userId, googleIntegrationData);
+        await storage.updateGoogleIntegration(effectiveUserId, googleIntegrationData);
       } else {
         await storage.createGoogleIntegration(googleIntegrationData);
       }
 
-      // Redirect back to settings page with success
-      res.redirect('/?google_connected=true');
+      // Structured logging: callback save result (no secrets)
+      console.log(JSON.stringify({
+        rid,
+        route: 'google/callback',
+        userId: effectiveUserId,
+        saved: {
+          hasAccess: !!tokens.access_token,
+          hasRefresh: !!tokens.refresh_token,
+          scopesCount: googleIntegrationData.scopes.length,
+          hasInstanceUrl: false // Google doesn't use instance URL
+        }
+      }));
+
+      // Redirect back to appropriate page
+      const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?google_connected=true';
+      res.redirect(redirectUrl);
     } catch (error) {
       console.error("Error handling Google OAuth callback:", error);
-      res.redirect('/?google_error=true');
+      const { as } = req.query;
+      const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?google_error=true';
+      res.redirect(redirectUrl);
     }
   });
 
@@ -673,6 +1073,9 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // Internal routes - Server-to-server only (NO CORS, uses bearer token auth)
+  app.use("/internal", internalTokensRoutes);
 
   // Gmail routes - Mount the Gmail router
   app.use("/api/gmail", isAuthenticatedOrGuest, gmailRoutes);
@@ -992,7 +1395,26 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
   });
 
   // Salesforce CRM integration routes
-  app.get("/api/integrations/salesforce/auth", isAuthenticatedOrGuest, async (req, res) => {
+  app.get("/api/integrations/salesforce/auth", async (req, res) => {
+    const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = "/api/integrations/salesforce/connect";
+    
+    // Allow bypass with ?as= parameter in dev mode
+    const asParam = req.query.as as string;
+    const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+    
+    if (!asParam || !APP_DEV_BYPASS) {
+      // Require authentication if no ?as= parameter or not in dev mode
+      if (!req.user?.claims?.sub) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+    }
+    
+    const userId = asParam || req.user?.claims?.sub;
+    
+    // Structured logging: connect start
+    console.log(JSON.stringify({ rid, route, userId }));
+    
     try {
       if (!process.env.SALESFORCE_CLIENT_ID || !process.env.SALESFORCE_CLIENT_SECRET) {
         return res.status(501).json({
@@ -1008,10 +1430,17 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       const state = crypto.randomBytes(16).toString('hex');
       
       // Store user ID and state in session for callback
-      (req as any).session.salesforceUserId = req.user.claims.sub;
+      (req as any).session.salesforceUserId = userId;
       (req as any).session.salesforceState = state;
       
       const authUrl = salesforceAuth.getAuthUrl(state);
+      
+      // If ?as= parameter is present (from debug page), store it in session and redirect
+      if (asParam) {
+        (req as any).session.salesforceDebugAs = asParam;
+        return res.redirect(authUrl);
+      }
+      
       res.json({ authUrl });
     } catch (error) {
       console.error("Error generating Salesforce auth URL:", error);
@@ -1020,8 +1449,11 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
   });
 
   app.get("/api/integrations/salesforce/callback", async (req: any, res) => {
+    const rid = (req as any).rid || `${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const route = "/api/integrations/salesforce/oauth2/callback";
+    
     try {
-      const { code, state } = req.query;
+      const { code, state, as } = req.query;
       
       if (!code) {
         return res.status(400).json({ message: "Missing authorization code" });
@@ -1033,23 +1465,42 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       }
 
       // Get user ID from session
-      const userId = (req as any).session.salesforceUserId;
-      if (!userId) {
+      const sessionUserId = (req as any).session.salesforceUserId;
+      const sessionDebugAs = (req as any).session.salesforceDebugAs;
+      
+      // Implement effectiveUserId logic with APP_DEV_BYPASS
+      const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+      const effectiveUserId = (APP_DEV_BYPASS && (as || sessionDebugAs)) ? (as || sessionDebugAs) : sessionUserId;
+      
+      if (!effectiveUserId) {
         return res.status(400).json({ message: "Missing user session" });
       }
 
-      // Clear state and user ID from session
+      // Clear state, user ID, and debug email from session
       delete req.session.salesforceState;
       delete (req as any).session.salesforceUserId;
+      delete (req as any).session.salesforceDebugAs;
 
       const { salesforceAuth } = await import('./services/salesforceAuth');
       const tokens = await salesforceAuth.getTokens(code);
       
+      // Structured logging: callback with token info (no secrets)
+      console.log(JSON.stringify({
+        rid,
+        route,
+        userId: effectiveUserId,
+        received: {
+          accessToken: !!tokens.access_token,
+          refreshToken: !!tokens.refresh_token,
+          instanceUrlPresent: !!tokens.instance_url
+        }
+      }));
+      
       // Check if user already has a Salesforce integration
-      const existingIntegration = await storage.getSalesforceIntegration(userId);
+      const existingIntegration = await storage.getSalesforceIntegration(effectiveUserId);
       
       const salesforceIntegrationData = {
-        userId,
+        userId: effectiveUserId,
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token || null,
         instanceUrl: tokens.instance_url,
@@ -1058,16 +1509,32 @@ IMPORTANT: Only use real data from the context above. Never fabricate or use sam
       };
 
       if (existingIntegration) {
-        await storage.updateSalesforceIntegration(userId, salesforceIntegrationData);
+        await storage.updateSalesforceIntegration(effectiveUserId, salesforceIntegrationData);
       } else {
         await storage.createSalesforceIntegration(salesforceIntegrationData);
       }
 
-      // Redirect back to settings page with success
-      res.redirect('/?salesforce_connected=true');
+      // Structured logging: callback save result (no secrets)
+      console.log(JSON.stringify({
+        rid,
+        route: 'salesforce/callback',
+        userId: effectiveUserId,
+        saved: {
+          hasAccess: !!tokens.access_token,
+          hasRefresh: !!tokens.refresh_token,
+          scopesCount: 0, // Salesforce doesn't return scopes in token response
+          hasInstanceUrl: !!tokens.instance_url
+        }
+      }));
+
+      // Redirect back to appropriate page
+      const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?salesforce_connected=true';
+      res.redirect(redirectUrl);
     } catch (error) {
       console.error("Error handling Salesforce OAuth callback:", error);
-      res.redirect('/?salesforce_error=true');
+      const { as } = req.query;
+      const redirectUrl = as ? `/debug/connect?as=${encodeURIComponent(as)}` : '/?salesforce_error=true';
+      res.redirect(redirectUrl);
     }
   });
 
@@ -2772,6 +3239,239 @@ RESPONSE STYLE: Confident, insightful, data-driven. Start with relevant data, th
       matched: false,
       matchReason: "emergency"
     });
+  });
+
+  // Dev-only helper endpoint for OAuth testing
+  app.get("/debug/connect", async (req, res) => {
+    const asEmail = req.query.as as string;
+    
+    if (!asEmail) {
+      return res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Debug OAuth Connect</title>
+            <style>
+              body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+              .error { background: #fee; border: 1px solid #f88; padding: 15px; border-radius: 5px; }
+            </style>
+          </head>
+          <body>
+            <h1>Debug OAuth Connect</h1>
+            <div class="error">
+              <strong>Missing email parameter</strong>
+              <p>Usage: /debug/connect?as=email@example.com</p>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    // Fetch current status
+    let googleStatus, salesforceStatus;
+    try {
+      const googleIntegration = await storage.getGoogleIntegration(asEmail);
+      googleStatus = {
+        connected: !!(googleIntegration?.accessToken || googleIntegration?.refreshToken),
+        hasAccessToken: !!googleIntegration?.accessToken,
+        hasRefreshToken: !!googleIntegration?.refreshToken,
+        scopes: googleIntegration?.scopes || []
+      };
+
+      const salesforceIntegration = await storage.getSalesforceIntegration(asEmail);
+      salesforceStatus = {
+        connected: !!(salesforceIntegration?.accessToken || salesforceIntegration?.refreshToken),
+        hasAccessToken: !!salesforceIntegration?.accessToken,
+        hasRefreshToken: !!salesforceIntegration?.refreshToken,
+        hasInstanceUrl: !!salesforceIntegration?.instanceUrl
+      };
+    } catch (error) {
+      console.error("Error fetching integration status:", error);
+      googleStatus = { connected: false, error: true };
+      salesforceStatus = { connected: false, error: true };
+    }
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Debug OAuth Connect - ${asEmail}</title>
+          <style>
+            body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+            h1 { color: #333; }
+            .status { margin: 20px 0; padding: 15px; border-radius: 5px; }
+            .connected { background: #d4edda; border: 1px solid #c3e6cb; }
+            .disconnected { background: #f8d7da; border: 1px solid #f5c6cb; }
+            button { padding: 12px 24px; margin: 10px 5px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; }
+            .google-btn { background: #4285f4; color: white; }
+            .salesforce-btn { background: #00a1e0; color: white; }
+            button:hover { opacity: 0.9; }
+            .info { background: #d1ecf1; border: 1px solid #bee5eb; padding: 10px; border-radius: 5px; margin: 10px 0; }
+          </style>
+        </head>
+        <body>
+          <h1>Debug OAuth Connect</h1>
+          <div class="info">
+            <strong>Testing for:</strong> ${asEmail}
+          </div>
+
+          <div class="status ${googleStatus.connected ? 'connected' : 'disconnected'}">
+            <h3>Google Integration</h3>
+            <p>Status: ${googleStatus.connected ? '✓ Connected' : '✗ Not Connected'}</p>
+            ${googleStatus.connected ? `
+              <ul>
+                <li>Access Token: ${googleStatus.hasAccessToken ? '✓' : '✗'}</li>
+                <li>Refresh Token: ${googleStatus.hasRefreshToken ? '✓' : '✗'}</li>
+                <li>Scopes: ${(googleStatus.scopes || []).join(', ')}</li>
+              </ul>
+            ` : ''}
+            <button class="google-btn" onclick="window.location.href='/api/integrations/google/auth?as=${encodeURIComponent(asEmail)}'">
+              ${googleStatus.connected ? 'Reconnect' : 'Connect'} Google
+            </button>
+          </div>
+
+          <div class="status ${salesforceStatus.connected ? 'connected' : 'disconnected'}">
+            <h3>Salesforce Integration</h3>
+            <p>Status: ${salesforceStatus.connected ? '✓ Connected' : '✗ Not Connected'}</p>
+            ${salesforceStatus.connected ? `
+              <ul>
+                <li>Access Token: ${salesforceStatus.hasAccessToken ? '✓' : '✗'}</li>
+                <li>Refresh Token: ${salesforceStatus.hasRefreshToken ? '✓' : '✗'}</li>
+                <li>Instance URL: ${salesforceStatus.hasInstanceUrl ? '✓' : '✗'}</li>
+              </ul>
+            ` : ''}
+            <button class="salesforce-btn" onclick="window.location.href='/api/integrations/salesforce/auth?as=${encodeURIComponent(asEmail)}'">
+              ${salesforceStatus.connected ? 'Reconnect' : 'Connect'} Salesforce
+            </button>
+          </div>
+
+          <div class="info">
+            <strong>Note:</strong> This is a dev-only endpoint for testing OAuth flows with APP_DEV_BYPASS=true
+          </div>
+        </body>
+      </html>
+    `);
+  });
+
+  // Force reconnect endpoint - ensures clean re-auth with proper scopes
+  app.get("/debug/force-reconnect", async (req, res) => {
+    const asEmail = req.query.as as string;
+    
+    if (!asEmail) {
+      return res.status(400).send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Force Reconnect OAuth</title>
+            <style>
+              body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+              .error { background: #fee; border: 1px solid #f88; padding: 15px; border-radius: 5px; }
+            </style>
+          </head>
+          <body>
+            <h1>Force Reconnect OAuth</h1>
+            <div class="error">
+              <strong>Missing email parameter</strong>
+              <p>Usage: /debug/force-reconnect?as=email@example.com</p>
+            </div>
+          </body>
+        </html>
+      `);
+    }
+
+    // Fetch current status
+    let googleStatus, salesforceStatus;
+    try {
+      const googleIntegration = await storage.getGoogleIntegration(asEmail);
+      googleStatus = {
+        connected: !!(googleIntegration?.accessToken || googleIntegration?.refreshToken),
+        hasAccessToken: !!googleIntegration?.accessToken,
+        hasRefreshToken: !!googleIntegration?.refreshToken,
+        scopes: googleIntegration?.scopes || []
+      };
+
+      const salesforceIntegration = await storage.getSalesforceIntegration(asEmail);
+      salesforceStatus = {
+        connected: !!(salesforceIntegration?.accessToken || salesforceIntegration?.refreshToken),
+        hasAccessToken: !!salesforceIntegration?.accessToken,
+        hasRefreshToken: !!salesforceIntegration?.refreshToken,
+        hasInstanceUrl: !!salesforceIntegration?.instanceUrl
+      };
+    } catch (error) {
+      console.error("Error fetching integration status:", error);
+      googleStatus = { connected: false, error: true };
+      salesforceStatus = { connected: false, error: true };
+    }
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Force Reconnect OAuth - ${asEmail}</title>
+          <style>
+            body { font-family: system-ui; max-width: 800px; margin: 50px auto; padding: 20px; }
+            h1 { color: #333; }
+            .status { margin: 20px 0; padding: 15px; border-radius: 5px; }
+            .connected { background: #d4edda; border: 1px solid #c3e6cb; }
+            .disconnected { background: #f8d7da; border: 1px solid #f5c6cb; }
+            button { padding: 12px 24px; margin: 10px 5px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; }
+            .google-btn { background: #4285f4; color: white; }
+            .salesforce-btn { background: #00a1e0; color: white; }
+            button:hover { opacity: 0.9; }
+            .info { background: #d1ecf1; border: 1px solid #bee5eb; padding: 10px; border-radius: 5px; margin: 10px 0; }
+            .warning { background: #fff3cd; border: 1px solid #ffc107; padding: 10px; border-radius: 5px; margin: 10px 0; }
+          </style>
+        </head>
+        <body>
+          <h1>Force Reconnect OAuth</h1>
+          <div class="info">
+            <strong>Testing for:</strong> ${asEmail}
+          </div>
+          <div class="warning">
+            <strong>⚠️ Force Reconnect Mode</strong>
+            <p>This will trigger a clean re-authentication with full consent prompts to ensure all tokens and scopes are properly saved.</p>
+          </div>
+
+          <div class="status ${googleStatus.connected ? 'connected' : 'disconnected'}">
+            <h3>Google Integration</h3>
+            <p>Status: ${googleStatus.connected ? '✓ Connected' : '✗ Not Connected'}</p>
+            ${googleStatus.connected ? `
+              <ul>
+                <li>Access Token: ${googleStatus.hasAccessToken ? '✓' : '✗'}</li>
+                <li>Refresh Token: ${googleStatus.hasRefreshToken ? '✓' : '✗'}</li>
+                <li>Scopes: ${(googleStatus.scopes || []).join(', ')}</li>
+              </ul>
+            ` : ''}
+            <p><strong>Scopes:</strong> calendar.readonly, gmail.readonly, profile, email</p>
+            <p><strong>Params:</strong> access_type=offline, prompt=consent</p>
+            <button class="google-btn" onclick="window.location.href='/api/integrations/google/auth?as=${encodeURIComponent(asEmail)}'">
+              Reconnect Google (Force Consent)
+            </button>
+          </div>
+
+          <div class="status ${salesforceStatus.connected ? 'connected' : 'disconnected'}">
+            <h3>Salesforce Integration</h3>
+            <p>Status: ${salesforceStatus.connected ? '✓ Connected' : '✗ Not Connected'}</p>
+            ${salesforceStatus.connected ? `
+              <ul>
+                <li>Access Token: ${salesforceStatus.hasAccessToken ? '✓' : '✗'}</li>
+                <li>Refresh Token: ${salesforceStatus.hasRefreshToken ? '✓' : '✗'}</li>
+                <li>Instance URL: ${salesforceStatus.hasInstanceUrl ? '✓' : '✗'}</li>
+              </ul>
+            ` : ''}
+            <p><strong>Scopes:</strong> api, refresh_token</p>
+            <p><strong>Params:</strong> prompt=consent</p>
+            <button class="salesforce-btn" onclick="window.location.href='/api/integrations/salesforce/auth?as=${encodeURIComponent(asEmail)}'">
+              Reconnect Salesforce (Force Consent)
+            </button>
+          </div>
+
+          <div class="info">
+            <strong>Note:</strong> This is a dev-only endpoint for testing OAuth flows with APP_DEV_BYPASS=true
+          </div>
+        </body>
+      </html>
+    `);
   });
 
   const httpServer = createServer(app);

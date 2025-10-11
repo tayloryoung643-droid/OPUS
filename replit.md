@@ -8,6 +8,17 @@ The platform is built as a full-stack web application with a React frontend and 
 
 ## Recent Changes
 
+**October 2, 2025**
+- **✨ Integration Error UI & Auto-Retry Flow**
+  - **Error Detection**: Implemented parseIntegrationError() to extract error codes (GOOGLE_NOT_CONNECTED, SALESFORCE_NOT_CONNECTED, NO_UPCOMING_EVENTS) from API responses
+  - **Smart Error UI**: Added integration error card on call prep pages with conditional rendering based on error type
+  - **Connect Buttons**: Added "Connect Google Calendar" and "Connect Salesforce" buttons that redirect to Settings page with context preservation
+  - **Error Details Disclosure**: Implemented collapsible section showing raw JSON error details for debugging
+  - **Auto-Retry Flow**: After OAuth completion in Settings, automatically redirect back to call prep page and retry generation
+  - **Context Preservation**: Store callId in localStorage before OAuth redirect, consume after successful connection
+  - **User Experience**: Clear toast notifications for each error type, seamless OAuth reconnect flow
+  - **Test Coverage**: Added data-testid attributes for all interactive elements (buttons, text, error details)
+
 **September 28, 2025**
 - **🔥 CRITICAL FIX: Voice Mode MCP Integration & Sample Data Elimination**
   - **Problem Resolved**: Voice sessions were using sample data instead of real Salesforce/Calendar data due to MCP disconnection

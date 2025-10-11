@@ -1,0 +1,53 @@
+Fix NOT_CONNECTED end-to-end for Taylor”
+You are in the App Repl.
+
+GOAL
+Make Google + Salesforce show as CONNECTED for user "tayloryoung643@gmail.com" and make the MCP calls return real JSON (not *_NOT_CONNECTED).
+
+DO THIS
+1) Version + restart sanity:
+   - Add GET /api/debug/version → {gitSha, buildTime, env:["APP_DEV_BYPASS", !!MCP_TOKEN_PROVIDER_SECRET]}
+   - Ensure server auto-reloads (nodemon) OR restart programmatically after env changes.
+   - After changes, hit /api/debug/version and include its JSON in your reply.
+
+2) OAuth flows (Google + Salesforce):
+   - Verify "connect" URLs request:
+       Google: access_type=offline & prompt=consent, scopes include calendar.readonly (and gmail.readonly if available).
+       Salesforce: scopes include refresh_token and api.
+   - In BOTH callbacks, UPSERT tokens for effectiveUserId:
+       effectiveUserId = (APP_DEV_BYPASS && req.query.as) ? req.query.as : session.userId
+     Store refreshToken, accessToken, expiry/instanceUrl, scopes.
+   - Structured log (NO secrets): {"rid","route":"<provider>/callback","userId","saved":{"hasAccess":true|false,"hasRefresh":true|false,"scopesCount":N,"hasInstanceUrl":true|false}}
+
+3) Status + provider must read the SAME store:
+   - /api/debug/integrations?as=<email> derives booleans from tokens actually saved.
+   - /internal/integrations/tokens?userId=<email> returns {} if none, or {google:{...},salesforce:{...}} from the same fields.
+   - Ensure NO CORS and requires Authorization: Bearer ${MCP_TOKEN_PROVIDER_SECRET}.
+
+4) Dev helper page:
+   - GET /debug/connect?as=<email>: show current status + two buttons:
+       /api/integrations/google/connect?as=<email>
+       /api/integrations/salesforce/connect?as=<email>
+     After callback, redirect back and display updated status.
+
+5) Proxy correctness:
+   - All /api/mcp/* and /api/agent/act must set header 'x-effective-user' = effectiveUserId and forward 'x-request-id'.
+
+TEST (run these, paste results back)
+   REAL_EMAIL="tayloryoung643@gmail.com"
+   # Status (no secrets)
+   curl -s "http://localhost:5000/api/debug/integrations?as=$REAL_EMAIL" | jq
+   # Provider (with secret)
+   SECRET="$MCP_TOKEN_PROVIDER_SECRET"
+   curl -s "http://localhost:5000/internal/integrations/tokens?userId=$REAL_EMAIL" -H "Authorization: Bearer $SECRET" | jq
+   # Through proxy → MCP
+   curl -s -X POST "http://localhost:5000/api/mcp/calendar.next_events.v1?as=$REAL_EMAIL" -H "Content-Type: application/json" -d '{"daysAhead":1}' | jq
+   curl -s -X POST "http://localhost:5000/api/mcp/salesforce.lookup_account.v1?as=$REAL_EMAIL" -H "Content-Type: application/json" -d '{"name":"Acme"}' | jq
+
+DELIVERABLE
+Reply with: 
+- /api/debug/version JSON
+- /api/debug/integrations output
+- provider output keys (just the top-level keys present)
+- the two MCP call outputs (JSON).
+If something is still disconnected, fix it and re-run until both integrations show connected.

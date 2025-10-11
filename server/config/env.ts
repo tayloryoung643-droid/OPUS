@@ -34,6 +34,10 @@ export interface EnvConfig {
   MCP_REMOTE_ENABLED: boolean;
   MCP_BASE_URL: string;
   MCP_SERVICE_TOKEN: string;
+  MCP_TOKEN_PROVIDER_SECRET: string;
+  
+  // Dev impersonation
+  APP_DEV_BYPASS: boolean;
 }
 
 /**
@@ -133,7 +137,10 @@ export function getEnvConfig(): EnvConfig {
 
     MCP_REMOTE_ENABLED: process.env.MCP_REMOTE_ENABLED === 'true',
     MCP_BASE_URL: process.env.MCP_BASE_URL || 'http://localhost:4000',
-    MCP_SERVICE_TOKEN: process.env.MCP_SERVICE_TOKEN || ''
+    MCP_SERVICE_TOKEN: process.env.MCP_SERVICE_TOKEN || '',
+    MCP_TOKEN_PROVIDER_SECRET: process.env.MCP_TOKEN_PROVIDER_SECRET || '',
+    
+    APP_DEV_BYPASS: process.env.APP_DEV_BYPASS === 'true'
   };
 }
 

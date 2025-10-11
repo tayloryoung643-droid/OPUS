@@ -113,5 +113,44 @@ export async function registerTools(app: Express) {
     });
   }
 
-  console.log(`[MCP-Tools] Registered ${tools.length} tool endpoints`);
+  // Register the agent endpoint
+  app.post('/agent/act', bearerAuth, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log(`[MCP-Agent:${requestId}] POST /agent/act`);
+
+    try {
+      const { handleAgentAction } = await import('../agent/prepAgent.js');
+
+      const userId = req.body.userId;
+      if (!userId) {
+        throw badRequest('userId is required in request body');
+      }
+
+      const context: MCPToolContext = {
+        userId,
+        storage,
+        user: { id: userId }
+      };
+
+      const result = await handleAgentAction(req.body, context);
+
+      console.log(`[MCP-Agent:${requestId}] SUCCESS`);
+      res.json(result);
+    } catch (error) {
+      console.error(`[MCP-Agent:${requestId}] ERROR:`, error);
+
+      if (error instanceof HttpError) {
+        return next(error);
+      }
+
+      if ((error as any).name === 'ZodError') {
+        const zodError = error as any;
+        return next(badRequest('Invalid input', zodError.errors));
+      }
+
+      next(internalError(error instanceof Error ? error.message : 'Unexpected error'));
+    }
+  });
+
+  console.log(`[MCP-Tools] Registered ${tools.length} tool endpoints + agent endpoint`);
 }

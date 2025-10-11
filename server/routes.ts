@@ -444,20 +444,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Debug endpoint - Show integration connection status (NO TOKENS)
   app.get('/api/debug/integrations', async (req: any, res) => {
     try {
-      const targetEmail = req.query.as as string;
-      
-      if (!targetEmail) {
+      const targetParam = typeof req.query.as === 'string' ? req.query.as.trim() : '';
+
+      if (!targetParam) {
         return res.status(400).json({ error: 'Missing ?as=<email> query parameter' });
       }
 
-      // Fetch integration status from storage (same source as UI uses)
-      const [googleIntegration, salesforceIntegration] = await Promise.all([
-        storage.getGoogleIntegration(targetEmail),
-        storage.getSalesforceIntegration(targetEmail)
-      ]);
+      const isEmailLookup = targetParam.includes('@');
+      const userRecord = isEmailLookup ? await storage.getUserByEmail(targetParam) : undefined;
+      const resolvedUserId = userRecord?.id || (!isEmailLookup ? targetParam : undefined);
+
+      let googleIntegration;
+      let salesforceIntegration;
+
+      if (resolvedUserId) {
+        [googleIntegration, salesforceIntegration] = await Promise.all([
+          storage.getGoogleIntegration(resolvedUserId),
+          storage.getSalesforceIntegration(resolvedUserId)
+        ]);
+      }
 
       const response = {
-        userId: targetEmail,
+        userId: targetParam,
+        resolvedUserId: resolvedUserId || null,
+        resolvedEmail: userRecord?.email || (isEmailLookup ? targetParam : null),
         google: {
           connected: !!googleIntegration?.isActive,
           scopes: googleIntegration?.scopes || [],
@@ -856,26 +866,78 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     try {
       // Support ?as=<email> query param for dev mode
       const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
-      const asEmail = req.query.as as string;
-      const userId = (APP_DEV_BYPASS && asEmail) ? asEmail : req.user.claims.sub;
-      
+      const asParamRaw = typeof req.query.as === 'string' ? req.query.as.trim() : '';
+
+      let effectiveUserId: string | undefined = req.user?.claims?.sub;
+      let effectiveEmail: string | undefined = req.user?.claims?.email;
+
+      if (APP_DEV_BYPASS && asParamRaw) {
+        if (asParamRaw.includes('@')) {
+          const impersonatedUser = await storage.getUserByEmail(asParamRaw);
+
+          if (!impersonatedUser) {
+            const emptyGoogleStatus = {
+              userId: asParamRaw,
+              connected: false,
+              scopes: [],
+              expiry: null,
+              service: "google"
+            };
+
+            const emptySalesforceStatus = {
+              userId: asParamRaw,
+              connected: false,
+              instanceUrlPresent: false,
+              service: "salesforce"
+            };
+
+            const outlookStatus = {
+              connected: false,
+              service: "outlook",
+              message: "Outlook integration coming soon"
+            };
+
+            return res.json({
+              userId: asParamRaw,
+              resolvedUserId: null,
+              google: emptyGoogleStatus,
+              salesforce: emptySalesforceStatus,
+              googleCalendar: emptyGoogleStatus,
+              outlook: outlookStatus
+            });
+          }
+
+          effectiveUserId = impersonatedUser.id;
+          effectiveEmail = impersonatedUser.email;
+        } else {
+          effectiveUserId = asParamRaw;
+          effectiveEmail = undefined;
+        }
+      }
+
+      if (!effectiveUserId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
       // Get Google integration status
-      const googleIntegration = await storage.getGoogleIntegration(userId);
+      const googleIntegration = await storage.getGoogleIntegration(effectiveUserId);
       const googleStatus = {
-        userId,
+        userId: effectiveUserId,
         connected: !!(googleIntegration?.accessToken || googleIntegration?.refreshToken),
         scopes: googleIntegration?.scopes || [],
         expiry: googleIntegration?.tokenExpiry,
-        service: "google"
+        service: "google",
+        email: effectiveEmail || null
       };
 
       // Get Salesforce integration status
-      const salesforceIntegration = await storage.getSalesforceIntegration(userId);
+      const salesforceIntegration = await storage.getSalesforceIntegration(effectiveUserId);
       const salesforceStatus = {
-        userId,
+        userId: effectiveUserId,
         connected: !!(salesforceIntegration?.accessToken || salesforceIntegration?.refreshToken),
         instanceUrlPresent: !!salesforceIntegration?.instanceUrl,
-        service: "salesforce"
+        service: "salesforce",
+        email: effectiveEmail || null
       };
 
       // Outlook is always not connected for now
@@ -886,7 +948,8 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       };
 
       res.json({
-        userId,
+        userId: APP_DEV_BYPASS && asParamRaw ? asParamRaw : effectiveUserId,
+        resolvedUserId: effectiveUserId,
         google: googleStatus,
         salesforce: salesforceStatus,
         googleCalendar: googleStatus, // Keep for backward compatibility

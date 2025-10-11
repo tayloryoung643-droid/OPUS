@@ -26,6 +26,7 @@ import { CryptoService } from "./services/crypto";
 export interface IStorage {
   // User methods for Replit Auth
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   
   // Legacy user methods (keeping for compatibility)
@@ -140,6 +141,25 @@ export class DatabaseStorage implements IStorage {
   // User methods for Replit Auth
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    if (!email) {
+      return undefined;
+    }
+
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail) {
+      return undefined;
+    }
+
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(sql`lower(${users.email}) = lower(${normalizedEmail})`)
+      .limit(1);
+
     return user || undefined;
   }
 

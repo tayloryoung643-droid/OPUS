@@ -14,7 +14,7 @@ const router = Router();
 router.get('/integrations/tokens', async (req, res) => {
   const startTime = Date.now();
   const rid = (req as any).rid || 'unknown';
-  const userId = req.query.userId as string;
+  const userIdentifierRaw = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
 
   try {
     // Validate bearer token
@@ -25,7 +25,7 @@ router.get('/integrations/tokens', async (req, res) => {
       console.log(JSON.stringify({
         rid,
         route: '/internal/integrations/tokens',
-        userId: userId || 'none',
+        userId: userIdentifierRaw || 'none',
         status: 401,
         ms: Date.now() - startTime,
         error: 'Unauthorized'
@@ -34,7 +34,7 @@ router.get('/integrations/tokens', async (req, res) => {
     }
 
     // Validate userId parameter
-    if (!userId) {
+    if (!userIdentifierRaw) {
       console.log(JSON.stringify({
         rid,
         route: '/internal/integrations/tokens',
@@ -46,10 +46,36 @@ router.get('/integrations/tokens', async (req, res) => {
       return res.status(400).json({ error: 'Missing userId parameter' });
     }
 
+    let resolvedUserId: string | undefined = userIdentifierRaw;
+    let resolvedEmail: string | undefined;
+
+    if (userIdentifierRaw.includes('@')) {
+      const userRecord = await storage.getUserByEmail(userIdentifierRaw);
+
+      if (!userRecord) {
+        console.log(JSON.stringify({
+          rid,
+          route: '/internal/integrations/tokens',
+          userId: userIdentifierRaw,
+          status: 200,
+          ms: Date.now() - startTime,
+          hasGoogle: false,
+          hasSalesforce: false,
+          resolvedUserId: null,
+          missingUser: true
+        }));
+
+        return res.json({});
+      }
+
+      resolvedUserId = userRecord.id;
+      resolvedEmail = userRecord.email || userIdentifierRaw;
+    }
+
     // Fetch tokens from database (already decrypted by storage methods)
     const [googleIntegration, salesforceIntegration] = await Promise.all([
-      storage.getGoogleIntegration(userId),
-      storage.getSalesforceIntegration(userId)
+      resolvedUserId ? storage.getGoogleIntegration(resolvedUserId) : Promise.resolve(undefined),
+      resolvedUserId ? storage.getSalesforceIntegration(resolvedUserId) : Promise.resolve(undefined)
     ]);
 
     // Build response object
@@ -79,7 +105,9 @@ router.get('/integrations/tokens', async (req, res) => {
     console.log(JSON.stringify({
       rid,
       route: '/internal/integrations/tokens',
-      userId,
+      userId: userIdentifierRaw,
+      resolvedUserId,
+      resolvedEmail: resolvedEmail || null,
       status: 200,
       ms: Date.now() - startTime,
       hasGoogle: !!googleIntegration,
@@ -93,7 +121,7 @@ router.get('/integrations/tokens', async (req, res) => {
     console.log(JSON.stringify({
       rid,
       route: '/internal/integrations/tokens',
-      userId: userId || 'none',
+      userId: userIdentifierRaw || 'none',
       status: 500,
       ms: Date.now() - startTime,
       error: error instanceof Error ? error.message : 'Unknown error'

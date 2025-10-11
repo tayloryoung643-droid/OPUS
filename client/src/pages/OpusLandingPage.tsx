@@ -8,7 +8,7 @@ import { CONFIG } from "@/config";
 export default function OpusLandingPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
-  
+
   // Get current user for voice recording
   const { user } = useAuth();
   const userId = (user as any)?.claims?.sub;
@@ -57,7 +57,7 @@ export default function OpusLandingPage() {
     // Handle the nested start time structure
     const startTime = event.start?.dateTime || event.start?.date;
     let time = 'All Day';
-    
+
     if (startTime) {
       try {
         const eventDate = new Date(startTime);
@@ -67,10 +67,10 @@ export default function OpusLandingPage() {
           if (event.start?.date && !event.start?.dateTime) {
             time = 'All Day';
           } else {
-            time = eventDate.toLocaleTimeString('en-US', { 
-              hour: 'numeric', 
+            time = eventDate.toLocaleTimeString('en-US', {
+              hour: 'numeric',
               minute: '2-digit',
-              hour12: true 
+              hour12: true
             });
           }
         }
@@ -90,7 +90,7 @@ export default function OpusLandingPage() {
   // Find current active calendar event for voice recording
   const currentEvent = React.useMemo(() => {
     if (CONFIG.USE_MOCKS || !todaysEvents) return null;
-    
+
     const now = new Date();
     return todaysEvents.find(event => {
       if (!event.start?.dateTime || !event.end?.dateTime) return false;
@@ -102,7 +102,7 @@ export default function OpusLandingPage() {
 
   const rhythmItems = CONFIG.USE_MOCKS ? [
     "Back-to-back meetings from 10–4 — grab a snack before",
-    "3 calls prepped — keep the streak alive", 
+    "3 calls prepped — keep the streak alive",
     "1 high-stakes deal at 2 PM — review the risk questions"
   ] : (rhythmData?.items || []);
 
@@ -143,7 +143,7 @@ export default function OpusLandingPage() {
         </nav>
 
         <div className="flex items-center gap-3 md:gap-4">
-          <button 
+          <button
             onClick={() => setSettingsOpen(true)}
             className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"
             data-testid="button-settings"
@@ -156,7 +156,7 @@ export default function OpusLandingPage() {
       {/* Hero grid */}
       <main className="px-6 md:px-16 lg:px-20 py-2 md:py-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:gap-6 items-start">
-          {/* Left: Greeting, Agenda, Rhythm */}
+          {/* Left: Greeting, Agenda, Today's Focus */}
           <section className="space-y-3 lg:space-y-4">
             {/* Greeting */}
             <div>
@@ -170,81 +170,70 @@ export default function OpusLandingPage() {
               </p>
             </div>
 
-            {/* Cards row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Agenda */}
+            {/* Two column layout: Upcoming Agenda and Today's Focus */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:gap-6">
+              {/* Upcoming Agenda - Now shows all today's calls */}
               <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
                 <h2 className="text-xl font-semibold mb-4">Upcoming Agenda</h2>
-                {eventsLoading ? (
-                  <div className="space-y-4">
-                    {[...Array(3)].map((_, idx) => (
-                      <div key={idx} className="flex items-start gap-4 animate-pulse">
-                        <div className="w-16 h-4 bg-zinc-800 rounded"></div>
-                        <div className="flex-1">
-                          <div className="h-4 bg-zinc-800 rounded w-3/4 mb-2"></div>
-                          <div className="h-3 bg-zinc-800 rounded w-1/2"></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : eventsError ? (
-                  <div className="text-center py-6">
-                    <div className="text-zinc-500 text-sm mb-2">Unable to load calendar events</div>
-                    <button 
-                      className="text-purple-400 hover:text-purple-300 text-sm"
-                      onClick={() => window.location.href = '/settings'}
-                    >
-                      Check Google Calendar Connection
-                    </button>
-                  </div>
-                ) : agenda.length > 0 ? (
-                  <div className="space-y-4">
-                    {agenda.map((item, idx) => (
-                      <div key={idx} className="flex items-start gap-4">
-                        <div className="w-16 text-zinc-400 font-medium mt-0.5">{item.time}</div>
+                <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                  {(CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents || [])).map((item, idx) => {
+                    const event = CONFIG.USE_MOCKS ? null : item;
+                    const displayTime = CONFIG.USE_MOCKS ? item.time : (event?.start?.dateTime ? new Date(event.start.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'TBD');
+                    const displayTitle = CONFIG.USE_MOCKS ? item.title : (event?.summary || 'Untitled');
+                    const displaySubtitle = CONFIG.USE_MOCKS ? item.subtitle : null;
+
+                    return (
+                      <div key={idx} className="flex justify-between items-center pb-3 border-b border-zinc-800 last:border-0">
                         <div>
-                          <div className="font-medium text-zinc-100">{item.title}</div>
-                          <div className="text-sm text-zinc-500">{item.subtitle}</div>
+                          <div className="font-medium">{displayTitle}</div>
+                          {displaySubtitle && <div className="text-sm text-zinc-500">{displaySubtitle}</div>}
                         </div>
+                        <div className="text-sm text-zinc-500">{displayTime}</div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <div className="text-zinc-500 text-sm mb-2">No events scheduled for today</div>
-                    <div className="text-zinc-600 text-xs">
-                      {integrations?.googleCalendar?.connected ? (
-                        "Google Calendar connected • Check upcoming events in Agenda"
-                      ) : (
-                        <>
-                          <button 
-                            className="text-purple-400 hover:text-purple-300"
-                            onClick={() => setSettingsOpen(true)}
-                          >
-                            Connect Google Calendar
-                          </button>
-                          {" • Enable calendar sync in Settings"}
-                        </>
-                      )}
+                    );
+                  })}
+                  {!CONFIG.USE_MOCKS && (!todaysEvents || todaysEvents.length === 0) && (
+                    <div className="text-center py-8 text-zinc-500">
+                      No calls scheduled for today
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
-              {/* Rhythm */}
-              {(rhythmItems?.length ?? 0) > 0 && (
-                <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
-                  <h2 className="text-xl font-semibold mb-4">Rhythm</h2>
-                  <ul className="space-y-3 text-zinc-300">
-                    {rhythmItems.map((item, idx) => (
-                      <li key={idx} className="flex items-start gap-3">
-                        <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                        <span>{item}</span>
+              {/* Today's Focus */}
+              <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
+                <h2 className="text-xl font-semibold mb-4">Today's Focus</h2>
+                <ul className="space-y-3 text-zinc-300">
+                  {CONFIG.USE_MOCKS ? (
+                    <>
+                      <li className="flex items-start gap-3">
+                        <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-purple-500" />
+                        <span>Close Momentum AI — pitch AI-first workflows</span>
                       </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                      <li className="flex items-start gap-3">
+                        <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-purple-500" />
+                        <span>Followup on NovaTech's AI expansion</span>
+                      </li>
+                      <li className="flex items-start gap-3">
+                        <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-purple-500" />
+                        <span>Prep GreenSpark Sustainability deck</span>
+                      </li>
+                    </>
+                  ) : (
+                    (todaysEvents?.slice(0, 3) || []).map((event, idx) => (
+                      <li key={idx} className="flex items-start gap-3">
+                        <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-purple-500" />
+                        <span>Prepare for {event.summary}</span>
+                      </li>
+                    ))
+                  )}
+                  {!CONFIG.USE_MOCKS && (!todaysEvents || todaysEvents.length === 0) && (
+                    <div className="text-center py-4 text-zinc-500">
+                      No focus items for today
+                    </div>
+                  )}
+                </ul>
+              </div>
             </div>
           </section>
 
@@ -321,9 +310,9 @@ export default function OpusLandingPage() {
       </main>
 
       {/* Settings Modal */}
-      <SettingsModal 
-        isOpen={settingsOpen} 
-        onClose={() => setSettingsOpen(false)} 
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </div>
   );

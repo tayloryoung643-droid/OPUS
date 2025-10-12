@@ -19,17 +19,10 @@ export default function Settings() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const navigate = useNavigate();
 
-  // Initialize theme from localStorage or default to dark
+  // Initialize theme from document state (already set by other pages)
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    const prefersDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    setIsDarkMode(prefersDark);
-
-    if (prefersDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    const isDark = document.documentElement.classList.contains('dark');
+    setIsDarkMode(isDark);
   }, []);
 
   const toggleTheme = () => {

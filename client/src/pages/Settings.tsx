@@ -6,46 +6,17 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink, LogOut, Moon, Sun } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
+import { useTheme } from "@/components/theme/ThemeProvider";
 
 export default function Settings() {
   const { user } = useAuth();
   const typedUser = user as User | undefined;
   const [connectingId, setConnectingId] = useState<string | null>(null);
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
-
-  // Initialize theme state from current document class
-  useEffect(() => {
-    const isDark = document.documentElement.classList.contains('dark');
-    setIsDarkMode(isDark);
-  }, []);
-
-  // Listen for theme changes from other pages/components
-  useEffect(() => {
-    const handleThemeChange = (e: CustomEvent) => {
-      const newTheme = e.detail.theme;
-      const isDark = newTheme === 'dark';
-      setIsDarkMode(isDark);
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'theme') {
-        const newTheme = e.newValue;
-        const isDark = !newTheme || newTheme === 'dark';
-        setIsDarkMode(isDark);
-      }
-    };
-
-    window.addEventListener('themeChange', handleThemeChange as EventListener);
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('themeChange', handleThemeChange as EventListener);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
 
 
   const handleLogout = () => {
@@ -374,42 +345,18 @@ export default function Settings() {
                 </div>
                 <div className="flex gap-3">
                   <Button
-                    variant={isDarkMode ? "outline" : "default"}
+                    variant={theme === "light" ? "default" : "outline"}
                     size="sm"
-                    onClick={() => {
-                      setIsDarkMode(false);
-                      document.documentElement.classList.remove('dark');
-                      localStorage.setItem('theme', 'light');
-                      window.dispatchEvent(new CustomEvent('themeChange', {
-                        detail: { theme: 'light' }
-                      }));
-                      window.dispatchEvent(new StorageEvent('storage', {
-                        key: 'theme',
-                        newValue: 'light',
-                        storageArea: localStorage
-                      }));
-                    }}
+                    onClick={() => setTheme("light")}
                     data-testid="theme-light"
                   >
                     <Sun className="h-4 w-4 mr-2" />
                     Light
                   </Button>
                   <Button
-                    variant={isDarkMode ? "default" : "outline"}
+                    variant={theme === "dark" ? "default" : "outline"}
                     size="sm"
-                    onClick={() => {
-                      setIsDarkMode(true);
-                      document.documentElement.classList.add('dark');
-                      localStorage.setItem('theme', 'dark');
-                      window.dispatchEvent(new CustomEvent('themeChange', {
-                        detail: { theme: 'dark' }
-                      }));
-                      window.dispatchEvent(new StorageEvent('storage', {
-                        key: 'theme',
-                        newValue: 'dark',
-                        storageArea: localStorage
-                      }));
-                    }}
+                    onClick={() => setTheme("dark")}
                     data-testid="theme-dark"
                   >
                     <Moon className="h-4 w-4 mr-2" />

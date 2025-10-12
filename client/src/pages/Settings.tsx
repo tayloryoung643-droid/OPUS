@@ -7,7 +7,6 @@ import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, Externa
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { logout, clearSession } from "../services/authService";
 import { queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
 

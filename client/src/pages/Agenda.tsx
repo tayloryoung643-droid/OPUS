@@ -14,7 +14,8 @@ export default function Agenda() {
   // Initialize theme from localStorage on mount
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
-    const prefersDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    // Default to dark if no theme is saved
+    const prefersDark = !savedTheme || savedTheme === 'dark';
 
     if (prefersDark) {
       document.documentElement.classList.add('dark');
@@ -39,7 +40,8 @@ export default function Agenda() {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'theme') {
         const newTheme = e.newValue;
-        const isDark = newTheme === 'dark' || (!newTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        // Default to dark if no theme value
+        const isDark = !newTheme || newTheme === 'dark';
         
         if (isDark) {
           document.documentElement.classList.add('dark');

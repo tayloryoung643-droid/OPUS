@@ -6,10 +6,60 @@ import { CONFIG } from "@/config";
 
 export default function OpusLandingPage() {
   const navigate = useNavigate();
+  const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>('dark');
 
   // Get current user for voice recording
   const { user } = useAuth();
   const userId = (user as any)?.claims?.sub;
+
+  // Initialize theme from localStorage on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    const isDark = !savedTheme || savedTheme === 'dark';
+    setCurrentTheme(isDark ? 'dark' : 'light');
+    
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  // Listen for theme changes
+  useEffect(() => {
+    const handleThemeChange = (e: CustomEvent) => {
+      const newTheme = e.detail.theme;
+      setCurrentTheme(newTheme);
+      
+      if (newTheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'theme') {
+        const newTheme = e.newValue;
+        const isDark = !newTheme || newTheme === 'dark';
+        setCurrentTheme(isDark ? 'dark' : 'light');
+        
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    };
+
+    window.addEventListener('themeChange', handleThemeChange as EventListener);
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('themeChange', handleThemeChange as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // Fetch today's calendar events only
   const { data: todaysEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
@@ -106,7 +156,7 @@ export default function OpusLandingPage() {
 
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans">
+    <div className={`min-h-screen font-sans ${currentTheme === 'dark' ? 'bg-black text-white' : 'bg-white text-black'}`}>
       {/* Header */}
       <header className="flex items-center justify-between px-6 md:px-10 py-5 border-b border-zinc-900/60 sticky top-0 bg-black/80 backdrop-blur supports-[backdrop-filter]:bg-black/60 z-40">
         <div className="flex items-center gap-3">

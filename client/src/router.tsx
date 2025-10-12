@@ -5,7 +5,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Overview from "./pages/Overview";
 import Agenda from "./pages/Agenda";
-import Settings from "./pages/Settings";
+import Settings from "./pages/settings";
 import RecentPrep from "./pages/RecentPrep";
 
 const LoadingSpinner = () => (

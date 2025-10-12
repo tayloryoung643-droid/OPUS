@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+// @ts-ignore - OpusHomePage is a .jsx file
 import OpusHomePage from "./OpusHomePage";
 
 export default function Home() {

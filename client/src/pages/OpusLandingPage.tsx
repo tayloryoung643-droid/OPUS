@@ -6,6 +6,7 @@ import { CONFIG } from "@/config";
 
 export default function OpusLandingPage() {
   const navigate = useNavigate();
+  const [, forceUpdate] = useState({});
 
   // Initialize theme from localStorage on mount
   useEffect(() => {
@@ -31,6 +32,9 @@ export default function OpusLandingPage() {
       } else {
         document.documentElement.classList.remove('dark');
       }
+      
+      // Force re-render to apply theme changes
+      forceUpdate({});
     };
 
     const handleStorageChange = (e: StorageEvent) => {
@@ -44,6 +48,9 @@ export default function OpusLandingPage() {
         } else {
           document.documentElement.classList.remove('dark');
         }
+        
+        // Force re-render to apply theme changes
+        forceUpdate({});
       }
     };
 

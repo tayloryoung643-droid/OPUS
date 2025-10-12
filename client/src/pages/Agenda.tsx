@@ -10,6 +10,7 @@ import { CONFIG } from "@/config";
 export default function Agenda() {
   const navigate = useNavigate();
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [, forceUpdate] = useState({});
 
   // Initialize theme from localStorage on mount
   useEffect(() => {
@@ -29,12 +30,15 @@ export default function Agenda() {
     const handleThemeChange = (e: CustomEvent) => {
       const newTheme = e.detail.theme;
       const isDark = newTheme === 'dark';
-      
+
       if (isDark) {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');
       }
+
+      // Force re-render to apply theme changes
+      forceUpdate({});
     };
 
     const handleStorageChange = (e: StorageEvent) => {
@@ -42,12 +46,15 @@ export default function Agenda() {
         const newTheme = e.newValue;
         // Default to dark if no theme value
         const isDark = !newTheme || newTheme === 'dark';
-        
+
         if (isDark) {
           document.documentElement.classList.add('dark');
         } else {
           document.documentElement.classList.remove('dark');
         }
+
+        // Force re-render to apply theme changes
+        forceUpdate({});
       }
     };
 

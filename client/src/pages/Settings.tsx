@@ -1,4 +1,3 @@
-
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,60 +19,30 @@ export default function Settings() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const navigate = useNavigate();
 
-  // Initialize theme state from current document class
+  // Initialize theme from localStorage or default to dark
   useEffect(() => {
-    const isDark = document.documentElement.classList.contains('dark');
-    setIsDarkMode(isDark);
-  }, []);
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    setIsDarkMode(prefersDark);
 
-  // Listen for theme changes from other pages/components
-  useEffect(() => {
-    const handleThemeChange = (e: CustomEvent) => {
-      const newTheme = e.detail.theme;
-      const isDark = newTheme === 'dark';
-      setIsDarkMode(isDark);
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'theme') {
-        const newTheme = e.newValue;
-        const isDark = !newTheme || newTheme === 'dark';
-        setIsDarkMode(isDark);
-      }
-    };
-
-    window.addEventListener('themeChange', handleThemeChange as EventListener);
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('themeChange', handleThemeChange as EventListener);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
-
-  const toggleTheme = () => {
-    const newIsDarkMode = !isDarkMode;
-    const newTheme = newIsDarkMode ? 'dark' : 'light';
-    setIsDarkMode(newIsDarkMode);
-
-    if (newIsDarkMode) {
+    if (prefersDark) {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-    
-    localStorage.setItem('theme', newTheme);
+  }, []);
 
-    // Dispatch custom event for same-window theme changes
-    window.dispatchEvent(new CustomEvent('themeChange', {
-      detail: { theme: newTheme }
-    }));
-    
-    // Also manually dispatch storage event for same-window sync
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'theme',
-      newValue: newTheme,
-      storageArea: localStorage
-    }));
+  const toggleTheme = () => {
+    const newIsDarkMode = !isDarkMode;
+    setIsDarkMode(newIsDarkMode);
+
+    if (newIsDarkMode) {
+      document.documentElement.classList.add('dark');
+      localStorage.setItem('theme', 'dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+      localStorage.setItem('theme', 'light');
+    }
   };
 
   const handleLogout = () => {

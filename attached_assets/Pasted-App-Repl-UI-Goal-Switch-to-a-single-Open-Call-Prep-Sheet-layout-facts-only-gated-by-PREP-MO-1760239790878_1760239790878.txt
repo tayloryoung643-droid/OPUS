@@ -1,0 +1,73 @@
+App Repl (UI)
+
+Goal: Switch to a single “Open Call Prep Sheet” layout (facts-only), gated by PREP_MODE=minimal. Hide all legacy sections. Add two actions that pull facts from MCP and insert them into the open canvas.
+
+Do this:
+
+Env & flag
+
+Add PREP_MODE=minimal to .env and plumb it to the client (e.g., via public env or a config endpoint).
+
+Route/component
+
+Create a page/component CallPrepMinimal (reuse the canvas preview I have) with:
+
+Event header: title, time, attendee pills (editable).
+
+Notes scratchpad (local only).
+
+One big Textarea = Open Call Prep Canvas.
+
+Buttons (disabled until wired): “Insert last email”, “Insert CRM facts”.
+
+API wiring
+
+On page load (when opened from a calendar event), call:
+
+POST /mcp/prep.generate.v1 with { userId, eventId }, Authorization: Bearer ${MCP_SERVICE_TOKEN}.
+
+Expect MinimalPrepV1 shape (meeting, attendees, gmail[], salesforce?).
+
+Insert last email: take gmail[0] (most recent) and append to canvas:
+
+Last email (YYYY-MM-DD): "<snippet>"
+Participants: a@x.com, b@y.com
+Subject: <subject>
+
+
+Insert CRM facts: if present, append (only fields that exist):
+
+CRM: Account=<name> | Stage=<stage> | Amount=$<amount> | Close=<date> | Owner=<owner>
+
+
+Keep canvas free-form; do not create sections.
+
+Hide legacy UI
+
+If PREP_MODE === "minimal", do not render agenda/priorities/risks/questions/notes panels anywhere in the app.
+
+If any views depend on old schema, add a guard to only read meeting, attendees, gmail, salesforce.
+
+UX polish
+
+Truncate inserted email snippets to 280 chars with ….
+
+Avoid duplicates: if button pressed twice, don’t re-add identical block (hash the inserted string).
+
+Acceptance criteria:
+
+Opening an event shows the minimal page only (no sections).
+
+Clicking “Insert last email” inserts a single trimmed snippet from gmail[0].
+
+Clicking “Insert CRM facts” inserts one line with existing CRM fields only.
+
+No placeholder/template content appears anywhere.
+
+Quick test (dev):
+
+# Trigger a new prep generation the UI will fetch
+curl -sS -X POST http://localhost:7000/mcp/prep.generate.v1 \
+  -H "Authorization: Bearer $MCP_SERVICE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"tay","eventId":"<eventId>"}' | jq

@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CONFIG } from "@/config";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { useAuth } from "@/hooks/useAuth"; // Assuming useAuth is available
 
 // ===== Helpers (small components) =====
 function Section({ title, children }) {
@@ -148,60 +147,6 @@ function EditableObjections({ items = [], onChange }) {
 
 export default function OpusAgendaMock() {
   const navigate = useNavigate();
-  const [selectedId, setSelectedId] = useState(null);
-  const [currentTheme, setCurrentTheme] = useState<'dark' | 'light'>('dark');
-
-  const { user } = useAuth();
-  const userId = (user as any)?.claims?.sub;
-
-  // Initialize theme from localStorage on mount
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    const isDark = !savedTheme || savedTheme === 'dark';
-    setCurrentTheme(isDark ? 'dark' : 'light');
-
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, []);
-
-  // Listen for theme changes
-  useEffect(() => {
-    const handleThemeChange = (e: CustomEvent) => {
-      const newTheme = e.detail.theme;
-      setCurrentTheme(newTheme);
-
-      if (newTheme === 'dark') {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'theme') {
-        const newTheme = e.newValue;
-        const isDark = !newTheme || newTheme === 'dark';
-        setCurrentTheme(isDark ? 'dark' : 'light');
-
-        if (isDark) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-      }
-    };
-
-    window.addEventListener('themeChange', handleThemeChange as EventListener);
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('themeChange', handleThemeChange as EventListener);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
 
   // Fetch real Google Calendar events
   const { data: calendarEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
@@ -295,6 +240,7 @@ export default function OpusAgendaMock() {
   }, [calendarEvents, mockAgenda]);
 
   // ===== State =====
+  const [selectedId, setSelectedId] = useState(null);
   const [prep, setPrep] = useState(null); // outline or full
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
@@ -446,7 +392,7 @@ export default function OpusAgendaMock() {
 
   return (
     <ErrorBoundary>
-      <div className={`min-h-screen font-sans ${currentTheme === 'dark' ? 'bg-black text-white' : 'bg-white text-black'}`}>
+      <div className="min-h-screen bg-black text-white">
       {/* Header */}
       <header className="flex items-center justify-between px-6 md:px-10 py-4 border-b border-zinc-900/60 sticky top-0 bg-black/70 backdrop-blur z-40">
         <div className="flex items-center gap-3">

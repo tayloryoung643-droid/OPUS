@@ -25,6 +25,17 @@ export default function Agenda() {
 
   // Listen for theme changes from other pages/components
   useEffect(() => {
+    const handleThemeChange = (e: CustomEvent) => {
+      const newTheme = e.detail.theme;
+      const isDark = newTheme === 'dark';
+      
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'theme') {
         const newTheme = e.newValue;
@@ -38,8 +49,12 @@ export default function Agenda() {
       }
     };
 
+    window.addEventListener('themeChange', handleThemeChange as EventListener);
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('themeChange', handleThemeChange as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   return <OpusAgendaMock />;

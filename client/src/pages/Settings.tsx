@@ -35,6 +35,18 @@ export default function Settings() {
 
   // Listen for theme changes from other pages/components
   useEffect(() => {
+    const handleThemeChange = (e: CustomEvent) => {
+      const newTheme = e.detail.theme;
+      const isDark = newTheme === 'dark';
+      setIsDarkMode(isDark);
+      
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+    };
+
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'theme') {
         const newTheme = e.newValue;
@@ -49,8 +61,12 @@ export default function Settings() {
       }
     };
 
+    window.addEventListener('themeChange', handleThemeChange as EventListener);
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('themeChange', handleThemeChange as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   const toggleTheme = () => {
@@ -65,11 +81,9 @@ export default function Settings() {
       localStorage.setItem('theme', 'light');
     }
 
-    // Manually trigger storage event for same-window updates
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'theme',
-      newValue: newIsDarkMode ? 'dark' : 'light',
-      storageArea: localStorage
+    // Dispatch custom event for same-window theme changes
+    window.dispatchEvent(new CustomEvent('themeChange', {
+      detail: { theme: newIsDarkMode ? 'dark' : 'light' }
     }));
   };
 

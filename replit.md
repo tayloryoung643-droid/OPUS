@@ -8,16 +8,6 @@ The platform is built as a full-stack web application with a React frontend and 
 
 ## Recent Changes
 
-**October 12, 2025**
-- **🎨 Light Theme Implementation**
-  - **Settings UI**: Replaced theme switch with Light/Dark button controls for explicit theme selection
-  - **Overview Page Redesign**: Completely redesigned Overview page (OpusLandingPage.tsx) to use theme-aware Tailwind classes
-  - **Theme Persistence**: Implemented localStorage-based theme persistence with cross-tab synchronization
-  - **Event Broadcasting**: Theme changes broadcast via CustomEvent and StorageEvent for real-time updates across components
-  - **Clean Light Design**: Light theme features white backgrounds, subtle borders, and proper contrast matching the design specifications
-  - **Default Theme**: Application defaults to dark mode on first load, users can switch to light theme via Settings
-  - **Test Coverage**: Comprehensive e2e testing confirms theme switching, persistence, and navigation work correctly
-
 **October 2, 2025**
 - **✨ Integration Error UI & Auto-Retry Flow**
   - **Error Detection**: Implemented parseIntegrationError() to extract error codes (GOOGLE_NOT_CONNECTED, SALESFORCE_NOT_CONNECTED, NO_UPCOMING_EVENTS) from API responses

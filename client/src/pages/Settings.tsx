@@ -3,8 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink, LogOut, Moon, Sun } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
@@ -50,31 +48,6 @@ export default function Settings() {
     };
   }, []);
 
-  const toggleTheme = () => {
-    const newIsDarkMode = !isDarkMode;
-    const newTheme = newIsDarkMode ? 'dark' : 'light';
-    setIsDarkMode(newIsDarkMode);
-
-    if (newIsDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-    
-    localStorage.setItem('theme', newTheme);
-
-    // Dispatch custom event for same-window theme changes
-    window.dispatchEvent(new CustomEvent('themeChange', {
-      detail: { theme: newTheme }
-    }));
-    
-    // Also manually dispatch storage event for same-window sync
-    window.dispatchEvent(new StorageEvent('storage', {
-      key: 'theme',
-      newValue: newTheme,
-      storageArea: localStorage
-    }));
-  };
 
   const handleLogout = () => {
     // Use the existing Replit auth logout mechanism
@@ -395,26 +368,54 @@ export default function Settings() {
                 </Button>
               </div>
 
-              <div className="flex justify-between items-center py-2">
-                <div>
+              <div className="py-2">
+                <div className="mb-3">
                   <p className="font-medium">Theme</p>
-                  <p className="text-sm text-muted-foreground">Switch between dark and light mode</p>
+                  <p className="text-sm text-muted-foreground">Choose how Opus looks</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Label htmlFor="theme-toggle" className="flex items-center gap-2 cursor-pointer">
-                    {isDarkMode ? (
-                      <Moon className="h-4 w-4" />
-                    ) : (
-                      <Sun className="h-4 w-4" />
-                    )}
-                    <span className="text-sm">{isDarkMode ? 'Dark' : 'Light'}</span>
-                  </Label>
-                  <Switch
-                    id="theme-toggle"
-                    checked={isDarkMode}
-                    onCheckedChange={toggleTheme}
-                    data-testid="switch-theme"
-                  />
+                <div className="flex gap-3">
+                  <Button
+                    variant={isDarkMode ? "outline" : "default"}
+                    size="sm"
+                    onClick={() => {
+                      setIsDarkMode(false);
+                      document.documentElement.classList.remove('dark');
+                      localStorage.setItem('theme', 'light');
+                      window.dispatchEvent(new CustomEvent('themeChange', {
+                        detail: { theme: 'light' }
+                      }));
+                      window.dispatchEvent(new StorageEvent('storage', {
+                        key: 'theme',
+                        newValue: 'light',
+                        storageArea: localStorage
+                      }));
+                    }}
+                    data-testid="theme-light"
+                  >
+                    <Sun className="h-4 w-4 mr-2" />
+                    Light
+                  </Button>
+                  <Button
+                    variant={isDarkMode ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      setIsDarkMode(true);
+                      document.documentElement.classList.add('dark');
+                      localStorage.setItem('theme', 'dark');
+                      window.dispatchEvent(new CustomEvent('themeChange', {
+                        detail: { theme: 'dark' }
+                      }));
+                      window.dispatchEvent(new StorageEvent('storage', {
+                        key: 'theme',
+                        newValue: 'dark',
+                        storageArea: localStorage
+                      }));
+                    }}
+                    data-testid="theme-dark"
+                  >
+                    <Moon className="h-4 w-4 mr-2" />
+                    Dark
+                  </Button>
                 </div>
               </div>
             </CardContent>

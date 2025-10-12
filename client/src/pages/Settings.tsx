@@ -20,18 +20,10 @@ export default function Settings() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const navigate = useNavigate();
 
-  // Initialize theme from localStorage on mount
+  // Initialize theme state from current document class
   useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    // Default to dark if no theme is saved
-    const prefersDark = !savedTheme || savedTheme === 'dark';
-    setIsDarkMode(prefersDark);
-    
-    if (prefersDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    const isDark = document.documentElement.classList.contains('dark');
+    setIsDarkMode(isDark);
   }, []);
 
   // Listen for theme changes from other pages/components
@@ -40,26 +32,13 @@ export default function Settings() {
       const newTheme = e.detail.theme;
       const isDark = newTheme === 'dark';
       setIsDarkMode(isDark);
-      
-      if (isDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
     };
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'theme') {
         const newTheme = e.newValue;
-        // Default to dark if no theme value
         const isDark = !newTheme || newTheme === 'dark';
         setIsDarkMode(isDark);
-        
-        if (isDark) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
       }
     };
 

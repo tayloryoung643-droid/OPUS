@@ -6,61 +6,6 @@ import { CONFIG } from "@/config";
 
 export default function OpusLandingPage() {
   const navigate = useNavigate();
-  const [, forceUpdate] = useState({});
-
-  // Initialize theme from localStorage on mount
-  useEffect(() => {
-    const savedTheme = localStorage.getItem('theme');
-    // Default to dark if no theme is saved
-    const prefersDark = !savedTheme || savedTheme === 'dark';
-    
-    if (prefersDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, []);
-
-  // Listen for theme changes from other pages/components
-  useEffect(() => {
-    const handleThemeChange = (e: CustomEvent) => {
-      const newTheme = e.detail.theme;
-      const isDark = newTheme === 'dark';
-      
-      if (isDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-      
-      // Force re-render to apply theme changes
-      forceUpdate({});
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'theme') {
-        const newTheme = e.newValue;
-        // Default to dark if no theme value
-        const isDark = !newTheme || newTheme === 'dark';
-        
-        if (isDark) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-        
-        // Force re-render to apply theme changes
-        forceUpdate({});
-      }
-    };
-
-    window.addEventListener('themeChange', handleThemeChange as EventListener);
-    window.addEventListener('storage', handleStorageChange);
-    return () => {
-      window.removeEventListener('themeChange', handleThemeChange as EventListener);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
 
   // Get current user for voice recording
   const { user } = useAuth();

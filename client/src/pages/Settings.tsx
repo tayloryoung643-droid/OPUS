@@ -73,19 +73,27 @@ export default function Settings() {
 
   const toggleTheme = () => {
     const newIsDarkMode = !isDarkMode;
+    const newTheme = newIsDarkMode ? 'dark' : 'light';
     setIsDarkMode(newIsDarkMode);
 
     if (newIsDarkMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
     }
+    
+    localStorage.setItem('theme', newTheme);
 
     // Dispatch custom event for same-window theme changes
     window.dispatchEvent(new CustomEvent('themeChange', {
-      detail: { theme: newIsDarkMode ? 'dark' : 'light' }
+      detail: { theme: newTheme }
+    }));
+    
+    // Also manually dispatch storage event for same-window sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'theme',
+      newValue: newTheme,
+      storageArea: localStorage
     }));
   };
 

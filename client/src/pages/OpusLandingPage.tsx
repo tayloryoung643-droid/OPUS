@@ -19,6 +19,25 @@ export default function OpusLandingPage() {
     }
   }, []);
 
+  // Listen for theme changes from other pages/components
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'theme') {
+        const newTheme = e.newValue;
+        const isDark = newTheme === 'dark' || (!newTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   // Get current user for voice recording
   const { user } = useAuth();
   const userId = (user as any)?.claims?.sub;

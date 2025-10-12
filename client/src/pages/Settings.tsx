@@ -1,3 +1,4 @@
+
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,10 +20,37 @@ export default function Settings() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const navigate = useNavigate();
 
-  // Initialize theme from document state (already set by other pages)
+  // Initialize theme from localStorage on mount
   useEffect(() => {
-    const isDark = document.documentElement.classList.contains('dark');
-    setIsDarkMode(isDark);
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    setIsDarkMode(prefersDark);
+    
+    if (prefersDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  // Listen for theme changes from other pages/components
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'theme') {
+        const newTheme = e.newValue;
+        const isDark = newTheme === 'dark' || (!newTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        setIsDarkMode(isDark);
+        
+        if (isDark) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
   const toggleTheme = () => {
@@ -36,6 +64,13 @@ export default function Settings() {
       document.documentElement.classList.remove('dark');
       localStorage.setItem('theme', 'light');
     }
+
+    // Manually trigger storage event for same-window updates
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'theme',
+      newValue: newIsDarkMode ? 'dark' : 'light',
+      storageArea: localStorage
+    }));
   };
 
   const handleLogout = () => {

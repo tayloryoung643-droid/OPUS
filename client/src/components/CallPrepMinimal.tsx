@@ -1,11 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
-import { Calendar, Clock, Mail, Building2, X } from "lucide-react";
+import { Calendar, Users, X, Mail, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -96,23 +96,19 @@ export default function CallPrepMinimal({
     retry: false,
   });
 
-  const formatDate = (dateString: string) => {
+  const formatDateTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
+    const dateStr = date.toLocaleDateString("en-US", {
+      month: "short",
       day: "numeric",
+      year: "numeric",
     });
-  };
-
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
+    const timeStr = date.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
     });
+    return `${dateStr} · ${timeStr}`;
   };
 
   const addAttendee = () => {
@@ -222,140 +218,159 @@ Subject: ${lastEmail.subject}
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
-      {/* Event Header */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="space-y-4">
-            <h1 className="text-3xl font-bold text-foreground" data-testid="text-event-title">
-              {eventTitle}
-            </h1>
-            
-            <div className="flex flex-wrap items-center gap-4 text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                <span data-testid="text-event-date">{formatDate(eventStart)}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4" />
-                <span data-testid="text-event-time">
-                  {formatTime(eventStart)}
-                  {eventEnd && ` - ${formatTime(eventEnd)}`}
-                </span>
+    <div className="min-h-screen bg-black dark:bg-black">
+      {/* Header */}
+      <div className="px-6 py-4 border-b border-gray-800">
+        <h1 className="text-xl font-semibold text-white">Call Prep</h1>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-4xl mx-auto p-6 space-y-4">
+        {/* Event Card */}
+        <Card className="bg-white dark:bg-white border-0">
+          <CardContent className="p-6">
+            <div className="space-y-4">
+              {/* Event Header with Icon */}
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 mt-1">
+                  <Calendar className="h-5 w-5 text-gray-600" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-sm font-semibold text-gray-700 mb-3">Event</h2>
+                  
+                  {/* Event Name and Date/Time Grid */}
+                  <div className="grid grid-cols-2 gap-6 mb-4">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Event name</p>
+                      <p className="text-sm text-gray-900" data-testid="text-event-title">
+                        {eventTitle}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">Date & time</p>
+                      <p className="text-sm text-gray-900" data-testid="text-event-datetime">
+                        {formatDateTime(eventStart)}
+                        {eventEnd && eventEnd !== eventStart && `-${formatDateTime(eventEnd).split(' · ')[1]}`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Attendees Section */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Users className="h-4 w-4 text-gray-600" />
+                      <p className="text-xs text-gray-700 font-medium">Attendees (emails)</p>
+                    </div>
+                    
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {attendees.map((email) => (
+                        <Badge
+                          key={email}
+                          variant="secondary"
+                          className="bg-gray-100 text-gray-700 hover:bg-gray-200 flex items-center gap-1 px-2 py-1 text-xs"
+                          data-testid={`badge-attendee-${email}`}
+                        >
+                          {email}
+                          <button
+                            onClick={() => removeAttendee(email)}
+                            className="ml-1 hover:text-gray-900"
+                            data-testid={`button-remove-attendee-${email}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                      
+                      {/* Add Attendee Input */}
+                      <div className="flex items-center gap-1">
+                        <Input
+                          placeholder="Add attendee..."
+                          value={newAttendee}
+                          onChange={(e) => setNewAttendee(e.target.value)}
+                          onKeyPress={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              addAttendee();
+                            }
+                          }}
+                          className="h-7 text-xs w-40 bg-white border-gray-300 text-gray-600 placeholder:text-gray-400"
+                          data-testid="input-new-attendee"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            {/* Attendees */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Building2 className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Attendees:</span>
-              </div>
-              
-              <div className="flex flex-wrap gap-2">
-                {attendees.map((email) => (
-                  <Badge
-                    key={email}
-                    variant="secondary"
-                    className="flex items-center gap-1"
-                    data-testid={`badge-attendee-${email}`}
-                  >
-                    {email}
-                    <button
-                      onClick={() => removeAttendee(email)}
-                      className="ml-1 hover:text-destructive"
-                      data-testid={`button-remove-attendee-${email}`}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </Badge>
-                ))}
-              </div>
+        {/* Notes Scratchpad */}
+        <Card className="bg-white dark:bg-white border border-gray-200">
+          <CardContent className="p-4">
+            <Textarea
+              placeholder="Notes (optional, personal scratchpad)"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="min-h-[80px] border-0 resize-none text-sm text-gray-700 placeholder:text-gray-400 bg-white focus-visible:ring-0"
+              data-testid="textarea-notes"
+            />
+          </CardContent>
+        </Card>
 
+        {/* Open Call Prep Canvas */}
+        <Card className="bg-white dark:bg-white border border-gray-200">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-base font-semibold text-gray-900">Open call-prep canvas</h3>
               <div className="flex gap-2">
-                <Input
-                  placeholder="Add attendee email..."
-                  value={newAttendee}
-                  onChange={(e) => setNewAttendee(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addAttendee();
-                    }
-                  }}
-                  className="max-w-xs"
-                  data-testid="input-new-attendee"
-                />
                 <Button
-                  onClick={addAttendee}
+                  onClick={insertLastEmail}
+                  disabled={prepLoading || !prepData?.gmail?.length}
                   variant="outline"
                   size="sm"
-                  data-testid="button-add-attendee"
+                  className="text-xs h-8"
+                  data-testid="button-insert-email"
                 >
-                  Add
+                  <Mail className="h-3 w-3 mr-1" />
+                  Insert last email
+                </Button>
+                <Button
+                  onClick={insertCRMFacts}
+                  disabled={prepLoading || !prepData?.salesforce}
+                  variant="outline"
+                  size="sm"
+                  className="text-xs h-8"
+                  data-testid="button-insert-crm"
+                >
+                  <Building2 className="h-3 w-3 mr-1" />
+                  Insert CRM facts
                 </Button>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Notes Scratchpad */}
-      <Card>
-        <CardContent className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Notes (Local Only)</h3>
-          <Textarea
-            placeholder="Your personal notes for this call..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="min-h-[100px]"
-            data-testid="textarea-notes"
-          />
-        </CardContent>
-      </Card>
+            <Textarea
+              placeholder={`Type only what we *know for sure*...
 
-      {/* Open Call Prep Canvas */}
-      <Card>
-        <CardContent className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Open Call Prep Canvas</h3>
-            <div className="flex gap-2">
-              <Button
-                onClick={insertLastEmail}
-                disabled={prepLoading || !prepData?.gmail?.length}
-                variant="outline"
-                size="sm"
-                data-testid="button-insert-email"
-              >
-                <Mail className="h-4 w-4 mr-2" />
-                Insert Last Email
-              </Button>
-              <Button
-                onClick={insertCRMFacts}
-                disabled={prepLoading || !prepData?.salesforce}
-                variant="outline"
-                size="sm"
-                data-testid="button-insert-crm"
-              >
-                <Building2 className="h-4 w-4 mr-2" />
-                Insert CRM Facts
-              </Button>
-            </div>
-          </div>
+Suggestions:
+• Attendees + roles (facts only)
+• Last email: short snippet + date
+• CRM facts: stage, amount, close date, owner
 
-          {prepLoading && (
-            <div className="text-sm text-muted-foreground">Loading prep data...</div>
-          )}
+Keep bullets tight. Avoid repetition.`}
+              value={canvas}
+              onChange={(e) => setCanvas(e.target.value)}
+              className="min-h-[400px] text-sm text-gray-700 placeholder:text-gray-500 bg-white border-gray-200 font-mono resize-none focus-visible:ring-1 focus-visible:ring-gray-300"
+              data-testid="textarea-canvas"
+            />
+          </CardContent>
+        </Card>
 
-          <Textarea
-            placeholder="Free-form call preparation canvas. Use the buttons above to insert facts from email and CRM..."
-            value={canvas}
-            onChange={(e) => setCanvas(e.target.value)}
-            className="min-h-[400px] font-mono text-sm"
-            data-testid="textarea-canvas"
-          />
-        </CardContent>
-      </Card>
+        {/* Footer */}
+        <div className="text-center py-4">
+          <p className="text-xs text-gray-500">MVP mode: one canvas, zero templates.</p>
+        </div>
+      </div>
     </div>
   );
 }

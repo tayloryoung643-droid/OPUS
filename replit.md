@@ -8,17 +8,6 @@ The platform is built as a full-stack web application with a React frontend and 
 
 ## Recent Changes
 
-**October 12, 2025**
-- **🎨 Light Theme Implementation (Color-Only)**
-  - **ThemeProvider Component**: Created new ThemeProvider with data-theme attribute management and localStorage persistence
-  - **Data-Theme Architecture**: Uses html[data-theme="light"|"dark"] instead of classList for theme switching
-  - **Settings Controls**: Updated Settings page with Light/Dark theme buttons using useTheme hook
-  - **Color-Only CSS Overrides**: Implemented theme-overrides.css with strict color-only changes (no layout, spacing, typography, or shadow modifications)
-  - **Zero Structural Changes**: All JSX components remain pixel-for-pixel identical except for colors
-  - **Default Dark Theme**: Application defaults to dark theme on first load
-  - **Persistence**: Theme preference persists across sessions via localStorage
-  - **Test Coverage**: Comprehensive e2e tests verify theme switching, persistence, and visual correctness
-
 **October 2, 2025**
 - **✨ Integration Error UI & Auto-Retry Flow**
   - **Error Detection**: Implemented parseIntegrationError() to extract error codes (GOOGLE_NOT_CONNECTED, SALESFORCE_NOT_CONNECTED, NO_UPCOMING_EVENTS) from API responses

@@ -3,21 +3,78 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink, LogOut, Moon, Sun } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { logout, clearSession } from "../services/authService";
 import { queryClient } from "@/lib/queryClient";
 import type { User } from "@shared/schema";
-import { useTheme } from "@/components/theme/ThemeProvider";
 
 export default function Settings() {
   const { user } = useAuth();
   const typedUser = user as User | undefined;
   const [connectingId, setConnectingId] = useState<string | null>(null);
-  const { theme, setTheme } = useTheme();
+  const [isDarkMode, setIsDarkMode] = useState(true);
   const navigate = useNavigate();
 
+  // Initialize theme state from current document class
+  useEffect(() => {
+    const isDark = document.documentElement.classList.contains('dark');
+    setIsDarkMode(isDark);
+  }, []);
+
+  // Listen for theme changes from other pages/components
+  useEffect(() => {
+    const handleThemeChange = (e: CustomEvent) => {
+      const newTheme = e.detail.theme;
+      const isDark = newTheme === 'dark';
+      setIsDarkMode(isDark);
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'theme') {
+        const newTheme = e.newValue;
+        const isDark = !newTheme || newTheme === 'dark';
+        setIsDarkMode(isDark);
+      }
+    };
+
+    window.addEventListener('themeChange', handleThemeChange as EventListener);
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('themeChange', handleThemeChange as EventListener);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
+
+  const toggleTheme = () => {
+    const newIsDarkMode = !isDarkMode;
+    const newTheme = newIsDarkMode ? 'dark' : 'light';
+    setIsDarkMode(newIsDarkMode);
+
+    if (newIsDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    
+    localStorage.setItem('theme', newTheme);
+
+    // Dispatch custom event for same-window theme changes
+    window.dispatchEvent(new CustomEvent('themeChange', {
+      detail: { theme: newTheme }
+    }));
+    
+    // Also manually dispatch storage event for same-window sync
+    window.dispatchEvent(new StorageEvent('storage', {
+      key: 'theme',
+      newValue: newTheme,
+      storageArea: localStorage
+    }));
+  };
 
   const handleLogout = () => {
     // Use the existing Replit auth logout mechanism
@@ -338,30 +395,26 @@ export default function Settings() {
                 </Button>
               </div>
 
-              <div className="py-2">
-                <div className="mb-3">
+              <div className="flex justify-between items-center py-2">
+                <div>
                   <p className="font-medium">Theme</p>
-                  <p className="text-sm text-muted-foreground">Choose how Opus looks</p>
+                  <p className="text-sm text-muted-foreground">Switch between dark and light mode</p>
                 </div>
-                <div className="flex gap-3">
-                  <Button
-                    variant={theme === "light" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setTheme("light")}
-                    data-testid="theme-light"
-                  >
-                    <Sun className="h-4 w-4 mr-2" />
-                    Light
-                  </Button>
-                  <Button
-                    variant={theme === "dark" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setTheme("dark")}
-                    data-testid="theme-dark"
-                  >
-                    <Moon className="h-4 w-4 mr-2" />
-                    Dark
-                  </Button>
+                <div className="flex items-center gap-3">
+                  <Label htmlFor="theme-toggle" className="flex items-center gap-2 cursor-pointer">
+                    {isDarkMode ? (
+                      <Moon className="h-4 w-4" />
+                    ) : (
+                      <Sun className="h-4 w-4" />
+                    )}
+                    <span className="text-sm">{isDarkMode ? 'Dark' : 'Light'}</span>
+                  </Label>
+                  <Switch
+                    id="theme-toggle"
+                    checked={isDarkMode}
+                    onCheckedChange={toggleTheme}
+                    data-testid="switch-theme"
+                  />
                 </div>
               </div>
             </CardContent>

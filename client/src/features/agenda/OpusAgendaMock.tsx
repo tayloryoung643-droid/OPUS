@@ -155,13 +155,7 @@ export default function OpusAgendaMock() {
   // Fetch real Google Calendar events
   const { data: calendarEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
     queryKey: ['/api/calendar/events'],
-    queryFn: async () => {
-      const response = await fetch('/api/calendar/events');
-      if (!response.ok) throw new Error('Failed to fetch calendar events');
-      return response.json();
-    },
-    staleTime: 60_000,
-    retry: false
+    staleTime: 60_000
   });
 
   // Mock data fallback (only when USE_MOCKS is true)
@@ -193,8 +187,8 @@ export default function OpusAgendaMock() {
 
   // Helper function to format event time - handles both timed and all-day events
   const formatEventTime = (event) => {
-    // Get the start time from either startDateTime (timed) or startDate (all-day)
-    const startTimeStr = event?.startDateTime || event?.startDate;
+    // Get the start time from either start.dateTime (timed) or start.date (all-day)
+    const startTimeStr = event?.start?.dateTime || event?.start?.date;
     
     if (!startTimeStr) return "—";
     
@@ -208,8 +202,8 @@ export default function OpusAgendaMock() {
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
     const eventDateOnly = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
 
-    // If it's an all-day event (has startDate instead of startDateTime)
-    if (event?.startDate && !event?.startDateTime) {
+    // If it's an all-day event (has start.date instead of start.dateTime)
+    if (event?.start?.date && !event?.start?.dateTime) {
       if (eventDateOnly.getTime() === today.getTime()) {
         return "Today (All-day)";
       } else if (eventDateOnly.getTime() === yesterday.getTime()) {
@@ -240,7 +234,10 @@ export default function OpusAgendaMock() {
   const processedAgenda = useMemo(() => {
     if (CONFIG.USE_MOCKS) return mockAgenda;
 
-    if (!calendarEvents || !Array.isArray(calendarEvents)) return { upcoming: [], previous: [] };
+    if (!calendarEvents || !Array.isArray(calendarEvents)) {
+      console.log('[Agenda] No calendar events:', calendarEvents);
+      return { upcoming: [], previous: [] };
+    }
 
     const now = new Date();
     const events = calendarEvents.map(event => ({
@@ -248,17 +245,20 @@ export default function OpusAgendaMock() {
       title: event.summary || 'Untitled Event',
       company: event.location || '',
       time: formatEventTime(event),
-      attendees: event.attendees?.map(a => a.email).filter(Boolean) || [],
+      attendees: event.attendees?.map((a: any) => a.email).filter(Boolean) || [],
       originalEvent: event
     }));
 
     const upcoming = events.filter(event => {
-      const startTime = event.originalEvent.startDateTime || event.originalEvent.startDate;
-      return startTime && new Date(startTime) >= now;
+      const startTime = event.originalEvent.start?.dateTime || event.originalEvent.start?.date;
+      if (!startTime) return false;
+      return new Date(startTime) >= now;
     });
+    
     const previous = events.filter(event => {
-      const startTime = event.originalEvent.startDateTime || event.originalEvent.startDate;
-      return startTime && new Date(startTime) < now;
+      const startTime = event.originalEvent.start?.dateTime || event.originalEvent.start?.date;
+      if (!startTime) return false;
+      return new Date(startTime) < now;
     });
 
     return { upcoming, previous };

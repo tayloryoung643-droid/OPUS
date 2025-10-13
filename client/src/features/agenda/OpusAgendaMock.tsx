@@ -191,14 +191,35 @@ export default function OpusAgendaMock() {
     []
   );
 
-  // Helper function to format event time - MUST be defined before use
-  const formatEventTime = (startTime) => {
-    const eventDate = new Date(startTime);
+  // Helper function to format event time - handles both timed and all-day events
+  const formatEventTime = (event) => {
+    // Get the start time from either startDateTime (timed) or startDate (all-day)
+    const startTimeStr = event?.startDateTime || event?.startDate;
+    
+    if (!startTimeStr) return "—";
+    
+    const eventDate = new Date(startTimeStr);
+    
+    // Check if date is valid
+    if (isNaN(eventDate.getTime())) return "—";
+    
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
     const eventDateOnly = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
 
+    // If it's an all-day event (has startDate instead of startDateTime)
+    if (event?.startDate && !event?.startDateTime) {
+      if (eventDateOnly.getTime() === today.getTime()) {
+        return "Today (All-day)";
+      } else if (eventDateOnly.getTime() === yesterday.getTime()) {
+        return "Yesterday (All-day)";
+      } else {
+        return eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + " (All-day)";
+      }
+    }
+
+    // For timed events
     const timeStr = eventDate.toLocaleTimeString('en-US', { 
       hour: 'numeric', 
       minute: '2-digit',
@@ -226,17 +247,17 @@ export default function OpusAgendaMock() {
       id: event.id,
       title: event.summary || 'Untitled Event',
       company: event.location || '',
-      time: formatEventTime(event.start),
+      time: formatEventTime(event),
       attendees: event.attendees?.map(a => a.email).filter(Boolean) || [],
       originalEvent: event
     }));
 
     const upcoming = events.filter(event => {
-      const startTime = event.originalEvent.start?.dateTime || event.originalEvent.start?.date;
+      const startTime = event.originalEvent.startDateTime || event.originalEvent.startDate;
       return startTime && new Date(startTime) >= now;
     });
     const previous = events.filter(event => {
-      const startTime = event.originalEvent.start?.dateTime || event.originalEvent.start?.date;
+      const startTime = event.originalEvent.startDateTime || event.originalEvent.startDate;
       return startTime && new Date(startTime) < now;
     });
 
@@ -261,9 +282,18 @@ export default function OpusAgendaMock() {
 
   // Generate AI prep mutation
   const generatePrepMutation = useMutation({
-    mutationFn: async (eventId: string) => {
-      const response = await apiRequest("POST", `/api/calls/${eventId}/generate-prep`);
-      return response.json();
+    mutationFn: async (calendarEventId: string) => {
+      // First, ensure a call record exists for this calendar event
+      const ensureResponse = await apiRequest("POST", `/api/calendar/events/${calendarEventId}/ensure-call`);
+      const { call } = await ensureResponse.json();
+      
+      if (!call?.id) {
+        throw new Error("Failed to create call record");
+      }
+      
+      // Now generate prep using the call ID
+      const prepResponse = await apiRequest("POST", `/api/calls/${call.id}/generate-prep`);
+      return prepResponse.json();
     },
     onSuccess: () => {
       toast({

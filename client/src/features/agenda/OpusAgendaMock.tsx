@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { CONFIG } from "@/config";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { Sparkles } from "lucide-react";
 
 // ===== Helpers (small components) =====
 function Section({ title, children }) {
@@ -147,6 +150,7 @@ function EditableObjections({ items = [], onChange }) {
 
 export default function OpusAgendaMock() {
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   // Fetch real Google Calendar events
   const { data: calendarEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
@@ -254,6 +258,28 @@ export default function OpusAgendaMock() {
   const [chatDraft, setChatDraft] = useState("");
 
   const chatInputRef = useRef(null);
+
+  // Generate AI prep mutation
+  const generatePrepMutation = useMutation({
+    mutationFn: async (eventId: string) => {
+      const response = await apiRequest("POST", `/api/calls/${eventId}/generate-prep`);
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "AI prep generated",
+        description: "Your call preparation sheet has been updated with AI insights.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/calendar/events'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to generate AI preparation: " + (error as Error).message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleSave = () => {
     setSavedAt(new Date());
@@ -570,6 +596,19 @@ export default function OpusAgendaMock() {
                 />
               </div>
             </div>
+          </div>
+
+          {/* Generate Prep Button */}
+          <div className="mb-6">
+            <button
+              onClick={() => selected?.id && generatePrepMutation.mutate(selected.id)}
+              disabled={generatePrepMutation.isPending || !selected?.id}
+              className="w-full rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed px-4 py-3 font-medium text-white flex items-center justify-center gap-2 transition-all"
+              data-testid="button-generate-prep"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span>{generatePrepMutation.isPending ? "Generating AI Prep..." : "Generate Prep"}</span>
+            </button>
           </div>
 
           {/* Notes section */}

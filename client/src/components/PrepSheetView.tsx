@@ -10,8 +10,6 @@ import { Sparkles, Calendar, Building2, Clock, FileText, Users, AlertTriangle, Z
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { safeFmt } from "@/utils/date";
-import { CONFIG } from "@/config";
-import CallPrepMinimal from "@/components/CallPrepMinimal";
 import ExecutiveSummary from "@/components/call-prep/executive-summary";
 import CrmHistory from "@/components/call-prep/crm-history";
 import CompetitiveLandscape from "@/components/call-prep/competitive-landscape";
@@ -516,19 +514,6 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
   }
 
   const { call, company, contacts, callPrep } = callDetails;
-
-  // Render minimal prep sheet if PREP_MODE is set to minimal
-  if (CONFIG.PREP_MODE === "minimal") {
-    return (
-      <CallPrepMinimal
-        eventId={event?.calendarEventId || event.id}
-        eventTitle={call.title}
-        eventStart={call.scheduledAt}
-        eventEnd={call.scheduledAt}
-        initialAttendees={contacts.map(c => c.email)}
-      />
-    );
-  }
 
   return (
     <div className="flex-1 p-6 overflow-y-auto">

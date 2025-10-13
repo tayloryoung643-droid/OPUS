@@ -243,6 +243,8 @@ export default function OpusAgendaMock() {
   const [selectedId, setSelectedId] = useState(null);
   const [prep, setPrep] = useState(null); // outline or full
   const [notes, setNotes] = useState("");
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventTime, setEventTime] = useState("");
   const [loading, setLoading] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [showSaved, setShowSaved] = useState(false);
@@ -296,6 +298,8 @@ export default function OpusAgendaMock() {
     if (!selected) return;
     // skeletal outline with just calendar-derived bits
     const stakeholders = selected.attendees?.map((e) => ({ email: e, role: "" })) || [];
+    setEventTitle(selected.title || "");
+    setEventTime(selected.time || "");
     setPrep({
       company: selected.company,
       title: selected.title,
@@ -500,187 +504,101 @@ export default function OpusAgendaMock() {
             </div>
           )}
 
-          {/* Event Title and Action Buttons at Top */}
+          {/* Event header card */}
           <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5 mb-6">
-            <div className="flex items-baseline justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{selected?.title || "—"}</h1>
-                  <p className="text-zinc-400">{selected?.time}</p>
-                </div>
-                <div className="hidden md:flex items-center gap-3 text-xs text-zinc-400">
-                  <span className="px-2 py-1 rounded bg-zinc-900/70">Attendees: {prep?.stakeholders?.length || 0}</span>
-                  <a href="#" className="px-2 py-1 rounded bg-zinc-900/70 underline">Join link</a>
-                </div>
+            <div className="flex items-center gap-2 mb-4 text-zinc-400">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" fill="none" />
+                <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" />
+                <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" />
+                <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" />
+              </svg>
+              <h2 className="text-base font-semibold text-white">Event</h2>
+            </div>
+
+            {/* Event name and Date/Time side by side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Event name</label>
+                <input
+                  type="text"
+                  value={eventTitle}
+                  onChange={(e) => setEventTitle(e.target.value)}
+                  onBlur={handleSave}
+                  placeholder="e.g., Product Demo — DataFlow"
+                  className="w-full rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                  data-testid="input-event-name"
+                />
               </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Date & time</label>
+                <input
+                  type="text"
+                  value={eventTime}
+                  onChange={(e) => setEventTime(e.target.value)}
+                  onBlur={handleSave}
+                  placeholder="Oct 12, 2025 • 11:00–11:30"
+                  className="w-full rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                  data-testid="input-event-datetime"
+                />
+              </div>
+            </div>
 
-              {/* Action buttons */}
-              <div className="flex items-center gap-3">
-                {/* Generate Prep Button */}
-                <button
-                  onClick={generatePrep}
-                  disabled={loading || !selected}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-50 text-white rounded-lg font-medium text-sm transition-colors"
-                >
-                  {loading ? "Generating..." : "Generate Prep"}
-                </button>
-
-                {/* Save Button */}
-                <button
-                  onClick={handleSave}
-                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg font-medium text-sm transition-colors"
-                >
-                  {showSaved ? "Saved!" : "Save"}
-                </button>
+            {/* Attendees section */}
+            <div>
+              <div className="flex items-center gap-2 mb-2 text-zinc-400">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <label className="text-sm font-medium text-white">Attendees (emails)</label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {prep?.stakeholders?.map((s, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center px-3 py-1 rounded-md bg-zinc-800/60 text-sm text-zinc-200"
+                    data-testid={`badge-attendee-${i}`}
+                  >
+                    {s.email}
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  placeholder="Add attendee..."
+                  className="inline-flex px-3 py-1 rounded-md bg-transparent border border-zinc-800 text-sm text-zinc-400 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600 min-w-[140px]"
+                  data-testid="input-add-attendee"
+                />
               </div>
             </div>
           </div>
 
-          {/* Notes Section - Now below title */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-4 mb-6">
-            <h2 className="text-lg font-semibold mb-3">My Notes</h2>
+          {/* Notes section */}
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5 mb-6">
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               onBlur={handleSave}
-              placeholder="Type notes for this call…"
-              className="w-full min-h-[96px] rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+              placeholder="Notes (optional, personal scratchpad)"
+              className="w-full min-h-[96px] rounded-lg bg-transparent border-0 px-0 py-0 text-sm text-white placeholder:text-zinc-500 focus:outline-none resize-none"
+              data-testid="textarea-notes"
             />
           </div>
 
-          {/* Prep content */}
+          {/* Open call-prep canvas */}
           <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5">
+            <h3 className="text-base font-semibold text-white mb-3">Open call-prep canvas</h3>
+            <textarea
+              placeholder="Type only what we *know for sure*...
 
-          {loading ? (
-            <Skeleton />
-          ) : prep ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Stakeholders (read-only for now) */}
-              <Card title="Stakeholders" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                {prep.stakeholders?.length ? (
-                  <ul className="space-y-3">
-                    {prep.stakeholders.map((s, i) => (
-                      <li key={i}>
-                        <div className="text-sm font-medium">{s.email}</div>
-                        <div className="text-xs text-zinc-500">{s.role}</div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-zinc-500 text-sm">—</div>
-                )}
-              </Card>
+Suggestions:
+• Attendees + roles (facts only)
+• Last email: short snippet + date
+• CRM facts: stage, amount, close date, owner
 
-              {/* Goals & Pain (editable) */}
-              <Card title="Goals & Pain" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableList value={prep.goalsPain} onChange={(v) => { setPrep({ ...prep, goalsPain: v }); handleSave(); }} />
-              </Card>
-
-              {/* Opus Summary */}
-              <Card title="Opus Summary (Coach Digest)" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <div className="space-y-2">
-                  <div className="text-sm text-zinc-300 font-medium">{prep.opusSummary?.headline || 'What matters most for this call'}</div>
-                  {prep.opusSummary?.bullets?.length ? (
-                    <List bullets={prep.opusSummary.bullets} />
-                  ) : (
-                    <div className="text-sm text-zinc-500">Generate to see Opus' summary.</div>
-                  )}
-                </div>
-              </Card>
-
-              {/* Methodology (editable) */}
-              <Card title="Methodology (MEDDIC + Challenger)" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableKeyValue kv={prep.methodology?.MEDDIC || {}} onChange={(kv) => { setPrep({ ...prep, methodology: { ...prep.methodology, MEDDIC: kv } }); handleSave(); }} />
-                <div className="mt-4">
-                  <div className="text-zinc-400 text-xs mb-1">Challenger cues</div>
-                  <EditableList value={prep.methodology?.Challenger || []} onChange={(v) => { setPrep({ ...prep, methodology: { ...prep.methodology, Challenger: v } }); handleSave(); }} />
-                </div>
-              </Card>
-
-              {/* Suggested Agenda (editable) */}
-              <Card title="Suggested Agenda" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableList value={prep.agendaBullets} onChange={(v) => { setPrep({ ...prep, agendaBullets: v }); handleSave(); }} />
-              </Card>
-
-              {/* Next Steps (editable) */}
-              <Card title="Next Steps" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableList value={prep.nextSteps} onChange={(v) => { setPrep({ ...prep, nextSteps: v }); handleSave(); }} />
-              </Card>
-
-              {/* Objections (editable) */}
-              <Card title="Objections & Responses" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableObjections items={prep.objections} onChange={(items) => { setPrep({ ...prep, objections: items }); handleSave(); }} />
-              </Card>
-
-              {/* Previous Communications */}
-              <Card title="Previous Communications" full>
-                {prep.previousComms?.length ? (
-                  <div className="space-y-3">
-                    {prep.previousComms.map((comm, i) => (
-                      <div key={i} className="border border-zinc-800 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-medium text-zinc-300">{comm.source}</span>
-                          <span className="text-xs text-zinc-500">{comm.when}</span>
-                        </div>
-                        <div className="text-sm text-zinc-400">{comm.summary}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-zinc-500 text-sm">No previous communications found.</div>
-                )}
-              </Card>
-
-              {/* Competitors */}
-              <Card title="Competitive Intelligence" full>
-                {prep.competitors?.length ? (
-                  <div className="space-y-4">
-                    {prep.competitors.map((comp, i) => (
-                      <div key={i} className="border border-zinc-800 rounded-lg p-3">
-                        <div className="text-sm font-medium text-zinc-200 mb-2">{comp.name}</div>
-                        <div className="text-xs text-zinc-400 mb-2">{comp.context}</div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                          <div>
-                            <div className="text-zinc-400 mb-1">Counters:</div>
-                            <ul className="text-zinc-300 space-y-1">
-                              {comp.counters?.map((counter, j) => (
-                                <li key={j}>• {counter}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <div className="text-zinc-400 mb-1">Traps:</div>
-                            <ul className="text-zinc-300 space-y-1">
-                              {comp.traps?.map((trap, j) => (
-                                <li key={j}>• {trap}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <div className="text-zinc-400 mb-1">Ripcord:</div>
-                            <ul className="text-zinc-300 space-y-1">
-                              {comp.ripcord?.map((rip, j) => (
-                                <li key={j}>• {rip}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-zinc-500 text-sm">No competitive intelligence available.</div>
-                )}
-              </Card>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="text-zinc-400 mb-4">Select a call and click "Generate Prep" to get started.</div>
-              <button onClick={generatePrep} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700">
-                Generate Prep
-              </button>
-            </div>
-          )}
+Keep bullets tight. Avoid repetition."
+              className="w-full min-h-[320px] rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-600 resize-none"
+              data-testid="textarea-prep-canvas"
+            />
           </div>
         </section>
       </main>

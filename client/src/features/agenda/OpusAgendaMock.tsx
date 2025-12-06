@@ -269,8 +269,10 @@ export default function OpusAgendaMock() {
   const [prep, setPrep] = useState(null); // outline or full
   const [notes, setNotes] = useState<Record<string, string>>({}); // Store notes per event: { [eventId]: "notes text" }
   const [loading, setLoading] = useState(false);
-  const [savedAt, setSavedAt] = useState(null);
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [showSaved, setShowSaved] = useState(false);
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventTime, setEventTime] = useState("");
 
   // Chat history per call
   const [chatByCall, setChatByCall] = useState({});
@@ -589,7 +591,7 @@ export default function OpusAgendaMock() {
                 <label className="block text-sm text-zinc-400 mb-2">Event name</label>
                 <input
                   type="text"
-                  value={selected?.summary || selected?.title || ""}
+                  value={eventTitle}
                   onChange={(e) => setEventTitle(e.target.value)}
                   onBlur={handleSave}
                   placeholder="e.g., Product Demo — DataFlow"

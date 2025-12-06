@@ -1,23 +1,20 @@
-import { useNavigate } from "react-router-dom";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Calendar, Mail, Building2, Settings as SettingsIcon, ExternalLink, LogOut } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
-import { logout, clearSession } from "../services/authService";
-import { queryClient } from "@/lib/queryClient";
+import { useState, useEffect } from "react";
 import type { User } from "@shared/schema";
 
 export default function Settings() {
   const { user } = useAuth();
   const typedUser = user as User | undefined;
   const [connectingId, setConnectingId] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const [, navigate] = useLocation();
 
   const handleLogout = () => {
-    // Use the existing Replit auth logout mechanism
     window.location.href = "/api/logout";
   };
 
@@ -191,16 +188,51 @@ export default function Settings() {
     }
   };
 
+  // Check for pending prep retry after OAuth completion
+  useEffect(() => {
+    try {
+      const pendingRetryStr = localStorage.getItem('pendingPrepRetry');
+      if (!pendingRetryStr) return;
+
+      const pendingRetry = JSON.parse(pendingRetryStr);
+      const isRecent = Date.now() - pendingRetry.timestamp < 5 * 60 * 1000; // 5 minutes
+      
+      if (!isRecent) {
+        localStorage.removeItem('pendingPrepRetry');
+        return;
+      }
+
+      // Check if any integration is now connected
+      const isGoogleConnected = (googleStatus as any)?.connected;
+      const isSalesforceConnected = (salesforceStatus as any)?.connected;
+
+      if (isGoogleConnected || isSalesforceConnected) {
+        // Clear the pending retry and navigate back to call prep
+        localStorage.removeItem('pendingPrepRetry');
+        
+        // Use a small delay to ensure the page has fully loaded
+        setTimeout(() => {
+          navigate(`/call/${pendingRetry.callId}?retry=true`);
+        }, 100);
+      }
+    } catch (error) {
+      console.error('Error checking pending prep retry:', error);
+      localStorage.removeItem('pendingPrepRetry');
+    }
+  }, [googleStatus, salesforceStatus, navigate]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Navigation */}
       <nav className="bg-card border-b border-border px-6 py-4" data-testid="navigation">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/overview")} data-testid="button-back">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Overview
-            </Button>
+            <Link href="/">
+              <Button variant="ghost" size="sm" data-testid="button-back">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Home
+              </Button>
+            </Link>
             
             <div className="flex items-center space-x-2">
               <SettingsIcon className="w-6 h-6 text-primary" />

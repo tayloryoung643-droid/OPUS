@@ -311,16 +311,63 @@ export default function OpusAgendaMock() {
     },
   });
 
-  const handleSave = () => {
-    setSavedAt(new Date());
-    setShowSaved(true);
-    setTimeout(() => setShowSaved(false), 900);
-  };
-
   const selected =
     processedAgenda.upcoming.find((c) => c.id === selectedId) ||
     processedAgenda.previous.find((c) => c.id === selectedId) ||
     processedAgenda.upcoming[0];
+
+  // Use a fallback event ID when no calendar events exist (allows notes to still be saved)
+  const FALLBACK_EVENT_ID = "default_scratchpad";
+  const effectiveEventId = selected?.id || FALLBACK_EVENT_ID;
+
+  // Load saved notes using React Query for proper caching
+  const { data: savedNote } = useQuery({
+    queryKey: ['/api/prep-notes', effectiveEventId],
+    queryFn: async () => {
+      const response = await fetch(`/api/prep-notes?eventId=${effectiveEventId}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: true,
+    staleTime: 0, // Always refetch when switching events
+  });
+
+  // Sync saved notes to local state when loaded
+  useEffect(() => {
+    if (savedNote && effectiveEventId && notes[effectiveEventId] === undefined) {
+      // Only set from server if we haven't typed locally yet
+      setNotes(prev => ({ ...prev, [effectiveEventId]: savedNote.text || "" }));
+    }
+  }, [savedNote, effectiveEventId]);
+
+  // Save notes mutation
+  const saveNoteMutation = useMutation({
+    mutationFn: async ({ eventId, text }: { eventId: string; text: string }) => {
+      const response = await apiRequest("PUT", "/api/prep-notes", { eventId, text });
+      return response.json();
+    },
+    onSuccess: (_data, variables) => {
+      setSavedAt(new Date());
+      setShowSaved(true);
+      setTimeout(() => setShowSaved(false), 900);
+      // Invalidate the query so it refetches if needed
+      queryClient.invalidateQueries({ queryKey: ['/api/prep-notes', variables.eventId] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to save notes",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSave = () => {
+    const currentNotes = notes[effectiveEventId] || "";
+    saveNoteMutation.mutate({ eventId: effectiveEventId, text: currentNotes });
+  };
 
   // Select first upcoming on mount
   useEffect(() => {
@@ -644,8 +691,8 @@ export default function OpusAgendaMock() {
           {/* Notes section */}
           <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5 mb-6">
             <textarea
-              value={notes[selected?.id] || ""}
-              onChange={(e) => setNotes({ ...notes, [selected?.id]: e.target.value })}
+              value={notes[effectiveEventId] || ""}
+              onChange={(e) => setNotes({ ...notes, [effectiveEventId]: e.target.value })}
               onBlur={handleSave}
               placeholder="Notes (optional, personal scratchpad)"
               className="w-full min-h-[96px] rounded-lg bg-transparent border-0 px-0 py-0 text-sm text-white placeholder:text-zinc-500 focus:outline-none resize-none"

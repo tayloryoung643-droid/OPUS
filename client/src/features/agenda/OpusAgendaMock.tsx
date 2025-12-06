@@ -267,13 +267,7 @@ export default function OpusAgendaMock() {
   // ===== State =====
   const [selectedId, setSelectedId] = useState(null);
   const [prep, setPrep] = useState(null); // outline or full
-<<<<<<< HEAD
-  const [notes, setNotes] = useState({}); // Store notes per event: { [eventId]: "notes text" }
-=======
-  const [notes, setNotes] = useState("");
-  const [eventTitle, setEventTitle] = useState("");
-  const [eventTime, setEventTime] = useState("");
->>>>>>> 6e749634cf1ef50ff3872675fc96bfb77bc4e5ac
+  const [notes, setNotes] = useState<Record<string, string>>({}); // Store notes per event: { [eventId]: "notes text" }
   const [loading, setLoading] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [showSaved, setShowSaved] = useState(false);

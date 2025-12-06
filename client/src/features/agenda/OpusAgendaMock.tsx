@@ -589,7 +589,7 @@ export default function OpusAgendaMock() {
                 <label className="block text-sm text-zinc-400 mb-2">Event name</label>
                 <input
                   type="text"
-                  value={eventTitle}
+                  value={selected?.summary || selected?.title || ""}
                   onChange={(e) => setEventTitle(e.target.value)}
                   onBlur={handleSave}
                   placeholder="e.g., Product Demo — DataFlow"

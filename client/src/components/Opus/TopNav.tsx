@@ -39,10 +39,6 @@ export default function OpusTopNav({ active, onAgendaClick }: Props) {
       </div>
       <nav className="flex items-center gap-2">
         <Tab name="Agenda" active={active === "Agenda"} onClick={onAgendaClick} />
-        <Tab name="Pipeline" disabled />
-        <Tab name="Tasks" disabled />
-        <Tab name="Coach" disabled />
-        <Tab name="Insights" disabled />
       </nav>
       <div className="flex items-center gap-3">
         <button 

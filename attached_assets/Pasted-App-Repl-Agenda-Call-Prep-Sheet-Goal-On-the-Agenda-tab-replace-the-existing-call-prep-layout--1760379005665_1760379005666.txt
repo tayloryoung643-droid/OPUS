@@ -1,0 +1,75 @@
+App Repl (Agenda → Call Prep Sheet)
+
+Goal: On the Agenda tab, replace the existing call-prep layout with the ultra-minimal version shown in the canvas named “MVP Prep — Ultra-minimal UI Preview.” Keep all existing styles, colors, spacing, and components (same design system + tokens). Only change the layout/structure and the fields rendered.
+
+Requirements (do exactly this)
+
+Do not change global theme or palette.
+
+Reuse existing shadcn/ui components, Tailwind classes, and tokens already used on the Agenda page.
+
+No new color variables, no layout-wide CSS changes.
+
+Replace the current prep sections with the following three blocks only (in this order):
+
+Event header card: tiny header with Event Name, Date & Time, and Attendees.
+
+Event Name (Input)
+
+Date & Time (Input)
+
+Attendees (email “pills” using your existing <Badge variant="secondary" /> + a compact “Add attendee…” <Input>).
+
+Notes (Textarea, short): “Notes (optional, personal scratchpad)”.
+
+Open Call-Prep Canvas (Textarea, tall): placeholder text matches the canvas copy (facts-only guidance, bullets).
+
+Hide all legacy sections (agenda/priorities/risks/questions/templates).
+
+Don’t delete code; gate rendering with a flag so we can re-enable later if needed.
+
+Keep behavior identical elsewhere (tabs, routing, scroll, keyboard focus styles).
+
+Only the contents of the Call Prep sheet area in the Agenda tab change.
+
+Respect existing data flow (read-only for now):
+
+Keep whatever props/state sources power Event Name, Date/Time, and Attendees.
+
+If data is not available, show the exact placeholders from the canvas.
+
+Do not introduce new network calls in this change.
+
+Match the canvas structure closely
+
+Same component types and hierarchy as the canvas preview (Card → CardHeader → CardContent; Inputs; Badges; Textareas).
+
+Same spacing density (rounded-2xl cards, small headers, compact gaps).
+
+Use your existing utility classes; if you need new ones, use the same scale as elsewhere on the Agenda page.
+
+Implementation notes
+
+File(s): Update the component that renders the Agenda → Call Prep pane (e.g., app/(dashboard)/agenda/CallPrep.tsx or equivalent).
+
+Refactor: Extract the new structure into a small presentational component (e.g., CallPrepUltraMinimal) to keep logic separate from layout.
+
+Flags: If you already have PREP_MODE, render this layout when PREP_MODE === "minimal"; otherwise default to current behavior.
+
+Definition of Done
+
+Agenda tab shows only:
+
+Event header card (Event Name, Date/Time, Attendees with pills + “Add attendee…” input)
+
+Notes (short Textarea)
+
+Open Call-Prep Canvas (tall Textarea with facts-only placeholder)
+
+No other sections or template content are visible.
+
+Theme, colors, shadows, radius, and typography unchanged from the rest of the app.
+
+Existing keyboard/focus/hover states still look identical to the rest of the UI.
+
+Placeholders and microcopy match the canvas preview.

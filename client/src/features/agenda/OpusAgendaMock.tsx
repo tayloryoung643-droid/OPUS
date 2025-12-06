@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { CONFIG } from "@/config";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { Sparkles } from "lucide-react";
 
 // ===== Helpers (small components) =====
 function Section({ title, children }) {
@@ -147,17 +150,12 @@ function EditableObjections({ items = [], onChange }) {
 
 export default function OpusAgendaMock() {
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   // Fetch real Google Calendar events
   const { data: calendarEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
     queryKey: ['/api/calendar/events'],
-    queryFn: async () => {
-      const response = await fetch('/api/calendar/events');
-      if (!response.ok) throw new Error('Failed to fetch calendar events');
-      return response.json();
-    },
-    staleTime: 60_000,
-    retry: false
+    staleTime: 60_000
   });
 
   // Mock data fallback (only when USE_MOCKS is true)
@@ -187,14 +185,35 @@ export default function OpusAgendaMock() {
     []
   );
 
-  // Helper function to format event time - MUST be defined before use
-  const formatEventTime = (startTime) => {
-    const eventDate = new Date(startTime);
+  // Helper function to format event time - handles both timed and all-day events
+  const formatEventTime = (event) => {
+    // Get the start time from either start.dateTime (timed) or start.date (all-day)
+    const startTimeStr = event?.start?.dateTime || event?.start?.date;
+    
+    if (!startTimeStr) return "—";
+    
+    const eventDate = new Date(startTimeStr);
+    
+    // Check if date is valid
+    if (isNaN(eventDate.getTime())) return "—";
+    
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
     const eventDateOnly = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
 
+    // If it's an all-day event (has start.date instead of start.dateTime)
+    if (event?.start?.date && !event?.start?.dateTime) {
+      if (eventDateOnly.getTime() === today.getTime()) {
+        return "Today (All-day)";
+      } else if (eventDateOnly.getTime() === yesterday.getTime()) {
+        return "Yesterday (All-day)";
+      } else {
+        return eventDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + " (All-day)";
+      }
+    }
+
+    // For timed events
     const timeStr = eventDate.toLocaleTimeString('en-US', { 
       hour: 'numeric', 
       minute: '2-digit',
@@ -215,25 +234,31 @@ export default function OpusAgendaMock() {
   const processedAgenda = useMemo(() => {
     if (CONFIG.USE_MOCKS) return mockAgenda;
 
-    if (!calendarEvents || !Array.isArray(calendarEvents)) return { upcoming: [], previous: [] };
+    if (!calendarEvents || !Array.isArray(calendarEvents)) {
+      console.log('[Agenda] No calendar events:', calendarEvents);
+      return { upcoming: [], previous: [] };
+    }
 
     const now = new Date();
     const events = calendarEvents.map(event => ({
       id: event.id,
       title: event.summary || 'Untitled Event',
       company: event.location || '',
-      time: formatEventTime(event.start),
-      attendees: event.attendees?.map(a => a.email).filter(Boolean) || [],
+      time: formatEventTime(event),
+      attendees: event.attendees?.map((a: any) => a.email).filter(Boolean) || [],
       originalEvent: event
     }));
 
     const upcoming = events.filter(event => {
       const startTime = event.originalEvent.start?.dateTime || event.originalEvent.start?.date;
-      return startTime && new Date(startTime) >= now;
+      if (!startTime) return false;
+      return new Date(startTime) >= now;
     });
+    
     const previous = events.filter(event => {
       const startTime = event.originalEvent.start?.dateTime || event.originalEvent.start?.date;
-      return startTime && new Date(startTime) < now;
+      if (!startTime) return false;
+      return new Date(startTime) < now;
     });
 
     return { upcoming, previous };
@@ -242,7 +267,13 @@ export default function OpusAgendaMock() {
   // ===== State =====
   const [selectedId, setSelectedId] = useState(null);
   const [prep, setPrep] = useState(null); // outline or full
+<<<<<<< HEAD
+  const [notes, setNotes] = useState({}); // Store notes per event: { [eventId]: "notes text" }
+=======
   const [notes, setNotes] = useState("");
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventTime, setEventTime] = useState("");
+>>>>>>> 6e749634cf1ef50ff3872675fc96bfb77bc4e5ac
   const [loading, setLoading] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
   const [showSaved, setShowSaved] = useState(false);
@@ -252,6 +283,37 @@ export default function OpusAgendaMock() {
   const [chatDraft, setChatDraft] = useState("");
 
   const chatInputRef = useRef(null);
+
+  // Generate AI prep mutation
+  const generatePrepMutation = useMutation({
+    mutationFn: async (calendarEventId: string) => {
+      // First, ensure a call record exists for this calendar event
+      const ensureResponse = await apiRequest("POST", `/api/calendar/events/${calendarEventId}/ensure-call`);
+      const { call } = await ensureResponse.json();
+      
+      if (!call?.id) {
+        throw new Error("Failed to create call record");
+      }
+      
+      // Now generate prep using the call ID
+      const prepResponse = await apiRequest("POST", `/api/calls/${call.id}/generate-prep`);
+      return prepResponse.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "AI prep generated",
+        description: "Your call preparation sheet has been updated with AI insights.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/calendar/events'] });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: "Failed to generate AI preparation: " + (error as Error).message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const handleSave = () => {
     setSavedAt(new Date());
@@ -296,6 +358,8 @@ export default function OpusAgendaMock() {
     if (!selected) return;
     // skeletal outline with just calendar-derived bits
     const stakeholders = selected.attendees?.map((e) => ({ email: e, role: "" })) || [];
+    setEventTitle(selected.title || "");
+    setEventTime(selected.time || "");
     setPrep({
       company: selected.company,
       title: selected.title,
@@ -405,16 +469,14 @@ export default function OpusAgendaMock() {
           <span className="text-sm text-zinc-400">Agenda</span>
         </div>
         <nav className="hidden md:flex items-center gap-6 text-sm">
-          {["Overview", "Agenda", "Pipeline", "Tasks", "Coach", "Insights"].map((tab) => (
+          {["Overview", "Agenda"].map((tab) => (
             <button 
               key={tab} 
               onClick={() => {
                 if (tab === "Overview") navigate("/overview");
                 else if (tab === "Agenda") navigate("/agenda");
-                // Other tabs are disabled for now
               }}
-              disabled={!["Overview", "Agenda"].includes(tab)}
-              className={`relative ${tab === "Agenda" ? "text-white font-semibold" : !["Overview", "Agenda"].includes(tab) ? "text-zinc-600 cursor-not-allowed" : "text-zinc-400 hover:text-white cursor-pointer"}`}
+              className={`relative ${tab === "Agenda" ? "text-white font-semibold" : "text-zinc-400 hover:text-white cursor-pointer"}`}
               data-testid={`nav-${tab.toLowerCase()}`}
             >
               {tab}
@@ -502,226 +564,115 @@ export default function OpusAgendaMock() {
             </div>
           )}
 
-          {/* Notes */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-4 mb-6">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">My Notes</h2>
-              <div className="flex items-center gap-2 lg:hidden">
-                <button onClick={handleSave} className="text-xs px-3 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300">Save</button>
-                <button onClick={generatePrep} className="text-xs px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700">Generate Prep</button>
+          {/* Event header card */}
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2 text-zinc-400">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" fill="none" />
+                  <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" />
+                  <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" />
+                  <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" />
+                </svg>
+                <h2 className="text-base font-semibold text-white">Event</h2>
+              </div>
+              
+              {/* Generate Prep Button - Top Right */}
+              <button
+                onClick={() => selected?.id && generatePrepMutation.mutate(selected.id)}
+                disabled={generatePrepMutation.isPending || !selected?.id}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium text-white transition-all"
+                data-testid="button-generate-prep"
+              >
+                <Sparkles className="h-3.5 w-3.5" />
+                <span>{generatePrepMutation.isPending ? "Generating..." : "Generate Prep"}</span>
+              </button>
+            </div>
+
+            {/* Event name and Date/Time side by side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Event name</label>
+                <input
+                  type="text"
+                  value={eventTitle}
+                  onChange={(e) => setEventTitle(e.target.value)}
+                  onBlur={handleSave}
+                  placeholder="e.g., Product Demo — DataFlow"
+                  className="w-full rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                  data-testid="input-event-name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-zinc-400 mb-2">Date & time</label>
+                <input
+                  type="text"
+                  value={eventTime}
+                  onChange={(e) => setEventTime(e.target.value)}
+                  onBlur={handleSave}
+                  placeholder="Oct 12, 2025 • 11:00–11:30"
+                  className="w-full rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                  data-testid="input-event-datetime"
+                />
               </div>
             </div>
+
+            {/* Attendees section */}
+            <div>
+              <div className="flex items-center gap-2 mb-2 text-zinc-400">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                <label className="text-sm font-medium text-white">Attendees (emails)</label>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {prep?.stakeholders?.map((s, i) => (
+                  <span
+                    key={i}
+                    className="inline-flex items-center px-3 py-1 rounded-md bg-zinc-800/60 text-sm text-zinc-200"
+                    data-testid={`badge-attendee-${i}`}
+                  >
+                    {s.email}
+                  </span>
+                ))}
+                <input
+                  type="text"
+                  placeholder="Add attendee..."
+                  className="inline-flex px-3 py-1 rounded-md bg-transparent border border-zinc-800 text-sm text-zinc-400 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600 min-w-[140px]"
+                  data-testid="input-add-attendee"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Notes section */}
+          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5 mb-6">
             <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              value={notes[selected?.id] || ""}
+              onChange={(e) => setNotes({ ...notes, [selected?.id]: e.target.value })}
               onBlur={handleSave}
-              placeholder="Type notes for this call…"
-              className="w-full min-h-[96px] rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+              placeholder="Notes (optional, personal scratchpad)"
+              className="w-full min-h-[96px] rounded-lg bg-transparent border-0 px-0 py-0 text-sm text-white placeholder:text-zinc-500 focus:outline-none resize-none"
+              data-testid="textarea-notes"
             />
           </div>
 
-          {/* Prep content */}
+          {/* Open call-prep canvas */}
           <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5">
-            {/* Sticky context bar */}
-            <div className="flex items-baseline justify-between gap-4 mb-3 sticky top-16 z-10 bg-zinc-950/80 backdrop-blur px-2 py-2 rounded-xl border border-zinc-900/60">
-              <div className="flex items-center gap-4">
-                <div>
-                  <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{selected?.title || "—"}</h1>
-                  <p className="text-zinc-400">{selected?.time}</p>
-                </div>
-                <div className="hidden md:flex items-center gap-3 text-xs text-zinc-400">
-                  <span className="px-2 py-1 rounded bg-zinc-900/70">Attendees: {prep?.stakeholders?.length || 0}</span>
-                  <a href="#" className="px-2 py-1 rounded bg-zinc-900/70 underline">Join link</a>
-                </div>
-              </div>
+            <h3 className="text-base font-semibold text-white mb-3">Open call-prep canvas</h3>
+            <textarea
+              placeholder="Type only what we *know for sure*...
 
-              {/* Action buttons moved from old chat interface */}
-              <div className="flex items-center gap-3">
-                <div className="flex flex-wrap gap-2 text-[11px] mr-4">
-                  {['No EB identified','Security review pending','Low stakeholder coverage'].map((r,i)=> (
-                    <span key={i} className="px-2 py-1 rounded-full border border-zinc-800 text-zinc-400">{r}</span>
-                  ))}
-                </div>
+Suggestions:
+• Attendees + roles (facts only)
+• Last email: short snippet + date
+• CRM facts: stage, amount, close date, owner
 
-                {/* Generate Prep Button */}
-                <button
-                  onClick={() => {
-                    if (!selected) return;
-                    setLoading(true);
-                    // Simulate API call delay
-                    setTimeout(() => {
-                      setPrep(prev => ({
-                        ...prev,
-                        agendaBullets: ["Discuss current CRM challenges", "Review integration requirements", "Timeline and budget alignment"],
-                        goalsPain: ["Manual data entry inefficiencies", "Lack of pipeline visibility", "Integration complexity"],
-                        methodology: {
-                          MEDDIC: {
-                            metrics: "25% increase in sales efficiency",
-                            economic: "$50K budget allocated",
-                            decision: "CTO and VP Sales involved",
-                            decisionCriteria: "ROI within 6 months",
-                            implicate: "Current system breaking down",
-                            champion: "Jennifer White"
-                          },
-                          Challenger: ["Teaching insight about industry trends", "Tailoring to their specific pain points", "Taking control of sales process"]
-                        },
-                        objections: [
-                          { objection: "Price concerns", response: "Focus on ROI and long-term value" },
-                          { objection: "Integration complexity", response: "Highlight our proven implementation process" }
-                        ],
-                        competitors: ["Salesforce", "HubSpot"],
-                        opusSummary: "High-potential opportunity with clear pain points and engaged stakeholders."
-                      }));
-                      setLoading(false);
-                    }, 2000);
-                  }}
-                  disabled={loading || !selected}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-50 text-white rounded-lg font-medium text-sm transition-colors"
-                >
-                  {loading ? "Generating..." : "Generate Prep"}
-                </button>
-
-                {/* Save Button */}
-                <button
-                  onClick={handleSave}
-                  className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 text-white rounded-lg font-medium text-sm transition-colors"
-                >
-                  {showSaved ? "Saved!" : "Save"}
-                </button>
-              </div>
-            </div>
+Keep bullets tight. Avoid repetition."
+              className="w-full min-h-[320px] rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-600 resize-none"
+              data-testid="textarea-prep-canvas"
+            />
           </div>
-
-          {loading ? (
-            <Skeleton />
-          ) : prep ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Stakeholders (read-only for now) */}
-              <Card title="Stakeholders" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                {prep.stakeholders?.length ? (
-                  <ul className="space-y-3">
-                    {prep.stakeholders.map((s, i) => (
-                      <li key={i}>
-                        <div className="text-sm font-medium">{s.email}</div>
-                        <div className="text-xs text-zinc-500">{s.role}</div>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="text-zinc-500 text-sm">—</div>
-                )}
-              </Card>
-
-              {/* Goals & Pain (editable) */}
-              <Card title="Goals & Pain" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableList value={prep.goalsPain} onChange={(v) => { setPrep({ ...prep, goalsPain: v }); handleSave(); }} />
-              </Card>
-
-              {/* Opus Summary */}
-              <Card title="Opus Summary (Coach Digest)" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <div className="space-y-2">
-                  <div className="text-sm text-zinc-300 font-medium">{prep.opusSummary?.headline || 'What matters most for this call'}</div>
-                  {prep.opusSummary?.bullets?.length ? (
-                    <List bullets={prep.opusSummary.bullets} />
-                  ) : (
-                    <div className="text-sm text-zinc-500">Generate to see Opus' summary.</div>
-                  )}
-                </div>
-              </Card>
-
-              {/* Methodology (editable) */}
-              <Card title="Methodology (MEDDIC + Challenger)" right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableKeyValue kv={prep.methodology?.MEDDIC || {}} onChange={(kv) => { setPrep({ ...prep, methodology: { ...prep.methodology, MEDDIC: kv } }); handleSave(); }} />
-                <div className="mt-4">
-                  <div className="text-zinc-400 text-xs mb-1">Challenger cues</div>
-                  <EditableList value={prep.methodology?.Challenger || []} onChange={(v) => { setPrep({ ...prep, methodology: { ...prep.methodology, Challenger: v } }); handleSave(); }} />
-                </div>
-              </Card>
-
-              {/* Suggested Agenda (editable) */}
-              <Card title="Suggested Agenda" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableList value={prep.agendaBullets} onChange={(v) => { setPrep({ ...prep, agendaBullets: v }); handleSave(); }} />
-              </Card>
-
-              {/* Next Steps (editable) */}
-              <Card title="Next Steps" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableList value={prep.nextSteps} onChange={(v) => { setPrep({ ...prep, nextSteps: v }); handleSave(); }} />
-              </Card>
-
-              {/* Objections (editable) */}
-              <Card title="Objections & Responses" full right={<button className="text-[11px] text-zinc-400">↻ Regenerate</button>}>
-                <EditableObjections items={prep.objections} onChange={(items) => { setPrep({ ...prep, objections: items }); handleSave(); }} />
-              </Card>
-
-              {/* Previous Communications */}
-              <Card title="Previous Communications" full>
-                {prep.previousComms?.length ? (
-                  <div className="space-y-3">
-                    {prep.previousComms.map((comm, i) => (
-                      <div key={i} className="border border-zinc-800 rounded-lg p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-xs font-medium text-zinc-300">{comm.source}</span>
-                          <span className="text-xs text-zinc-500">{comm.when}</span>
-                        </div>
-                        <div className="text-sm text-zinc-400">{comm.summary}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-zinc-500 text-sm">No previous communications found.</div>
-                )}
-              </Card>
-
-              {/* Competitors */}
-              <Card title="Competitive Intelligence" full>
-                {prep.competitors?.length ? (
-                  <div className="space-y-4">
-                    {prep.competitors.map((comp, i) => (
-                      <div key={i} className="border border-zinc-800 rounded-lg p-3">
-                        <div className="text-sm font-medium text-zinc-200 mb-2">{comp.name}</div>
-                        <div className="text-xs text-zinc-400 mb-2">{comp.context}</div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
-                          <div>
-                            <div className="text-zinc-400 mb-1">Counters:</div>
-                            <ul className="text-zinc-300 space-y-1">
-                              {comp.counters?.map((counter, j) => (
-                                <li key={j}>• {counter}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <div className="text-zinc-400 mb-1">Traps:</div>
-                            <ul className="text-zinc-300 space-y-1">
-                              {comp.traps?.map((trap, j) => (
-                                <li key={j}>• {trap}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <div>
-                            <div className="text-zinc-400 mb-1">Ripcord:</div>
-                            <ul className="text-zinc-300 space-y-1">
-                              {comp.ripcord?.map((rip, j) => (
-                                <li key={j}>• {rip}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-zinc-500 text-sm">No competitive intelligence available.</div>
-                )}
-              </Card>
-            </div>
-          ) : (
-            <div className="text-center py-12">
-              <div className="text-zinc-400 mb-4">Select a call and click "Generate Prep" to get started.</div>
-              <button onClick={generatePrep} className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700">
-                Generate Prep
-              </button>
-            </div>
-          )}
         </section>
       </main>
     </div>

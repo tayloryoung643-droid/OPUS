@@ -550,7 +550,7 @@ export default function CallPrep() {
       <div className="p-6">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-6">
             <div className="flex items-start justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-foreground mb-2" data-testid={`text-call-title-${call.id}`}>
@@ -612,6 +612,26 @@ export default function CallPrep() {
               </div>
             </div>
           </div>
+
+          {/* My Notes Section - Now directly below header */}
+          <Card className="mb-6">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold mb-4 flex items-center">
+                <FileText className="h-5 w-5 mr-2" />
+                My Notes
+              </h3>
+              <Textarea
+                placeholder="Add your notes for this call..."
+                value={notesText}
+                onChange={(e) => setNotesText(e.target.value)}
+                className="min-h-[120px]"
+                data-testid="textarea-prep-notes"
+              />
+              {saveNotesMutation.isPending && (
+                <div className="text-xs text-muted-foreground mt-2">Saving...</div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Sales Coach Integration */}
           <div className="mb-6">
@@ -753,26 +773,6 @@ export default function CallPrep() {
                 </Card>
               )}
 
-              {/* Notes Section (appears first in partial mode) */}
-              <Card className="mb-6">
-                <CardContent className="p-6">
-                  <h3 className="text-lg font-semibold mb-4 flex items-center">
-                    <FileText className="h-5 w-5 mr-2" />
-                    Your Notes
-                  </h3>
-                  <Textarea
-                    placeholder="Add your notes for this call..."
-                    value={notesText}
-                    onChange={(e) => setNotesText(e.target.value)}
-                    className="min-h-[120px]"
-                    data-testid="textarea-prep-notes"
-                  />
-                  {saveNotesMutation.isPending && (
-                    <div className="text-xs text-muted-foreground mt-2">Saving...</div>
-                  )}
-                </CardContent>
-              </Card>
-
               {/* Event Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <Card>
@@ -882,26 +882,6 @@ export default function CallPrep() {
 
               {/* Right Column */}
               <div className="space-y-6">
-                {/* User Notes */}
-                <Card>
-                  <CardContent className="p-6">
-                    <h3 className="text-lg font-semibold mb-4 flex items-center">
-                      <FileText className="h-5 w-5 mr-2" />
-                      Your Notes
-                    </h3>
-                    <Textarea
-                      placeholder="Add your notes for this call..."
-                      value={notesText}
-                      onChange={(e) => setNotesText(e.target.value)}
-                      className="min-h-[100px] mb-2"
-                      data-testid="textarea-prep-notes-full"
-                    />
-                    {saveNotesMutation.isPending && (
-                      <div className="text-xs text-muted-foreground">Saving...</div>
-                    )}
-                  </CardContent>
-                </Card>
-                
                 <KeyStakeholders contacts={contacts} />
                 <RecentNews news={company?.recentNews || []} />
                 <SuggestedOpportunities 

@@ -1,0 +1,508 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/server/routes.ts b/server/routes.ts
+index 3fba5d294cec6e66578c3aa03d224d7fffbd8826..2747eba7976e88d632b72e37881c2ca813364b8c 100644
+--- a/server/routes.ts
++++ b/server/routes.ts
+@@ -422,64 +422,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
+     try {
+       const response = {
+         gitSha: process.env.REPL_ID || 'dev',
+         buildTime: new Date().toISOString(),
+         env: {
+           APP_DEV_BYPASS: !!ENV.APP_DEV_BYPASS,
+           MCP_TOKEN_PROVIDER_SECRET: !!ENV.MCP_TOKEN_PROVIDER_SECRET
+         }
+       };
+       
+       res.setHeader('Content-Type', 'application/json');
+       return res.json(response);
+     } catch (error) {
+       console.error("Error in /api/debug/version:", error);
+       res.setHeader('Content-Type', 'application/json');
+       return res.status(500).json({ 
+         error: "Failed to get version info",
+         message: error instanceof Error ? error.message : 'Unknown error'
+       });
+     }
+   });
+ 
+   // Debug endpoint - Show integration connection status (NO TOKENS)
+   app.get('/api/debug/integrations', async (req: any, res) => {
+     try {
+-      const targetEmail = req.query.as as string;
+-      
+-      if (!targetEmail) {
++      const targetParam = typeof req.query.as === 'string' ? req.query.as.trim() : '';
++
++      if (!targetParam) {
+         return res.status(400).json({ error: 'Missing ?as=<email> query parameter' });
+       }
+ 
+-      // Fetch integration status from storage (same source as UI uses)
+-      const [googleIntegration, salesforceIntegration] = await Promise.all([
+-        storage.getGoogleIntegration(targetEmail),
+-        storage.getSalesforceIntegration(targetEmail)
+-      ]);
++      const isEmailLookup = targetParam.includes('@');
++      const userRecord = isEmailLookup ? await storage.getUserByEmail(targetParam) : undefined;
++      const resolvedUserId = userRecord?.id || (!isEmailLookup ? targetParam : undefined);
++
++      let googleIntegration;
++      let salesforceIntegration;
++
++      if (resolvedUserId) {
++        [googleIntegration, salesforceIntegration] = await Promise.all([
++          storage.getGoogleIntegration(resolvedUserId),
++          storage.getSalesforceIntegration(resolvedUserId)
++        ]);
++      }
+ 
+       const response = {
+-        userId: targetEmail,
++        userId: targetParam,
++        resolvedUserId: resolvedUserId || null,
++        resolvedEmail: userRecord?.email || (isEmailLookup ? targetParam : null),
+         google: {
+           connected: !!googleIntegration?.isActive,
+           scopes: googleIntegration?.scopes || [],
+           expiry: googleIntegration?.tokenExpiry ? Math.floor(googleIntegration.tokenExpiry.getTime() / 1000) : null
+         },
+         salesforce: {
+           connected: !!salesforceIntegration?.isActive,
+           instanceUrlPresent: !!salesforceIntegration?.instanceUrl
+         }
+       };
+ 
+       res.setHeader('Content-Type', 'application/json');
+       return res.json(response);
+     } catch (error) {
+       console.error("Error in /api/debug/integrations:", error);
+       res.setHeader('Content-Type', 'application/json');
+       return res.status(500).json({ 
+         error: "Failed to check integrations",
+         message: error instanceof Error ? error.message : 'Unknown error'
+       });
+     }
+   });
+ 
+   // OpenAI Realtime API - Generate ephemeral tokens for WebRTC voice sessions with MCP integration
+   app.post('/api/openai/realtime/token', isAuthenticated, async (req: any, res) => {
+@@ -834,81 +844,134 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
+         rid, 
+         url, 
+         mcpBaseUrl, 
+         tokenLen: ENV.MCP_SERVICE_TOKEN?.length || 0,
+         code: error.code || 'UNKNOWN',
+         status: error.response?.status,
+         message: error.message 
+       }));
+       
+       // Structured logging for proxy errors
+       console.log(JSON.stringify({ rid, route, userId, status, ms: Date.now() - startMs }));
+       
+       res.status(status).json({ 
+         error: { 
+           code: "PROXY_ERROR" 
+         } 
+       });
+     }
+   });
+ 
+   // Combined integrations status endpoint
+   app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
+     try {
+       // Support ?as=<email> query param for dev mode
+       const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
+-      const asEmail = req.query.as as string;
+-      const userId = (APP_DEV_BYPASS && asEmail) ? asEmail : req.user.claims.sub;
+-      
++      const asParamRaw = typeof req.query.as === 'string' ? req.query.as.trim() : '';
++
++      let effectiveUserId: string | undefined = req.user?.claims?.sub;
++      let effectiveEmail: string | undefined = req.user?.claims?.email;
++
++      if (APP_DEV_BYPASS && asParamRaw) {
++        if (asParamRaw.includes('@')) {
++          const impersonatedUser = await storage.getUserByEmail(asParamRaw);
++
++          if (!impersonatedUser) {
++            const emptyGoogleStatus = {
++              userId: asParamRaw,
++              connected: false,
++              scopes: [],
++              expiry: null,
++              service: "google"
++            };
++
++            const emptySalesforceStatus = {
++              userId: asParamRaw,
++              connected: false,
++              instanceUrlPresent: false,
++              service: "salesforce"
++            };
++
++            const outlookStatus = {
++              connected: false,
++              service: "outlook",
++              message: "Outlook integration coming soon"
++            };
++
++            return res.json({
++              userId: asParamRaw,
++              resolvedUserId: null,
++              google: emptyGoogleStatus,
++              salesforce: emptySalesforceStatus,
++              googleCalendar: emptyGoogleStatus,
++              outlook: outlookStatus
++            });
++          }
++
++          effectiveUserId = impersonatedUser.id;
++          effectiveEmail = impersonatedUser.email;
++        } else {
++          effectiveUserId = asParamRaw;
++          effectiveEmail = undefined;
++        }
++      }
++
++      if (!effectiveUserId) {
++        return res.status(401).json({ message: "Unauthorized" });
++      }
++
+       // Get Google integration status
+-      const googleIntegration = await storage.getGoogleIntegration(userId);
++      const googleIntegration = await storage.getGoogleIntegration(effectiveUserId);
+       const googleStatus = {
+-        userId,
++        userId: effectiveUserId,
+         connected: !!(googleIntegration?.accessToken || googleIntegration?.refreshToken),
+         scopes: googleIntegration?.scopes || [],
+         expiry: googleIntegration?.tokenExpiry,
+-        service: "google"
++        service: "google",
++        email: effectiveEmail || null
+       };
+ 
+       // Get Salesforce integration status
+-      const salesforceIntegration = await storage.getSalesforceIntegration(userId);
++      const salesforceIntegration = await storage.getSalesforceIntegration(effectiveUserId);
+       const salesforceStatus = {
+-        userId,
++        userId: effectiveUserId,
+         connected: !!(salesforceIntegration?.accessToken || salesforceIntegration?.refreshToken),
+         instanceUrlPresent: !!salesforceIntegration?.instanceUrl,
+-        service: "salesforce"
++        service: "salesforce",
++        email: effectiveEmail || null
+       };
+ 
+       // Outlook is always not connected for now
+       const outlookStatus = {
+         connected: false,
+         service: "outlook",
+         message: "Outlook integration coming soon"
+       };
+ 
+       res.json({
+-        userId,
++        userId: APP_DEV_BYPASS && asParamRaw ? asParamRaw : effectiveUserId,
++        resolvedUserId: effectiveUserId,
+         google: googleStatus,
+         salesforce: salesforceStatus,
+         googleCalendar: googleStatus, // Keep for backward compatibility
+         outlook: outlookStatus
+       });
+     } catch (error) {
+       console.error("Error checking integrations status:", error);
+       res.status(500).json({ message: "Internal server error" });
+     }
+   });
+ 
+   app.delete("/api/integrations/outlook", isAuthenticatedOrGuest, requireWriteAccess, async (req, res) => {
+     try {
+       // For now, just return success
+       res.json({ 
+         message: "Outlook integration disconnected",
+         status: "disconnected"
+       });
+     } catch (error) {
+       console.error("Error disconnecting Outlook integration:", error);
+       res.status(500).json({ message: "Internal server error" });
+     }
+   });
+ 
+   // Google Calendar and Gmail integration routes
+diff --git a/server/routes/internalTokens.ts b/server/routes/internalTokens.ts
+index 84a30559e80e387709f4edb9b27506d8c6a1f24b..6d15d3447f23dd5f9122aeada3815c61dc04f4cc 100644
+--- a/server/routes/internalTokens.ts
++++ b/server/routes/internalTokens.ts
+@@ -1,105 +1,133 @@
+ import { Router } from 'express';
+ import { storage } from '../storage';
+ import { ENV } from '../config/env';
+ 
+ const router = Router();
+ 
+ /**
+  * Server-to-server token provider endpoint
+  * Used by MCP service to fetch OAuth tokens for a given userId
+  * 
+  * Security: Requires Bearer token authentication (MCP_TOKEN_PROVIDER_SECRET)
+  * NEVER expose this endpoint to browsers (no CORS, server-only)
+  */
+ router.get('/integrations/tokens', async (req, res) => {
+   const startTime = Date.now();
+   const rid = (req as any).rid || 'unknown';
+-  const userId = req.query.userId as string;
++  const userIdentifierRaw = typeof req.query.userId === 'string' ? req.query.userId.trim() : '';
+ 
+   try {
+     // Validate bearer token
+     const authHeader = req.header('authorization');
+     const expectedAuth = `Bearer ${ENV.MCP_TOKEN_PROVIDER_SECRET}`;
+     
+     if (!ENV.MCP_TOKEN_PROVIDER_SECRET || authHeader !== expectedAuth) {
+       console.log(JSON.stringify({
+         rid,
+         route: '/internal/integrations/tokens',
+-        userId: userId || 'none',
++        userId: userIdentifierRaw || 'none',
+         status: 401,
+         ms: Date.now() - startTime,
+         error: 'Unauthorized'
+       }));
+       return res.status(401).json({ error: 'Unauthorized' });
+     }
+ 
+     // Validate userId parameter
+-    if (!userId) {
++    if (!userIdentifierRaw) {
+       console.log(JSON.stringify({
+         rid,
+         route: '/internal/integrations/tokens',
+         userId: 'none',
+         status: 400,
+         ms: Date.now() - startTime,
+         error: 'Missing userId parameter'
+       }));
+       return res.status(400).json({ error: 'Missing userId parameter' });
+     }
+ 
++    let resolvedUserId: string | undefined = userIdentifierRaw;
++    let resolvedEmail: string | undefined;
++
++    if (userIdentifierRaw.includes('@')) {
++      const userRecord = await storage.getUserByEmail(userIdentifierRaw);
++
++      if (!userRecord) {
++        console.log(JSON.stringify({
++          rid,
++          route: '/internal/integrations/tokens',
++          userId: userIdentifierRaw,
++          status: 200,
++          ms: Date.now() - startTime,
++          hasGoogle: false,
++          hasSalesforce: false,
++          resolvedUserId: null,
++          missingUser: true
++        }));
++
++        return res.json({});
++      }
++
++      resolvedUserId = userRecord.id;
++      resolvedEmail = userRecord.email || userIdentifierRaw;
++    }
++
+     // Fetch tokens from database (already decrypted by storage methods)
+     const [googleIntegration, salesforceIntegration] = await Promise.all([
+-      storage.getGoogleIntegration(userId),
+-      storage.getSalesforceIntegration(userId)
++      resolvedUserId ? storage.getGoogleIntegration(resolvedUserId) : Promise.resolve(undefined),
++      resolvedUserId ? storage.getSalesforceIntegration(resolvedUserId) : Promise.resolve(undefined)
+     ]);
+ 
+     // Build response object
+     const response: any = {};
+ 
+     if (googleIntegration) {
+       response.google = {
+         accessToken: googleIntegration.accessToken,
+         refreshToken: googleIntegration.refreshToken || undefined,
+         expiry: googleIntegration.tokenExpiry ? Math.floor(googleIntegration.tokenExpiry.getTime() / 1000) : undefined,
+         scopes: googleIntegration.scopes || [
+           "https://www.googleapis.com/auth/calendar.readonly",
+           "https://www.googleapis.com/auth/gmail.readonly"
+         ]
+       };
+     }
+ 
+     if (salesforceIntegration) {
+       response.salesforce = {
+         accessToken: salesforceIntegration.accessToken,
+         refreshToken: salesforceIntegration.refreshToken || undefined,
+         instanceUrl: salesforceIntegration.instanceUrl
+       };
+     }
+ 
+     // Log successful token fetch (no token values)
+     console.log(JSON.stringify({
+       rid,
+       route: '/internal/integrations/tokens',
+-      userId,
++      userId: userIdentifierRaw,
++      resolvedUserId,
++      resolvedEmail: resolvedEmail || null,
+       status: 200,
+       ms: Date.now() - startTime,
+       hasGoogle: !!googleIntegration,
+       hasSalesforce: !!salesforceIntegration
+     }));
+ 
+     return res.json(response);
+ 
+   } catch (error) {
+     console.error('Error fetching tokens for MCP:', error);
+     console.log(JSON.stringify({
+       rid,
+       route: '/internal/integrations/tokens',
+-      userId: userId || 'none',
++      userId: userIdentifierRaw || 'none',
+       status: 500,
+       ms: Date.now() - startTime,
+       error: error instanceof Error ? error.message : 'Unknown error'
+     }));
+     return res.status(500).json({ error: 'Internal server error' });
+   }
+ });
+ 
+ export default router;
+diff --git a/server/storage.ts b/server/storage.ts
+index f56549bee8623e8f18d8d3b79daa16cfeacbe42e..16e451c16df8797049f956ad9030406e950a448f 100644
+--- a/server/storage.ts
++++ b/server/storage.ts
+@@ -4,50 +4,51 @@ import {
+   type Company, type InsertCompany,
+   type Contact, type InsertContact,
+   type Call, type InsertCall,
+   type CallPrep, type InsertCallPrep,
+   type PrepNote, type InsertPrepNote,
+   type User, type UpsertUser,
+   type Integration, type InsertIntegration,
+   type IntegrationData, type InsertIntegrationData,
+   type CrmOpportunity, type InsertCrmOpportunity,
+   type GoogleIntegration, type InsertGoogleIntegration,
+   type SalesforceIntegration, type InsertSalesforceIntegration,
+   type CoachSession, type InsertCoachSession,
+   type CoachTranscript, type InsertCoachTranscript,
+   type CoachSuggestion, type InsertCoachSuggestion,
+   type CallTranscript, type InsertCallTranscript,
+   type ChatSession, type InsertChatSession,
+   type ChatMessage, type InsertChatMessage
+ } from "@shared/schema";
+ import { db } from "./db";
+ import { eq, desc, and, sql } from "drizzle-orm";
+ import { CryptoService } from "./services/crypto";
+ 
+ export interface IStorage {
+   // User methods for Replit Auth
+   getUser(id: string): Promise<User | undefined>;
++  getUserByEmail(email: string): Promise<User | undefined>;
+   upsertUser(user: UpsertUser): Promise<User>;
+   
+   // Legacy user methods (keeping for compatibility)
+   getUserByUsername?(username: string): Promise<User | undefined>;
+   createUser?(user: UpsertUser): Promise<User>;
+ 
+   // Company methods
+   createCompany(company: InsertCompany): Promise<Company>;
+   getCompany(id: string): Promise<Company | undefined>;
+   getCompanyById(id: string): Promise<Company | undefined>;
+   getCompanyByDomain(domain: string): Promise<Company | undefined>;
+   updateCompany(id: string, updates: Partial<InsertCompany>): Promise<Company>;
+ 
+   // Contact methods
+   createContact(contact: InsertContact): Promise<Contact>;
+   getContactById(id: string): Promise<Contact | undefined>;
+   getContactsByCompany(companyId: string): Promise<Contact[]>;
+   updateContact(id: string, updates: Partial<InsertContact>): Promise<Contact>;
+ 
+   // Call methods
+   createCall(call: InsertCall): Promise<Call>;
+   getCall(id: string): Promise<Call | undefined>;
+   getCallById(id: string): Promise<Call | undefined>;
+   getCallsWithCompany(): Promise<Array<Call & { company: Company }>>;
+   getUpcomingCalls(): Promise<Array<Call & { company: Company }>>;
+@@ -121,50 +122,69 @@ export interface IStorage {
+   getCallTranscript(id: string): Promise<CallTranscript | undefined>;
+   getCallTranscriptsByUser(userId: string): Promise<CallTranscript[]>;
+   getCallTranscriptByEvent(eventId: string): Promise<CallTranscript | undefined>;
+   getCallTranscriptsByCompany(companyId: string): Promise<CallTranscript[]>;
+   updateCallTranscript(id: string, updates: Partial<InsertCallTranscript>): Promise<CallTranscript>;
+   deleteCallTranscript(id: string): Promise<void>;
+ 
+   // Chat Session and Message methods for unified Opus chat
+   createChatSession(session: InsertChatSession): Promise<ChatSession>;
+   getChatSession(conversationId: string): Promise<ChatSession | undefined>;
+   getChatSessionByUserId(userId: string, conversationId: string): Promise<ChatSession | undefined>;
+   getChatMessagesBySession(sessionId: string): Promise<ChatMessage[]>;
+   getChatMessagesByConversationId(conversationId: string, limit?: number, offset?: number): Promise<ChatMessage[]>;
+   getChatMessageCountByConversationId(conversationId: string): Promise<number>;
+   saveChatMessages(sessionId: string, messages: InsertChatMessage[]): Promise<void>;
+   upsertChatSession(userId: string, conversationId: string): Promise<ChatSession>;
+ }
+ 
+ export class DatabaseStorage implements IStorage {
+   // User methods for Replit Auth
+   async getUser(id: string): Promise<User | undefined> {
+     const [user] = await db.select().from(users).where(eq(users.id, id));
+     return user || undefined;
+   }
+ 
++  async getUserByEmail(email: string): Promise<User | undefined> {
++    if (!email) {
++      return undefined;
++    }
++
++    const normalizedEmail = email.trim();
++    if (!normalizedEmail) {
++      return undefined;
++    }
++
++    const [user] = await db
++      .select()
++      .from(users)
++      .where(sql`lower(${users.email}) = lower(${normalizedEmail})`)
++      .limit(1);
++
++    return user || undefined;
++  }
++
+   async upsertUser(userData: UpsertUser): Promise<User> {
+     // Try to insert, and if there's a conflict on email, update the existing record
+     try {
+       const [user] = await db
+         .insert(users)
+         .values(userData)
+         .onConflictDoUpdate({
+           target: users.email,
+           set: {
+             ...userData,
+             updatedAt: new Date(),
+           },
+         })
+         .returning();
+       return user;
+     } catch (error) {
+       // If there's still a conflict on ID, handle it separately
+       const [user] = await db
+         .insert(users)
+         .values(userData)
+         .onConflictDoUpdate({
+           target: users.id,
+           set: {
+             ...userData,
+             updatedAt: new Date(),
+ 
+EOF
+)

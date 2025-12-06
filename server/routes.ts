@@ -444,20 +444,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Debug endpoint - Show integration connection status (NO TOKENS)
   app.get('/api/debug/integrations', async (req: any, res) => {
     try {
-      const targetEmail = req.query.as as string;
-      
-      if (!targetEmail) {
+      const targetParam = typeof req.query.as === 'string' ? req.query.as.trim() : '';
+
+      if (!targetParam) {
         return res.status(400).json({ error: 'Missing ?as=<email> query parameter' });
       }
 
-      // Fetch integration status from storage (same source as UI uses)
-      const [googleIntegration, salesforceIntegration] = await Promise.all([
-        storage.getGoogleIntegration(targetEmail),
-        storage.getSalesforceIntegration(targetEmail)
-      ]);
+      const isEmailLookup = targetParam.includes('@');
+      const userRecord = isEmailLookup ? await storage.getUserByEmail(targetParam) : undefined;
+      const resolvedUserId = userRecord?.id || (!isEmailLookup ? targetParam : undefined);
+
+      let googleIntegration;
+      let salesforceIntegration;
+
+      if (resolvedUserId) {
+        [googleIntegration, salesforceIntegration] = await Promise.all([
+          storage.getGoogleIntegration(resolvedUserId),
+          storage.getSalesforceIntegration(resolvedUserId)
+        ]);
+      }
 
       const response = {
-        userId: targetEmail,
+        userId: targetParam,
+        resolvedUserId: resolvedUserId || null,
+        resolvedEmail: userRecord?.email || (isEmailLookup ? targetParam : null),
         google: {
           connected: !!googleIntegration?.isActive,
           scopes: googleIntegration?.scopes || [],
@@ -851,31 +861,262 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
     }
   });
 
+  // Agent Builder integration - Generate sales prep using Agent Builder
+  app.post("/api/agent/generate", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+      const AGENT_ID = process.env.AGENT_ID;
+      const userId = req.user?.claims?.sub;
+      
+      if (!OPENAI_API_KEY) {
+        console.error('[Agent-Generate] OPENAI_API_KEY environment variable not set');
+        return res.status(500).json({ error: "OpenAI API key not configured" });
+      }
+      
+      if (!AGENT_ID) {
+        console.error('[Agent-Generate] AGENT_ID environment variable not set');
+        return res.status(500).json({ error: "Agent ID not configured" });
+      }
+
+      const { eventId, timeMin, timeMax } = req.body;
+      
+      if (!eventId) {
+        return res.status(400).json({ error: "eventId is required" });
+      }
+
+      console.log(`[Agent-Generate] Triggering Agent Builder for userId=${userId}, eventId=${eventId}`);
+
+      const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+      
+      // Create agent run with instruction to generate and save prep
+      const run = await openai.responses.create({
+        agent_id: AGENT_ID,
+        input: [
+          { 
+            role: "user", 
+            content: `Generate and save a sales prep for event ${eventId}. userId=${userId}. timeMin=${timeMin || new Date().toISOString()}. timeMax=${timeMax || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()}.` 
+          }
+        ],
+        metadata: { userId, eventId, timeMin, timeMax }
+      });
+
+      console.log(`[Agent-Generate] Agent run created: ${(run as any).id}`);
+
+      // Return the run ID so UI can track progress or poll for results
+      res.json({ 
+        runId: (run as any).id || null,
+        eventId,
+        userId,
+        message: "Prep generation started. The agent will call MCP tools and save the prep."
+      });
+    } catch (error) {
+      console.error('[Agent-Generate] Error creating agent run:', error);
+      res.status(500).json({ 
+        error: "Failed to start prep generation",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // MCP-only prep generation - Forward to MCP service
+  app.post("/api/generate-prep", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { eventId, timeMin, timeMax } = req.body;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+      
+      if (!eventId) {
+        return res.status(400).json({ error: "eventId is required" });
+      }
+
+      console.log(`[MCP-Generate] Forwarding prep generation to MCP: userId=${userId}, eventId=${eventId}`);
+
+      const mcpUrl = `${ENV.MCP_BASE_URL}/mcp/prep.generate.v1`;
+      const mcpToken = ENV.MCP_SERVICE_TOKEN;
+
+      if (!mcpToken) {
+        console.error('[MCP-Generate] MCP_SERVICE_TOKEN not configured');
+        return res.status(500).json({ error: "MCP service token not configured" });
+      }
+
+      const response = await fetch(mcpUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${mcpToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          userId, 
+          eventId, 
+          timeMin: timeMin || new Date().toISOString(),
+          timeMax: timeMax || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[MCP-Generate] MCP returned error: ${response.status} - ${errorText}`);
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          return res.status(response.status).json(errorJson);
+        } catch {
+          return res.status(response.status).json({ 
+            error: "MCP service error",
+            message: errorText 
+          });
+        }
+      }
+
+      const data = await response.json();
+      console.log(`[MCP-Generate] MCP returned success:`, data);
+      
+      // Return { prepId, url } or whatever MCP returns
+      res.json(data);
+    } catch (error) {
+      console.error('[MCP-Generate] Error forwarding to MCP:', error);
+      res.status(500).json({ 
+        error: "Failed to generate prep",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Fetch recent prep sheets from MCP
+  app.get("/api/recent-prep", isAuthenticatedOrGuest, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      console.log(`[MCP-Recent-Prep] Fetching prep sheets for userId=${userId}`);
+
+      const mcpUrl = `${ENV.MCP_BASE_URL}/prep?userId=${encodeURIComponent(userId)}`;
+      const mcpToken = ENV.MCP_SERVICE_TOKEN;
+
+      if (!mcpToken) {
+        console.error('[MCP-Recent-Prep] MCP_SERVICE_TOKEN not configured');
+        return res.status(500).json({ error: "MCP service token not configured" });
+      }
+
+      const response = await fetch(mcpUrl, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${mcpToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[MCP-Recent-Prep] MCP returned error: ${response.status} - ${errorText}`);
+        
+        try {
+          const errorJson = JSON.parse(errorText);
+          return res.status(response.status).json(errorJson);
+        } catch {
+          return res.status(response.status).json({ 
+            error: "MCP service error",
+            message: errorText 
+          });
+        }
+      }
+
+      const data = await response.json();
+      console.log(`[MCP-Recent-Prep] MCP returned ${Array.isArray(data) ? data.length : 0} prep sheets`);
+      
+      res.json(data);
+    } catch (error) {
+      console.error('[MCP-Recent-Prep] Error fetching from MCP:', error);
+      res.status(500).json({ 
+        error: "Failed to fetch prep sheets",
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Combined integrations status endpoint
   app.get("/api/integrations/status", isAuthenticatedOrGuest, async (req: any, res) => {
     try {
       // Support ?as=<email> query param for dev mode
       const APP_DEV_BYPASS = process.env.APP_DEV_BYPASS === 'true';
-      const asEmail = req.query.as as string;
-      const userId = (APP_DEV_BYPASS && asEmail) ? asEmail : req.user.claims.sub;
-      
+      const asParamRaw = typeof req.query.as === 'string' ? req.query.as.trim() : '';
+
+      let effectiveUserId: string | undefined = req.user?.claims?.sub;
+      let effectiveEmail: string | undefined = req.user?.claims?.email;
+
+      if (APP_DEV_BYPASS && asParamRaw) {
+        if (asParamRaw.includes('@')) {
+          const impersonatedUser = await storage.getUserByEmail(asParamRaw);
+
+          if (!impersonatedUser) {
+            const emptyGoogleStatus = {
+              userId: asParamRaw,
+              connected: false,
+              scopes: [],
+              expiry: null,
+              service: "google"
+            };
+
+            const emptySalesforceStatus = {
+              userId: asParamRaw,
+              connected: false,
+              instanceUrlPresent: false,
+              service: "salesforce"
+            };
+
+            const outlookStatus = {
+              connected: false,
+              service: "outlook",
+              message: "Outlook integration coming soon"
+            };
+
+            return res.json({
+              userId: asParamRaw,
+              resolvedUserId: null,
+              google: emptyGoogleStatus,
+              salesforce: emptySalesforceStatus,
+              googleCalendar: emptyGoogleStatus,
+              outlook: outlookStatus
+            });
+          }
+
+          effectiveUserId = impersonatedUser.id;
+          effectiveEmail = impersonatedUser.email;
+        } else {
+          effectiveUserId = asParamRaw;
+          effectiveEmail = undefined;
+        }
+      }
+
+      if (!effectiveUserId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+
       // Get Google integration status
-      const googleIntegration = await storage.getGoogleIntegration(userId);
+      const googleIntegration = await storage.getGoogleIntegration(effectiveUserId);
       const googleStatus = {
-        userId,
+        userId: effectiveUserId,
         connected: !!(googleIntegration?.accessToken || googleIntegration?.refreshToken),
         scopes: googleIntegration?.scopes || [],
         expiry: googleIntegration?.tokenExpiry,
-        service: "google"
+        service: "google",
+        email: effectiveEmail || null
       };
 
       // Get Salesforce integration status
-      const salesforceIntegration = await storage.getSalesforceIntegration(userId);
+      const salesforceIntegration = await storage.getSalesforceIntegration(effectiveUserId);
       const salesforceStatus = {
-        userId,
+        userId: effectiveUserId,
         connected: !!(salesforceIntegration?.accessToken || salesforceIntegration?.refreshToken),
         instanceUrlPresent: !!salesforceIntegration?.instanceUrl,
-        service: "salesforce"
+        service: "salesforce",
+        email: effectiveEmail || null
       };
 
       // Outlook is always not connected for now
@@ -886,7 +1127,8 @@ RESPONSE STYLE: Confident sales expert. Lead with data, follow with actionable r
       };
 
       res.json({
-        userId,
+        userId: APP_DEV_BYPASS && asParamRaw ? asParamRaw : effectiveUserId,
+        resolvedUserId: effectiveUserId,
         google: googleStatus,
         salesforce: salesforceStatus,
         googleCalendar: googleStatus, // Keep for backward compatibility

@@ -1,0 +1,167 @@
+Agent 3 (Troubleshoot Generate Prep 404 + “Invalid Date”)
+
+Goal: Fix two bugs on the Agenda tab:
+
+Clicking Generate Prep returns 404 {"message":"Call not found"}.
+
+Agenda list shows “Invalid Date” under each call.
+
+Context
+
+The Agenda tab now uses the ultra-minimal Call Prep layout (facts-only).
+
+The “Generate Prep” button calls the MCP endpoint to build a minimal facts-only prep from Google Calendar (and later Gmail/SF).
+
+The MCP endpoint expects a valid Google Calendar event identifier and user context.
+
+Part A — Fix the Generate Prep 404
+
+Symptom: UI shows Failed to generate AI preparation: 404: {"message":"Call not found"}.
+
+Likely causes to check:
+
+Wrong ID sent: The UI might be sending an internal list item ID (or prepId) instead of the Google Calendar event.id.
+
+Missing calendarId: MCP fetcher may need calendarId to find the event (especially if multiple calendars are in play).
+
+Empty selection / null event: The selected event in the Agenda pane might be undefined, so the request body is missing/empty.
+
+Auth/token scope: Google token not present or expired; MCP returns not-found because Calendar fetch fails silently.
+
+Route mismatch: UI calling /mcp/prep.generate.v1 but server mounted at a different base (e.g., /mcp/prep.generate.v1 vs /mcp/prep.generate.v1/ or behind a proxy path).
+
+Do this:
+
+Add request logging in the App where we call Generate Prep:
+
+console.log("[GeneratePrep] payload", { userId, eventId, calendarId, endpoint });
+
+
+Add server logging in MCP at the start of the handler:
+
+console.log("[prep.generate.v1] incoming", { userId, eventId, calendarId, hasToken: !!token });
+
+
+Verify the payload includes the actual Google event.id (string like "5k5m8h9…"). If you have event.etag/iCalUID, log those too.
+
+If multiple calendars: pass calendarId (e.g., "primary"). Update both sides:
+
+App request body
+
+const body = { userId, eventId: selectedEvent.id, calendarId: selectedEvent.calendarId ?? "primary" };
+
+
+MCP fetch
+
+const calendarId = req.body.calendarId || "primary";
+const event = await google.calendar.events.get({ calendarId, eventId });
+if (!event?.data) return res.status(404).json({ message: "Call not found" });
+
+
+Guard against empty selection in the UI:
+
+if (!selectedEvent?.id) {
+  toast.error("Select an event first"); 
+  return;
+}
+
+
+Disable the button while loading and show a clearer error if MCP returns 401/403 (token) vs 404 (ID).
+
+cURL sanity test against MCP with the exact IDs you see in the UI:
+
+curl -sS -X POST "$MCP/prep.generate.v1" \
+  -H "Authorization: Bearer $MCP_SERVICE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"<devUser>","eventId":"<googleEventId>","calendarId":"primary"}' | jq
+
+
+Definition of done (404):
+
+Generate Prep succeeds (200) for a selected real event.
+
+If the event is missing/invalid, the UI shows a friendly “Select a valid event” message—not a raw 404.
+
+Part B — Fix “Invalid Date” in the Agenda list
+
+Symptom: Each item shows “Invalid Date”.
+
+Likely causes to check:
+
+Google events can be all-day or timed:
+
+Timed events → event.start.dateTime / event.end.dateTime
+
+All-day → event.start.date / event.end.date (no time component)
+
+Your formatter is probably doing new Date(event.start.dateTime) without fallback, resulting in Invalid Date.
+
+Missing timezone handling or undefined field access.
+
+Do this:
+
+Replace date extraction with a safe helper:
+
+function getEventStartISO(evt: any): string | undefined {
+  return evt?.start?.dateTime || (evt?.start?.date ? `${evt.start.date}T00:00:00` : undefined);
+}
+function getEventEndISO(evt: any): string | undefined {
+  return evt?.end?.dateTime || (evt?.end?.date ? `${evt.end.date}T23:59:59` : undefined);
+}
+
+
+In the renderer, guard and format:
+
+const startISO = getEventStartISO(event);
+const endISO   = getEventEndISO(event);
+
+const startStr = startISO ? dayjs(startISO).format("MMM D • h:mm A") : "—";
+const endStr   = endISO   ? dayjs(endISO).format("h:mm A")          : "—";
+
+// If all-day (no dateTime), prefer: dayjs(startISO).format("MMM D (All-day)")
+
+
+If you don’t use dayjs, use your existing formatter but avoid Invalid Date:
+
+const safeFormat = (iso?: string) => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(+d) ? "—" : d.toLocaleString();
+};
+
+
+Recurring events: ensure the list is using the expanded instances (occurrence IDs) and not a series master with missing start/end. If you’re pulling raw events, enable singleEvents=true and orderBy=startTime on the Calendar list call:
+
+calendar.events.list({
+  calendarId: "primary",
+  timeMin, timeMax,
+  singleEvents: true,
+  orderBy: "startTime",
+});
+
+
+Definition of done (dates):
+
+Timed events show correct Start • End times.
+
+All-day events show a clean “MMM D (All-day)” (or your current style).
+
+No “Invalid Date” strings anywhere.
+
+Part C — Small safety/UX touches (no style changes)
+
+Button state: Generate Prep disabled if !selectedEvent?.id.
+
+Toast messages:
+
+401/403 → “Reconnect Google access in Settings.”
+
+404 → “Couldn’t find that calendar event. Try another one.”
+
+Console logs behind if (process.env.NODE_ENV === "development") so prod stays clean.
+
+Submit back
+
+Commit with message: fix(agenda): generate-prep 404 and invalid date handling; add calendarId; safe date parsing.
+
+Paste the before/after payload logs (from App & MCP) into the PR for verification.

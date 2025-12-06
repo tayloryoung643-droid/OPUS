@@ -1,0 +1,127 @@
+Prompt 2 — App Repl (UI + Agent + “Generate Prep”)
+
+Goal: From the app, click “Generate Prep” → call backend → Agent (Agent Builder) calls MCP tools → saves prep → UI shows it.
+
+Do this in your App Repl (Next.js):
+
+Env
+
+Add secrets:
+
+OPENAI_API_KEY
+
+AGENT_ID (from Agent Builder)
+
+MCP_BASE_URL = the public MCP URL (e.g., https://…replit.dev)
+
+MCP_SERVICE_TOKEN = same token your MCP expects for tool auth
+
+Register HTTP tools in Agent Builder
+Create 4 HTTP tools in Agent Builder (dashboard):
+
+calendar.next_events.v1
+
+Endpoint: POST ${MCP_BASE_URL}/mcp/calendar.next_events.v1
+
+Auth: Header Authorization: Bearer ${MCP_SERVICE_TOKEN}
+
+Input schema:
+
+{"type":"object","properties":{"userId":{"type":"string"},"timeMin":{"type":"string","format":"date-time"},"timeMax":{"type":"string","format":"date-time"},"maxResults":{"type":"integer"}},"required":["userId","timeMin","timeMax"]}
+
+
+gmail.search_threads.v1
+
+POST ${MCP_BASE_URL}/mcp/gmail.search_threads.v1 (same auth header)
+
+Schema: {"type":"object","properties":{"userId":{"type":"string"},"query":{"type":"string"},"maxResults":{"type":"integer"}},"required":["userId","query"]}
+
+gmail.read_thread.v1
+
+POST ${MCP_BASE_URL}/mcp/gmail.read_thread.v1 (same auth)
+
+Schema: {"type":"object","properties":{"userId":{"type":"string"},"id":{"type":"string"}},"required":["userId","id"]}
+
+prep.save.v1
+
+POST ${MCP_BASE_URL}/mcp/prep.save.v1 (same auth)
+
+Schema: {"type":"object","properties":{"userId":{"type":"string"},"eventId":{"type":"string"},"sections":{"type":"object"}},"required":["userId","eventId","sections"]}
+
+Agent system prompt (paste):
+
+You are a sales prep orchestrator. For any given eventId, you MUST:
+
+Call calendar.next_events.v1 or the app-provided event data to understand the meeting.
+
+Derive a Gmail query from attendees and subject. Use gmail.search_threads.v1 and optionally gmail.read_thread.v1 for snippets.
+
+Produce sections: Snapshot, Last Contact Recap (3 bullets), Likely Priorities (3 bullets), Risks & Counters (3/3), Tailored Questions (5), Suggested Agenda (timeboxed), Notes (empty).
+
+Persist by calling prep.save.v1 and include userId and eventId.
+Never invent data—always use tools. If no emails found, still save useful generic sections and indicate low confidence.
+
+Backend route to run the agent
+
+app/api/agent/generate/route.ts:
+
+import OpenAI from "openai";
+import { NextRequest, NextResponse } from "next/server";
+
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
+export async function POST(req: NextRequest) {
+  const { userId, eventId, timeMin, timeMax } = await req.json();
+
+  const run = await client.responses.create({
+    agent_id: process.env.AGENT_ID!,
+    // The agent will call tools; include clear input
+    input: [
+      { role: "user", content: `Generate and save a prep for event ${eventId}. userId=${userId}. timeMin=${timeMin}. timeMax=${timeMax}.` }
+    ],
+    metadata: { userId, eventId, timeMin, timeMax }
+  });
+
+  // The agent will save via prep.save.v1 and should return the saved prepId in its final text or tool output.
+  // To keep it simple, just return the whole run output and let the UI poll /prep list afterward.
+  return NextResponse.json({ runId: (run as any).id ?? null });
+}
+
+
+UI: Generate button + viewer
+
+On your “Upcoming” page: fetch calendar events (you already can via MCP or direct Google; for speed, just list from MCP for your user).
+
+Add a button:
+
+async function onGenerate(eventId: string) {
+  const now = new Date();
+  const in7 = new Date(Date.now() + 7*24*3600*1000);
+  const res = await fetch("/api/agent/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: "test-user",
+      eventId,
+      timeMin: now.toISOString(),
+      timeMax: in7.toISOString()
+    })
+  });
+  // simple: after a short delay, load the newest prep for the user
+  setTimeout(() => router.push(`/prep/recent?userId=test-user`), 1500);
+}
+
+
+Add pages:
+
+/prep/[id]: fetch ${MCP_BASE_URL}/prep/:id and render sections.
+
+/prep/recent?userId=…: fetch ${MCP_BASE_URL}/prep?userId=…, take the first, redirect to /prep/[id].
+
+Quick end-to-end test
+
+Visit MCP: /connect?userId=test-user → authorize Google.
+
+In the App: click Generate Prep on a real event.
+
+The agent should call MCP tools → prep.save.v1 → App navigates to /prep/[id].

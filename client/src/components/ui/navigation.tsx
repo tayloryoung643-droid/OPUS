@@ -1,8 +1,11 @@
 import { Button } from "@/components/ui/button";
-import { Settings, Sparkles, LogOut } from "lucide-react";
+import { Settings, Sparkles, LogOut, Sun, Moon } from "lucide-react";
 import { Link } from "wouter";
+import { useTheme } from "@/contexts/ThemeProvider";
 
 export default function Navigation() {
+  const { theme, toggleTheme } = useTheme();
+
   const handleLogout = () => {
     window.location.href = "/api/logout";
   };
@@ -21,8 +24,21 @@ export default function Navigation() {
           </div>
           <span className="text-xl font-semibold text-foreground">Opus</span>
         </div>
-        
+
         <div className="flex items-center space-x-4">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={toggleTheme}
+            data-testid="button-theme-toggle"
+            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+          >
+            {theme === "light" ? (
+              <Moon className="h-4 w-4" />
+            ) : (
+              <Sun className="h-4 w-4" />
+            )}
+          </Button>
           <Link href="/settings">
             <Button variant="outline" size="icon" data-testid="button-settings">
               <Settings className="h-4 w-4" />

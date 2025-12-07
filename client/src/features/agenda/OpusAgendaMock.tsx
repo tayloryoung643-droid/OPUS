@@ -221,6 +221,80 @@ Keep bullets tight. Avoid repetition."
   );
 }
 
+interface ResizableNotesSectionProps {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+}
+
+function ResizableNotesSection({ value, onChange, onBlur }: ResizableNotesSectionProps) {
+  const [height, setHeight] = useState(200);
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const startY = useRef(0);
+  const startHeight = useRef(0);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+    startY.current = e.clientY;
+    startHeight.current = height;
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientY - startY.current;
+      const newHeight = Math.max(100, Math.min(600, startHeight.current + delta));
+      setHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  return (
+    <div ref={containerRef} className="rounded-2xl border border-border bg-card p-5 mb-6">
+      <h3 className="text-base font-semibold text-card-foreground mb-3">
+        AI-Generated Call Preparation
+      </h3>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        placeholder="Notes (optional, personal scratchpad)"
+        className="w-full rounded-lg bg-transparent border-0 px-0 py-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none resize-none"
+        style={{ height: `${height}px` }}
+        data-testid="textarea-ai-prep-notes"
+      />
+      <div
+        onMouseDown={handleMouseDown}
+        className={`mt-2 h-6 flex items-center justify-center cursor-ns-resize rounded-lg transition-colors ${
+          isDragging ? 'bg-purple-600/30' : 'bg-muted hover:bg-muted/80'
+        }`}
+        data-testid="drag-handle-ai-prep-resize"
+      >
+        <div className="flex gap-1">
+          <div className="w-8 h-1 rounded-full bg-muted-foreground" />
+        </div>
+      </div>
+      <div className="text-center text-xs text-muted-foreground mt-1">
+        Drag to resize
+      </div>
+    </div>
+  );
+}
+
 export default function OpusAgendaMock() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -776,17 +850,12 @@ export default function OpusAgendaMock() {
             </div>
           </div>
 
-          {/* Notes section */}
-          <div className="rounded-2xl border border-border bg-card p-5 mb-6">
-            <textarea
-              value={notes[effectiveEventId] || ""}
-              onChange={(e) => setNotes({ ...notes, [effectiveEventId]: e.target.value })}
-              onBlur={handleSave}
-              placeholder="Notes (optional, personal scratchpad)"
-              className="w-full min-h-[96px] rounded-lg bg-transparent border-0 px-0 py-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none resize-none"
-              data-testid="textarea-notes"
-            />
-          </div>
+          {/* AI-Generated Call Preparation section with resize */}
+          <ResizableNotesSection
+            value={notes[effectiveEventId] || ""}
+            onChange={(value) => setNotes({ ...notes, [effectiveEventId]: value })}
+            onBlur={handleSave}
+          />
 
           {/* Open call-prep canvas */}
           <ResizableCanvas />

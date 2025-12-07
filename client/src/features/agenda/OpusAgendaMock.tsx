@@ -5,7 +5,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { CONFIG } from "@/config";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Sun, Moon } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeProvider";
 
 // ===== Helpers (small components) =====
 function Section({ title, children }) {
@@ -223,6 +224,7 @@ Keep bullets tight. Avoid repetition."
 export default function OpusAgendaMock() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { theme, toggleTheme } = useTheme();
 
   // Fetch real Google Calendar events
   const { data: calendarEvents, isLoading: eventsLoading, error: eventsError } = useQuery({
@@ -599,13 +601,27 @@ export default function OpusAgendaMock() {
             </button>
           ))}
         </nav>
-        <button 
-          onClick={() => navigate("/settings")}
-          className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"
-          data-testid="button-settings"
-        >
-          Settings
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-colors"
+            data-testid="button-theme-toggle"
+            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+          >
+            {theme === "light" ? (
+              <Moon className="h-4 w-4" />
+            ) : (
+              <Sun className="h-4 w-4" />
+            )}
+          </button>
+          <button
+            onClick={() => navigate("/settings")}
+            className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"
+            data-testid="button-settings"
+          >
+            Settings
+          </button>
+        </div>
       </header>
 
       {/* Body grid */}

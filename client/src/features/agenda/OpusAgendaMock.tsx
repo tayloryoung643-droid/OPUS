@@ -579,11 +579,11 @@ export default function OpusAgendaMock() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 select-none">
             <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-cyan-400 to-purple-500 grid place-items-center">
-              <div className="h-3 w-3 rounded-sm bg-black/60" />
+              <div className="h-3 w-3 rounded-sm bg-background/60" />
             </div>
             <span className="text-lg font-semibold">Opus</span>
           </div>
-          <span className="text-sm text-zinc-400">Agenda</span>
+          <span className="text-sm text-muted-foreground">Agenda</span>
         </div>
         <nav className="hidden md:flex items-center gap-6 text-sm">
           {["Overview", "Agenda"].map((tab) => (
@@ -604,7 +604,7 @@ export default function OpusAgendaMock() {
         <div className="flex items-center gap-3">
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-colors"
+            className="p-2 rounded-lg border border-border hover:border-border/80 text-muted-foreground hover:text-foreground transition-colors"
             data-testid="button-theme-toggle"
             title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
           >
@@ -616,7 +616,7 @@ export default function OpusAgendaMock() {
           </button>
           <button
             onClick={() => navigate("/settings")}
-            className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"
+            className="text-sm px-3 py-2 rounded-lg border border-border hover:border-border/80 text-muted-foreground hover:text-foreground"
             data-testid="button-settings"
           >
             Settings
@@ -636,13 +636,13 @@ export default function OpusAgendaMock() {
             {eventsLoading ? (
               [...Array(3)].map((_, i) => (
                 <div key={i} className="animate-pulse px-3 py-3 mb-2">
-                  <div className="h-4 bg-zinc-800 rounded w-3/4 mb-2"></div>
-                  <div className="h-3 bg-zinc-800 rounded w-1/2"></div>
+                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-muted rounded w-1/2"></div>
                 </div>
               ))
             ) : eventsError ? (
               <div className="px-3 py-6 text-center">
-                <div className="text-zinc-500 text-sm mb-2">Unable to load calendar events</div>
+                <div className="text-muted-foreground text-sm mb-2">Unable to load calendar events</div>
                 <button className="text-purple-400 hover:text-purple-300 text-sm" onClick={() => window.location.reload()}>
                   Reconnect Google Calendar
                 </button>
@@ -652,7 +652,7 @@ export default function OpusAgendaMock() {
                 <CallItem key={c.id} active={selected?.id === c.id} title={c.title} subtitle={c.company} time={c.time} onClick={() => setSelectedId(c.id)} />
               ))
             ) : (
-              <div className="px-3 py-4 text-center text-zinc-500 text-sm">
+              <div className="px-3 py-4 text-center text-muted-foreground text-sm">
                 No upcoming events
               </div>
             )}
@@ -664,8 +664,8 @@ export default function OpusAgendaMock() {
             {eventsLoading ? (
               [...Array(2)].map((_, i) => (
                 <div key={i} className="animate-pulse px-3 py-3 mb-2">
-                  <div className="h-4 bg-zinc-800 rounded w-3/4 mb-2"></div>
-                  <div className="h-3 bg-zinc-800 rounded w-1/2"></div>
+                  <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                  <div className="h-3 bg-muted rounded w-1/2"></div>
                 </div>
               ))
             ) : processedAgenda.previous.length > 0 ? (
@@ -673,7 +673,7 @@ export default function OpusAgendaMock() {
                 <CallItem key={c.id} active={selected?.id === c.id} title={c.title} subtitle={c.company} time={c.time} onClick={() => setSelectedId(c.id)} />
               ))
             ) : (
-              <div className="px-3 py-4 text-center text-zinc-500 text-sm">
+              <div className="px-3 py-4 text-center text-muted-foreground text-sm">
                 No previous events
               </div>
             )}
@@ -698,14 +698,14 @@ export default function OpusAgendaMock() {
           {/* Event header card */}
           <div className="rounded-2xl border border-border bg-card p-5 mb-6">
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2 text-zinc-400">
+              <div className="flex items-center gap-2 text-muted-foreground">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <rect x="3" y="4" width="18" height="18" rx="2" ry="2" strokeWidth="2" fill="none" />
                   <line x1="16" y1="2" x2="16" y2="6" strokeWidth="2" />
                   <line x1="8" y1="2" x2="8" y2="6" strokeWidth="2" />
                   <line x1="3" y1="10" x2="21" y2="10" strokeWidth="2" />
                 </svg>
-                <h2 className="text-base font-semibold text-white">Event</h2>
+                <h2 className="text-base font-semibold text-card-foreground">Event</h2>
               </div>
               
               {/* Generate Prep Button - Top Right */}

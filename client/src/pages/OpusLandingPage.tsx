@@ -276,20 +276,20 @@ export default function OpusLandingPage() {
             <div className="text-3xl font-light tracking-tight">
               $480K <span className="text-muted-foreground text-base">/ $1M target</span>
             </div>
-            <div className="mt-4 h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
+            <div className="mt-4 h-1.5 w-full bg-muted rounded-full overflow-hidden">
               <div className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-600" style={{ width: "48%" }} />
             </div>
             <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-muted-foreground">
               <div>
-                <div className="text-zinc-200 font-medium">20%</div>
+                <div className="text-card-foreground font-medium">20%</div>
                 <div className="mt-0.5">Segment rank</div>
               </div>
               <div>
-                <div className="text-zinc-200 font-medium">7</div>
+                <div className="text-card-foreground font-medium">7</div>
                 <div className="mt-0.5">Active opps</div>
               </div>
               <div>
-                <div className="text-zinc-200 font-medium">$1.9M</div>
+                <div className="text-card-foreground font-medium">$1.9M</div>
                 <div className="mt-0.5">Pipeline</div>
               </div>
             </div>
@@ -301,15 +301,15 @@ export default function OpusLandingPage() {
             <ul className="space-y-3 text-sm text-muted-foreground">
               <li className="flex items-center justify-between">
                 <span>Win rate (QTD)</span>
-                <span className="text-zinc-100 font-medium">28%</span>
+                <span className="text-card-foreground font-medium">28%</span>
               </li>
               <li className="flex items-center justify-between">
                 <span>Avg. cycle length</span>
-                <span className="text-zinc-100 font-medium">32 days</span>
+                <span className="text-card-foreground font-medium">32 days</span>
               </li>
               <li className="flex items-center justify-between">
                 <span>Next step recommendations</span>
-                <span className="text-zinc-100 font-medium">2 ready</span>
+                <span className="text-card-foreground font-medium">2 ready</span>
               </li>
             </ul>
             <div className="mt-4 text-xs text-muted-foreground">Curated by Opus from CRM + calendar signals</div>

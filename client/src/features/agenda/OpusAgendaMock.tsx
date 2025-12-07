@@ -221,91 +221,6 @@ Keep bullets tight. Avoid repetition."
   );
 }
 
-// Resizable AI-Generated Prep Section
-function ResizablePrepSection({ prep }) {
-  const [height, setHeight] = useState(300);
-  const [isDragging, setIsDragging] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const startY = useRef(0);
-  const startHeight = useRef(0);
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-    startY.current = e.clientY;
-    startHeight.current = height;
-  };
-
-  useEffect(() => {
-    if (!isDragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const delta = e.clientY - startY.current;
-      const newHeight = Math.max(150, Math.min(1000, startHeight.current + delta));
-      setHeight(newHeight);
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging]);
-
-  return (
-    <div className="mb-6">
-      <h3 className="text-base font-semibold text-card-foreground mb-3">
-        AI-Generated Call Preparation
-      </h3>
-      <div ref={containerRef} className="rounded-2xl border border-border bg-card p-5">
-        <div
-          className="overflow-y-auto"
-          style={{ height: `${height}px` }}
-        >
-          {prep.opusSummary && (
-            <div className="space-y-4">
-              <div>
-                <h4 className="text-sm font-semibold text-card-foreground mb-2">Executive Summary:</h4>
-                <p className="text-sm text-foreground leading-relaxed">{prep.opusSummary.headline}</p>
-              </div>
-              {prep.opusSummary.bullets && prep.opusSummary.bullets.length > 0 && (
-                <ul className="space-y-2 text-sm text-foreground">
-                  {prep.opusSummary.bullets.map((bullet, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className="mt-2 h-1.5 w-1.5 rounded-full bg-muted-foreground flex-shrink-0" />
-                      <span>{bullet}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
-        <div
-          onMouseDown={handleMouseDown}
-          className={`mt-2 h-6 flex items-center justify-center cursor-ns-resize rounded-lg transition-colors ${
-            isDragging ? 'bg-purple-600/30' : 'bg-muted hover:bg-muted/80'
-          }`}
-          data-testid="drag-handle-resize-prep"
-        >
-          <div className="flex gap-1">
-            <div className="w-8 h-1 rounded-full bg-muted-foreground" />
-          </div>
-        </div>
-        <div className="text-center text-xs text-muted-foreground mt-1">
-          Drag to resize
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function OpusAgendaMock() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -861,10 +776,17 @@ export default function OpusAgendaMock() {
             </div>
           </div>
 
-          {/* AI-Generated Call Preparation - Resizable */}
-          {prep?.opusSummary && (
-            <ResizablePrepSection prep={prep} />
-          )}
+          {/* Notes section */}
+          <div className="rounded-2xl border border-border bg-card p-5 mb-6">
+            <textarea
+              value={notes[effectiveEventId] || ""}
+              onChange={(e) => setNotes({ ...notes, [effectiveEventId]: e.target.value })}
+              onBlur={handleSave}
+              placeholder="Notes (optional, personal scratchpad)"
+              className="w-full min-h-[96px] rounded-lg bg-transparent border-0 px-0 py-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none resize-none"
+              data-testid="textarea-notes"
+            />
+          </div>
 
           {/* Open call-prep canvas */}
           <ResizableCanvas />

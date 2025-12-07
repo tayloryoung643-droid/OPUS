@@ -25,12 +25,12 @@ function CallItem({ title, subtitle, time, active, onClick }) {
       className={`w-full text-left rounded-xl px-3 py-3 mb-2 border transition ${
         active
           ? "bg-purple-600/20 border-purple-900/60"
-          : "bg-zinc-950/60 border-zinc-900/70 hover:bg-zinc-900/40"
+          : "bg-card border-border hover:bg-muted"
       }`}
     >
-      <div className="text-sm font-medium">{title}</div>
-      <div className="text-xs text-zinc-400">{subtitle}</div>
-      <div className="text-[11px] text-zinc-500 mt-1">{time}</div>
+      <div className="text-sm font-medium text-card-foreground">{title}</div>
+      <div className="text-xs text-muted-foreground">{subtitle}</div>
+      <div className="text-[11px] text-muted-foreground mt-1">{time}</div>
     </button>
   );
 }
@@ -48,12 +48,12 @@ function Card({ title, children, full = false, right = null }) {
 }
 
 function List({ bullets = [] }) {
-  if (!bullets.length) return <div className="text-zinc-500 text-sm">—</div>;
+  if (!bullets.length) return <div className="text-muted-foreground text-sm">—</div>;
   return (
-    <ul className="space-y-2 text-sm text-zinc-300">
+    <ul className="space-y-2 text-sm text-foreground">
       {bullets.map((b, i) => (
         <li key={i} className="flex items-start gap-2">
-          <span className="mt-2 h-1.5 w-1.5 rounded-full bg-zinc-500" />
+          <span className="mt-2 h-1.5 w-1.5 rounded-full bg-muted-foreground" />
           <span>{b}</span>
         </li>
       ))}
@@ -65,12 +65,12 @@ function Skeleton() {
   return (
     <div className="animate-pulse grid grid-cols-1 lg:grid-cols-2 gap-6">
       {[...Array(6)].map((_, i) => (
-        <div key={i} className="rounded-2xl border border-zinc-900/70 bg-black/60 p-4">
-          <div className="h-4 w-40 bg-zinc-800 rounded mb-4" />
+        <div key={i} className="rounded-2xl border border-border bg-card p-4">
+          <div className="h-4 w-40 bg-muted rounded mb-4" />
           <div className="space-y-2">
-            <div className="h-3 bg-zinc-800 rounded" />
-            <div className="h-3 bg-zinc-800 rounded w-2/3" />
-            <div className="h-3 bg-zinc-800 rounded w-1/2" />
+            <div className="h-3 bg-muted rounded" />
+            <div className="h-3 bg-muted rounded w-2/3" />
+            <div className="h-3 bg-muted rounded w-1/2" />
           </div>
         </div>
       ))}
@@ -90,7 +90,7 @@ function EditableList({ value = [], onChange, placeholder = "Type one line per b
           .filter((s) => s !== "")
       )}
       placeholder={placeholder}
-      className="w-full min-h-[120px] rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+      className="w-full min-h-[120px] rounded-lg bg-background border border-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-purple-600"
     />
   );
 }
@@ -102,11 +102,11 @@ function EditableKeyValue({ kv = {}, onChange }) {
     <div className="space-y-2 text-sm">
       {MEDDIC_KEYS.map((k) => (
         <div key={k} className="flex items-center gap-3">
-          <span className="text-zinc-400 w-40 shrink-0">{k}</span>
+          <span className="text-muted-foreground w-40 shrink-0">{k}</span>
           <input
             value={kv[k] || ""}
             onChange={(e) => onChange({ ...kv, [k]: e.target.value })}
-            className="flex-1 rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-600"
+            className="flex-1 rounded-lg bg-background border border-input px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-purple-600"
             placeholder={`Add ${k}…`}
           />
         </div>
@@ -131,20 +131,20 @@ function EditableObjections({ items = [], onChange }) {
             value={o.q}
             onChange={(e) => update(i, "q", e.target.value)}
             placeholder="Question…"
-            className="rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-600"
+            className="rounded-lg bg-background border border-input px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-purple-600"
           />
           <div className="flex gap-2">
             <input
               value={o.a}
               onChange={(e) => update(i, "a", e.target.value)}
               placeholder="Answer…"
-              className="flex-1 rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-purple-600"
+              className="flex-1 rounded-lg bg-background border border-input px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-purple-600"
             />
-            <button onClick={() => remove(i)} className="px-2 rounded-lg border border-zinc-800 text-xs text-zinc-300">–</button>
+            <button onClick={() => remove(i)} className="px-2 rounded-lg border border-border text-xs text-foreground hover:bg-muted">–</button>
           </div>
         </div>
       ))}
-      <button onClick={add} className="text-xs px-3 py-1.5 rounded-lg border border-zinc-800 text-zinc-300">+ Add row</button>
+      <button onClick={add} className="text-xs px-3 py-1.5 rounded-lg border border-border text-foreground hover:bg-muted">+ Add row</button>
     </div>
   );
 }
@@ -186,8 +186,8 @@ function ResizableCanvas() {
   }, [isDragging]);
 
   return (
-    <div ref={containerRef} className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5">
-      <h3 className="text-base font-semibold text-white mb-3">
+    <div ref={containerRef} className="rounded-2xl border border-border bg-card p-5">
+      <h3 className="text-base font-semibold text-card-foreground mb-3">
         Open call-prep canvas
       </h3>
       <textarea
@@ -199,22 +199,22 @@ Suggestions:
 • CRM facts: stage, amount, close date, owner
 
 Keep bullets tight. Avoid repetition."
-        className="w-full rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-600 resize-none"
+        className="w-full rounded-lg bg-background border border-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-purple-600 resize-none"
         style={{ height: `${height}px` }}
         data-testid="textarea-prep-canvas"
       />
       <div
         onMouseDown={handleMouseDown}
         className={`mt-2 h-6 flex items-center justify-center cursor-ns-resize rounded-lg transition-colors ${
-          isDragging ? 'bg-purple-600/30' : 'bg-zinc-800/60 hover:bg-zinc-700/60'
+          isDragging ? 'bg-purple-600/30' : 'bg-muted hover:bg-muted/80'
         }`}
         data-testid="drag-handle-resize"
       >
         <div className="flex gap-1">
-          <div className="w-8 h-1 rounded-full bg-zinc-500" />
+          <div className="w-8 h-1 rounded-full bg-muted-foreground" />
         </div>
       </div>
-      <div className="text-center text-xs text-zinc-500 mt-1">
+      <div className="text-center text-xs text-muted-foreground mt-1">
         Drag to resize
       </div>
     </div>
@@ -587,13 +587,13 @@ export default function OpusAgendaMock() {
         </div>
         <nav className="hidden md:flex items-center gap-6 text-sm">
           {["Overview", "Agenda"].map((tab) => (
-            <button 
-              key={tab} 
+            <button
+              key={tab}
               onClick={() => {
                 if (tab === "Overview") navigate("/overview");
                 else if (tab === "Agenda") navigate("/agenda");
               }}
-              className={`relative ${tab === "Agenda" ? "text-white font-semibold" : "text-zinc-400 hover:text-white cursor-pointer"}`}
+              className={`relative ${tab === "Agenda" ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground cursor-pointer"}`}
               data-testid={`nav-${tab.toLowerCase()}`}
             >
               {tab}
@@ -627,9 +627,9 @@ export default function OpusAgendaMock() {
       {/* Body grid */}
       <main className="grid grid-cols-1 lg:grid-cols-[320px_1fr]">
         {/* Left rail */}
-        <aside className="border-r border-zinc-900/60 min-h-[calc(100vh-57px)]">
-          <div className="p-4 border-b border-zinc-900/60">
-            <input placeholder="Search calls…" className="w-full rounded-xl bg-zinc-950/60 border border-zinc-900/70 px-3 py-2 text-sm placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-500" />
+        <aside className="border-r border-border min-h-[calc(100vh-57px)]">
+          <div className="p-4 border-b border-border">
+            <input placeholder="Search calls…" className="w-full rounded-xl bg-background border border-input px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-purple-500" />
           </div>
 
           <Section title="Upcoming">
@@ -658,7 +658,7 @@ export default function OpusAgendaMock() {
             )}
           </Section>
 
-          <div className="h-px bg-zinc-900/60 mx-4" />
+          <div className="h-px bg-border mx-4" />
 
           <Section title="Previous">
             {eventsLoading ? (
@@ -690,13 +690,13 @@ export default function OpusAgendaMock() {
 
           {/* Save toast */}
           {showSaved && (
-            <div className="fixed right-6 top-[calc(64px+16px)] z-[60] px-3 py-1.5 rounded-lg bg-zinc-900/90 border border-zinc-800 text-xs text-zinc-200">
+            <div className="fixed right-6 top-[calc(64px+16px)] z-[60] px-3 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground shadow-lg">
               ✓ Saved {savedAt ? savedAt.toLocaleTimeString() : ""}
             </div>
           )}
 
           {/* Event header card */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5 mb-6">
+          <div className="rounded-2xl border border-border bg-card p-5 mb-6">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2 text-zinc-400">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -723,26 +723,26 @@ export default function OpusAgendaMock() {
             {/* Event name and Date/Time side by side */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm text-zinc-400 mb-2">Event name</label>
+                <label className="block text-sm text-muted-foreground mb-2">Event name</label>
                 <input
                   type="text"
                   value={eventTitle}
                   onChange={(e) => setEventTitle(e.target.value)}
                   onBlur={handleSave}
                   placeholder="e.g., Product Demo — DataFlow"
-                  className="w-full rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                  className="w-full rounded-lg bg-background border border-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-purple-600"
                   data-testid="input-event-name"
                 />
               </div>
               <div>
-                <label className="block text-sm text-zinc-400 mb-2">Date & time</label>
+                <label className="block text-sm text-muted-foreground mb-2">Date & time</label>
                 <input
                   type="text"
                   value={eventTime}
                   onChange={(e) => setEventTime(e.target.value)}
                   onBlur={handleSave}
                   placeholder="Oct 12, 2025 • 11:00–11:30"
-                  className="w-full rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600"
+                  className="w-full rounded-lg bg-background border border-input px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-purple-600"
                   data-testid="input-event-datetime"
                 />
               </div>
@@ -750,17 +750,17 @@ export default function OpusAgendaMock() {
 
             {/* Attendees section */}
             <div>
-              <div className="flex items-center gap-2 mb-2 text-zinc-400">
+              <div className="flex items-center gap-2 mb-2 text-muted-foreground">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
-                <label className="text-sm font-medium text-white">Attendees (emails)</label>
+                <label className="text-sm font-medium text-card-foreground">Attendees (emails)</label>
               </div>
               <div className="flex flex-wrap gap-2">
                 {prep?.stakeholders?.map((s, i) => (
                   <span
                     key={i}
-                    className="inline-flex items-center px-3 py-1 rounded-md bg-zinc-800/60 text-sm text-zinc-200"
+                    className="inline-flex items-center px-3 py-1 rounded-md bg-muted text-sm text-foreground"
                     data-testid={`badge-attendee-${i}`}
                   >
                     {s.email}
@@ -769,7 +769,7 @@ export default function OpusAgendaMock() {
                 <input
                   type="text"
                   placeholder="Add attendee..."
-                  className="inline-flex px-3 py-1 rounded-md bg-transparent border border-zinc-800 text-sm text-zinc-400 placeholder:text-zinc-600 focus:outline-none focus:ring-1 focus:ring-purple-600 min-w-[140px]"
+                  className="inline-flex px-3 py-1 rounded-md bg-transparent border border-input text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-purple-600 min-w-[140px]"
                   data-testid="input-add-attendee"
                 />
               </div>
@@ -777,13 +777,13 @@ export default function OpusAgendaMock() {
           </div>
 
           {/* Notes section */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5 mb-6">
+          <div className="rounded-2xl border border-border bg-card p-5 mb-6">
             <textarea
               value={notes[effectiveEventId] || ""}
               onChange={(e) => setNotes({ ...notes, [effectiveEventId]: e.target.value })}
               onBlur={handleSave}
               placeholder="Notes (optional, personal scratchpad)"
-              className="w-full min-h-[96px] rounded-lg bg-transparent border-0 px-0 py-0 text-sm text-white placeholder:text-zinc-500 focus:outline-none resize-none"
+              className="w-full min-h-[96px] rounded-lg bg-transparent border-0 px-0 py-0 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none resize-none"
               data-testid="textarea-notes"
             />
           </div>

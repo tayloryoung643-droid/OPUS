@@ -124,7 +124,7 @@ export default function OpusLandingPage() {
           />
         </div>
 
-        <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
+        <nav className="hidden md:flex items-center gap-6 text-sm">
           {["Overview", "Agenda"].map((tab) => (
             <button
               key={tab}
@@ -132,7 +132,7 @@ export default function OpusLandingPage() {
                 if (tab === "Overview") navigate("/overview");
                 else if (tab === "Agenda") navigate("/agenda");
               }}
-              className={`relative ${tab === "Overview" ? "text-white font-semibold" : "hover:text-white cursor-pointer"}`}
+              className={`relative ${tab === "Overview" ? "text-foreground font-semibold" : "text-muted-foreground hover:text-foreground cursor-pointer"}`}
               data-testid={`nav-${tab.toLowerCase()}`}
             >
               {tab}
@@ -249,7 +249,7 @@ export default function OpusLandingPage() {
 
             {/* Opus insights */}
             <div className="rounded-2xl border border-border bg-card p-6 shadow-lg">
-              <h3 className="text-lg font-semibold text-zinc-200 mb-4">Opus Insights</h3>
+              <h3 className="text-lg font-semibold text-card-foreground mb-4">Opus Insights</h3>
               <div className="space-y-3 text-muted-foreground text-sm">
                 <div className="flex items-start gap-3">
                   <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400" />
@@ -272,7 +272,7 @@ export default function OpusLandingPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 xl:gap-6">
           {/* Quarter Overview */}
           <div className="rounded-2xl border border-border bg-card p-6 shadow-lg min-w-0">
-            <h3 className="text-lg font-semibold text-zinc-200 mb-2">Quarter Overview</h3>
+            <h3 className="text-lg font-semibold text-card-foreground mb-2">Quarter Overview</h3>
             <div className="text-3xl font-light tracking-tight">
               $480K <span className="text-muted-foreground text-base">/ $1M target</span>
             </div>
@@ -297,7 +297,7 @@ export default function OpusLandingPage() {
 
           {/* Momentum */}
           <div className="rounded-2xl border border-border bg-card p-6 shadow-lg min-w-0">
-            <h3 className="text-lg font-semibold text-zinc-200 mb-2">Momentum</h3>
+            <h3 className="text-lg font-semibold text-card-foreground mb-2">Momentum</h3>
             <ul className="space-y-3 text-sm text-muted-foreground">
               <li className="flex items-center justify-between">
                 <span>Win rate (QTD)</span>

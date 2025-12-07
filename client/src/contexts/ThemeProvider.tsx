@@ -29,17 +29,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     root.classList.remove("light", "dark");
     root.classList.add(theme);
     localStorage.setItem("opus-theme", theme);
-    console.log("Theme changed to:", theme);
-    console.log("HTML classes:", root.className);
   }, [theme]);
 
   const toggleTheme = () => {
-    console.log("Toggle theme clicked! Current theme:", theme);
-    setThemeState(prev => {
-      const newTheme = prev === "light" ? "dark" : "light";
-      console.log("Switching to:", newTheme);
-      return newTheme;
-    });
+    setThemeState(prev => prev === "light" ? "dark" : "light");
   };
 
   const setTheme = (newTheme: Theme) => {

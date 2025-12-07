@@ -23,25 +23,46 @@
 }
 
 :root {
+  /* IMPROVED LIGHT THEME - Clean & Modern */
+
+  /* Main backgrounds - Pure white */
   --background: hsl(0 0% 100%);
-  --foreground: hsl(222.2 84% 4.9%);
-  --card: hsl(0 0% 98%);
-  --card-foreground: hsl(222.2 84% 4.9%);
+  --foreground: hsl(222.2 47.4% 11.2%);
+
+  /* Cards - Pure white with shadows */
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 47.4% 11.2%);
+
+  /* Popovers */
   --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(222.2 84% 4.9%);
-  --primary: hsl(262.1 83.3% 57.8%);
+  --popover-foreground: hsl(222.2 47.4% 11.2%);
+
+  /* Primary - Blue */
+  --primary: hsl(203.7736 87.6033% 52.5490%);
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(210 40% 96.1%);
+
+  /* Secondary - Very light gray */
+  --secondary: hsl(210 40% 98%);
   --secondary-foreground: hsl(222.2 47.4% 11.2%);
+
+  /* Muted */
   --muted: hsl(210 40% 96.1%);
-  --muted-foreground: hsl(215.4 16.3% 40%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+
+  /* Accent */
   --accent: hsl(210 40% 96.1%);
   --accent-foreground: hsl(222.2 47.4% 11.2%);
+
+  /* Destructive */
   --destructive: hsl(0 84.2% 60.2%);
   --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(214.3 31.8% 88%);
+
+  /* Borders - Soft gray */
+  --border: hsl(214.3 31.8% 91.4%);
   --input: hsl(214.3 31.8% 91.4%);
-  --ring: hsl(262.1 83.3% 57.8%);
+
+  /* Ring */
+  --ring: hsl(203.7736 87.6033% 52.5490%);
   --chart-1: hsl(203.8863 88.2845% 53.1373%);
   --chart-2: hsl(159.7826 100% 36.0784%);
   --chart-3: hsl(42.0290 92.8251% 56.2745%);
@@ -121,12 +142,30 @@
 @layer base {
   * {
     @apply border-border;
-    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
   }
 
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+}
+
+/* Add subtle shadows to cards in light mode */
+@layer components {
+  .light .bg-card,
+  :root .bg-card {
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  }
+
+  .light .bg-card:hover,
+  :root .bg-card:hover {
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  }
+}
+
+/* Smooth transitions */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .gradient-bg {

@@ -11,7 +11,7 @@ export default function Navigation() {
   };
 
   return (
-    <nav className="bg-card border-b border-border px-6 py-4" data-testid="navigation-dashboard">
+    <nav className="bg-card border-b border-border px-6 py-4 shadow-sm" data-testid="navigation-dashboard">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">
           {/* Opus Logo Circle */}

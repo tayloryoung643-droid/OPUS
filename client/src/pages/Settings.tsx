@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
 import type { User } from "@shared/schema";
+import { CONFIG } from "@/config";
 
 export default function Settings() {
   const { user } = useAuth();
@@ -14,8 +15,16 @@ export default function Settings() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [, navigate] = useLocation();
 
+  // Check if we're in demo mode
+  const isDemoMode = CONFIG.DEMO_MODE;
+
   const handleLogout = () => {
     window.location.href = "/api/logout";
+  };
+
+  const handleExitDemo = () => {
+    localStorage.removeItem('opus_demo_mode');
+    window.location.href = "/";
   };
 
   // Fetch integration statuses
@@ -271,12 +280,33 @@ export default function Settings() {
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Demo Mode Banner */}
+        {isDemoMode && (
+          <Card className="mb-6 border-purple-500 bg-purple-50 dark:bg-purple-950">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-purple-900 dark:text-purple-100 mb-1">
+                    🎭 Demo Mode Active
+                  </h3>
+                  <p className="text-sm text-purple-700 dark:text-purple-200">
+                    You're viewing Opus with sample data. No real integrations are needed in demo mode.
+                  </p>
+                </div>
+                <Button onClick={handleExitDemo} variant="outline" size="sm">
+                  Exit Demo
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground mb-2">
             Integrations & Settings
           </h1>
           <p className="text-muted-foreground">
-            Connect your tools to unlock AI-powered call preparation. The more data you connect, 
+            Connect your tools to unlock AI-powered call preparation. The more data you connect,
             the better insights Opus can provide for your sales calls.
           </p>
         </div>

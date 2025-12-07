@@ -144,6 +144,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Simple demo login - no credentials required
+  app.post('/api/demo-login', async (req, res) => {
+    try {
+      console.log('Demo login requested');
+
+      // Ensure guest user exists and is seeded with data
+      await ensureGuestUser();
+      await seedGuestData();
+
+      // Create guest session
+      createGuestSession(req);
+
+      const user = await storage.getUser("usr_guest_momentum_ai");
+
+      console.log('Demo login successful, user:', user?.email);
+      res.json({
+        success: true,
+        user,
+        demoMode: true,
+        message: 'Demo session created successfully'
+      });
+    } catch (error) {
+      console.error("Error with demo login:", error);
+      res.status(500).json({
+        success: false,
+        message: "Failed to create demo session",
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Extension token endpoint for Chrome extension authentication
   app.post('/api/auth/extension-token', isAuthenticated, async (req, res) => {
     try {

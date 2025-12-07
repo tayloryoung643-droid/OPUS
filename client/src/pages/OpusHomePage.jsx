@@ -7,9 +7,42 @@ export default function OpusHomePage() {
     window.location.href = "/api/login";
   };
   
-  const handleSeeDemo = () => {
-    // TODO: route to /demo if exists or implement demo flow
-    console.log("See Demo clicked");
+  const handleSeeDemo = async () => {
+    try {
+      console.log("See Demo clicked - starting demo mode");
+
+      // Set demo mode in localStorage
+      localStorage.setItem('opus_demo_mode', 'true');
+      console.log("Demo mode set in localStorage");
+
+      // Call the demo login endpoint to create a guest session
+      const response = await fetch('/api/demo-login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include' // Important: include cookies
+      });
+
+      console.log("Demo login response:", response.status);
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Demo login successful:", data);
+        // Redirect to overview with demo mode enabled
+        window.location.href = '/overview?demo=1';
+      } else {
+        console.error('Demo login failed with status:', response.status);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error details:', errorData);
+        // Even if backend fails, redirect with demo flag
+        window.location.href = '/overview?demo=1';
+      }
+    } catch (error) {
+      console.error('Error starting demo:', error);
+      // Fallback: redirect anyway with demo flag
+      window.location.href = '/overview?demo=1';
+    }
   };
   
   const handleGetStarted = () => {

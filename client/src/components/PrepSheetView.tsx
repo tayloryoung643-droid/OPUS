@@ -152,6 +152,70 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T 
   return debounced;
 }
 
+function ResizablePrepContent({ children }: { children: React.ReactNode }) {
+  const [height, setHeight] = useState(500);
+  const [isActiveDrag, setIsActiveDrag] = useState(false);
+  const isDragging = useRef(false);
+  const startY = useRef(0);
+  const startHeight = useRef(0);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current) return;
+      const deltaY = e.clientY - startY.current;
+      const newHeight = Math.max(200, Math.min(1200, startHeight.current + deltaY));
+      setHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      isDragging.current = false;
+      setIsActiveDrag(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    isDragging.current = true;
+    setIsActiveDrag(true);
+    startY.current = e.clientY;
+    startHeight.current = height;
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  };
+
+  return (
+    <div className="relative mb-6">
+      <div
+        className="overflow-y-auto border border-border rounded-lg p-4 bg-card space-y-6"
+        style={{ height: `${height}px` }}
+        data-testid="container-resizable-prep-content"
+      >
+        {children}
+      </div>
+      <div
+        className={`flex flex-col items-center justify-center py-2 cursor-ns-resize hover:bg-muted/50 rounded-b-lg border-x border-b border-border transition-colors group ${isActiveDrag ? 'bg-primary/10' : ''}`}
+        onMouseDown={handleMouseDown}
+        data-testid="handle-resize-prep-content"
+      >
+        <div className={`w-12 h-1.5 rounded-full transition-colors ${isActiveDrag ? 'bg-primary' : 'bg-muted-foreground/30 group-hover:bg-primary/50'}`} />
+        <span className={`text-xs mt-1 transition-opacity ${isActiveDrag ? 'text-primary opacity-100' : 'text-muted-foreground opacity-0 group-hover:opacity-100'}`}>
+          Drag to resize
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function PrepSheetView({ event }: PrepSheetProps) {
   const [notesState, setNotesState] = useState<{
     eventId: string | null;
@@ -617,9 +681,9 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
           />
         </div>
 
-        {/* Generated Prep Content */}
+        {/* Generated Prep Content - Resizable Container */}
         {callPrep?.isGenerated && (
-          <div className="space-y-6">
+          <ResizablePrepContent>
             {/* Methodology Components */}
             {callPrep.methodologyData && (
               <div className="space-y-6">
@@ -664,7 +728,7 @@ export default function PrepSheetView({ event }: PrepSheetProps) {
                 />
               </div>
             </div>
-          </div>
+          </ResizablePrepContent>
         )}
 
         {/* Placeholder sections when no prep is generated */}

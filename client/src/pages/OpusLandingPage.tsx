@@ -4,10 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 import SettingsModal from "@/components/SettingsModal";
 import { useAuth } from "@/hooks/useAuth";
 import { CONFIG } from "@/config";
+import { Sun, Moon } from "lucide-react";
+import { useTheme } from "@/contexts/ThemeProvider";
 
 export default function OpusLandingPage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const navigate = useNavigate();
+  const { theme, toggleTheme } = useTheme();
 
   // Get current user for voice recording
   const { user } = useAuth();
@@ -141,6 +144,18 @@ export default function OpusLandingPage() {
         </nav>
 
         <div className="flex items-center gap-3 md:gap-4">
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-colors"
+            data-testid="button-theme-toggle"
+            title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
+          >
+            {theme === "light" ? (
+              <Moon className="h-4 w-4" />
+            ) : (
+              <Sun className="h-4 w-4" />
+            )}
+          </button>
           <button
             onClick={() => setSettingsOpen(true)}
             className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"

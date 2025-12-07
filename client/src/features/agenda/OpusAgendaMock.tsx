@@ -702,7 +702,10 @@ export default function OpusAgendaMock() {
 
           {/* Open call-prep canvas */}
           <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-5">
-            <h3 className="text-base font-semibold text-white mb-3">Open call-prep canvas</h3>
+            <h3 className="text-base font-semibold text-white mb-3 flex items-center justify-between">
+              <span>Open call-prep canvas</span>
+              <span className="text-xs text-zinc-500 font-normal">Drag bottom-right corner to resize</span>
+            </h3>
             <textarea
               placeholder="Type only what we *know for sure*...
 
@@ -712,7 +715,8 @@ Suggestions:
 • CRM facts: stage, amount, close date, owner
 
 Keep bullets tight. Avoid repetition."
-              className="w-full min-h-[320px] rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-600 resize-none"
+              className="w-full rounded-lg bg-black/60 border border-zinc-900/70 px-3 py-2 text-sm text-white placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-purple-600 resize-y"
+              style={{ height: '320px', minHeight: '150px', maxHeight: '800px' }}
               data-testid="textarea-prep-canvas"
             />
           </div>

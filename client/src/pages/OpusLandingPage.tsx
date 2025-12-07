@@ -111,9 +111,9 @@ export default function OpusLandingPage() {
 
 
   return (
-    <div className="min-h-screen bg-black text-white font-sans">
+    <div className="min-h-screen bg-background text-foreground font-sans">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 md:px-10 py-5 border-b border-zinc-900/60 sticky top-0 bg-black/80 backdrop-blur supports-[backdrop-filter]:bg-black/60 z-40">
+      <header className="flex items-center justify-between px-6 md:px-10 py-5 border-b border-border sticky top-0 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-40">
         <div className="flex items-center gap-3">
           {/* Brand logo using crisp SVG wordmark */}
           <img

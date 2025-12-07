@@ -37,9 +37,9 @@ function CallItem({ title, subtitle, time, active, onClick }) {
 
 function Card({ title, children, full = false, right = null }) {
   return (
-    <div className={`${full ? "lg:col-span-2" : ""} rounded-2xl border border-zinc-900/70 bg-black/60 p-4`}>
+    <div className={`${full ? "lg:col-span-2" : ""} rounded-2xl border border-border bg-card p-4`}>
       <div className="flex items-center justify-between mb-3">
-        <h4 className="text-sm font-semibold">{title}</h4>
+        <h4 className="text-sm font-semibold text-card-foreground">{title}</h4>
         {right}
       </div>
       {children}
@@ -573,9 +573,9 @@ export default function OpusAgendaMock() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-black text-white">
+      <div className="min-h-screen bg-background text-foreground">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 md:px-10 py-4 border-b border-zinc-900/60 sticky top-0 bg-black/70 backdrop-blur z-40">
+      <header className="flex items-center justify-between px-6 md:px-10 py-4 border-b border-border sticky top-0 bg-background/70 backdrop-blur z-40">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 select-none">
             <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-cyan-400 to-purple-500 grid place-items-center">

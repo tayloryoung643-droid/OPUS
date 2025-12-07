@@ -124,7 +124,7 @@ export default function OpusLandingPage() {
           />
         </div>
 
-        <nav className="hidden md:flex items-center gap-6 text-sm text-zinc-300">
+        <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
           {["Overview", "Agenda"].map((tab) => (
             <button
               key={tab}
@@ -146,7 +146,7 @@ export default function OpusLandingPage() {
         <div className="flex items-center gap-3 md:gap-4">
           <button
             onClick={toggleTheme}
-            className="p-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white transition-colors"
+            className="p-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-muted-foreground hover:text-white transition-colors"
             data-testid="button-theme-toggle"
             title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
           >
@@ -158,7 +158,7 @@ export default function OpusLandingPage() {
           </button>
           <button
             onClick={() => setSettingsOpen(true)}
-            className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-zinc-300"
+            className="text-sm px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 text-muted-foreground"
             data-testid="button-settings"
           >
             Settings
@@ -175,7 +175,7 @@ export default function OpusLandingPage() {
             <br />
             Taylor
           </h1>
-          <p className="text-zinc-400 mt-1.5 md:mt-2 text-base md:text-lg font-medium font-sans">
+          <p className="text-muted-foreground mt-1.5 md:mt-2 text-base md:text-lg font-medium font-sans">
             Let's prep for success.
           </p>
         </div>
@@ -183,8 +183,8 @@ export default function OpusLandingPage() {
         {/* Main Content Grid - Upcoming Agenda, Today's Focus, and Opus Insights in line */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 xl:gap-6 items-start mb-6">
           {/* Left: Upcoming Agenda */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
-            <h2 className="text-xl font-semibold mb-4">Upcoming Agenda</h2>
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-lg">
+            <h2 className="text-xl font-semibold text-card-foreground mb-4">Upcoming Agenda</h2>
             <div className="space-y-3">
               {(CONFIG.USE_MOCKS ? mockAgenda : (todaysEvents || [])).map((item, idx) => {
                 const event = CONFIG.USE_MOCKS ? null : item;
@@ -196,14 +196,14 @@ export default function OpusLandingPage() {
                   <div key={idx} className="flex justify-between items-center pb-3 border-b border-zinc-800 last:border-0">
                     <div>
                       <div className="font-medium">{displayTitle}</div>
-                      {displaySubtitle && <div className="text-sm text-zinc-500">{displaySubtitle}</div>}
+                      {displaySubtitle && <div className="text-sm text-muted-foreground">{displaySubtitle}</div>}
                     </div>
-                    <div className="text-sm text-zinc-500">{displayTime}</div>
+                    <div className="text-sm text-muted-foreground">{displayTime}</div>
                   </div>
                 );
               })}
               {!CONFIG.USE_MOCKS && (!todaysEvents || todaysEvents.length === 0) && (
-                <div className="text-center py-8 text-zinc-500">
+                <div className="text-center py-8 text-muted-foreground">
                   No calls scheduled for today
                 </div>
               )}
@@ -213,9 +213,9 @@ export default function OpusLandingPage() {
           {/* Right: Today's Focus and Opus Insights */}
           <div className="space-y-4">
             {/* Today's Focus */}
-            <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
-              <h2 className="text-xl font-semibold mb-4">Today's Focus</h2>
-              <ul className="space-y-3 text-zinc-300">
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-lg">
+              <h2 className="text-xl font-semibold text-card-foreground mb-4">Today's Focus</h2>
+              <ul className="space-y-3 text-muted-foreground">
                 {CONFIG.USE_MOCKS ? (
                   <>
                     <li className="flex items-start gap-3">
@@ -240,7 +240,7 @@ export default function OpusLandingPage() {
                   ))
                 )}
                 {!CONFIG.USE_MOCKS && (!todaysEvents || todaysEvents.length === 0) && (
-                  <div className="text-center py-4 text-zinc-500">
+                  <div className="text-center py-4 text-muted-foreground">
                     No focus items for today
                   </div>
                 )}
@@ -248,9 +248,9 @@ export default function OpusLandingPage() {
             </div>
 
             {/* Opus insights */}
-            <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg">
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-lg">
               <h3 className="text-lg font-semibold text-zinc-200 mb-4">Opus Insights</h3>
-              <div className="space-y-3 text-zinc-300 text-sm">
+              <div className="space-y-3 text-muted-foreground text-sm">
                 <div className="flex items-start gap-3">
                   <span className="mt-2 inline-block h-1.5 w-1.5 rounded-full bg-cyan-400" />
                   <span>Pipeline review complete — 3 new opportunities identified</span>
@@ -271,15 +271,15 @@ export default function OpusLandingPage() {
         {/* Quarter Review and Momentum - Bottom row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 xl:gap-6">
           {/* Quarter Overview */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg min-w-0">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-lg min-w-0">
             <h3 className="text-lg font-semibold text-zinc-200 mb-2">Quarter Overview</h3>
             <div className="text-3xl font-light tracking-tight">
-              $480K <span className="text-zinc-500 text-base">/ $1M target</span>
+              $480K <span className="text-muted-foreground text-base">/ $1M target</span>
             </div>
             <div className="mt-4 h-1.5 w-full bg-zinc-900 rounded-full overflow-hidden">
               <div className="h-full bg-gradient-to-r from-purple-600 to-fuchsia-600" style={{ width: "48%" }} />
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-zinc-400">
+            <div className="mt-4 grid grid-cols-3 gap-4 text-sm text-muted-foreground">
               <div>
                 <div className="text-zinc-200 font-medium">20%</div>
                 <div className="mt-0.5">Segment rank</div>
@@ -296,9 +296,9 @@ export default function OpusLandingPage() {
           </div>
 
           {/* Momentum */}
-          <div className="rounded-2xl border border-zinc-900/70 bg-zinc-950/60 p-6 shadow-lg min-w-0">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-lg min-w-0">
             <h3 className="text-lg font-semibold text-zinc-200 mb-2">Momentum</h3>
-            <ul className="space-y-3 text-sm text-zinc-300">
+            <ul className="space-y-3 text-sm text-muted-foreground">
               <li className="flex items-center justify-between">
                 <span>Win rate (QTD)</span>
                 <span className="text-zinc-100 font-medium">28%</span>
@@ -312,7 +312,7 @@ export default function OpusLandingPage() {
                 <span className="text-zinc-100 font-medium">2 ready</span>
               </li>
             </ul>
-            <div className="mt-4 text-xs text-zinc-500">Curated by Opus from CRM + calendar signals</div>
+            <div className="mt-4 text-xs text-muted-foreground">Curated by Opus from CRM + calendar signals</div>
           </div>
         </div>
       </main>
